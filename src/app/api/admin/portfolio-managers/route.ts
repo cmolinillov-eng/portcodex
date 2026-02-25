@@ -1,0 +1,124 @@
+import { NextResponse, type NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
+import { getViewerAccess } from "@/lib/auth/viewer-access";
+import { validateCsrf } from "@/lib/security/csrf";
+import { recordAdminAudit } from "@/lib/security/admin-audit";
+
+type UpdateManagerBody = {
+  portfolioId?: string;
+  managerId?: string | null;
+};
+
+type ManagerProfileRow = {
+  id: string | null;
+  role: "autonomo" | "admin" | "cliente" | null;
+};
+
+type PortfolioManagerRow = {
+  id: string | null;
+  manager_id: string | null;
+};
+
+function getClient(): SupabaseClient {
+  const service = getSupabaseServiceClient();
+  if (service) return service;
+  return getSupabaseServerClient();
+}
+
+function cleanText(value: string | null | undefined): string {
+  return (value ?? "").trim();
+}
+
+export async function PATCH(request: NextRequest) {
+  try {
+    const csrfCheck = validateCsrf(request);
+    if (!csrfCheck.ok) {
+      return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+    }
+
+    const access = await getViewerAccess();
+    if (!access.canManageRoles) {
+      return NextResponse.json(
+        { error: "Solo el administrador principal puede asignar gestores." },
+        { status: 403 },
+      );
+    }
+
+    const body = (await request.json()) as UpdateManagerBody;
+    const portfolioId = cleanText(body.portfolioId);
+    const managerIdRaw = cleanText(body.managerId ?? "");
+    const managerId = managerIdRaw.length > 0 ? managerIdRaw : null;
+
+    if (!portfolioId) {
+      return NextResponse.json({ error: "portfolioId es obligatorio." }, { status: 400 });
+    }
+
+    const client = getClient();
+    const currentPortfolioQuery = await client
+      .from("portfolios")
+      .select("id, manager_id")
+      .eq("id", portfolioId)
+      .maybeSingle();
+    if (currentPortfolioQuery.error) {
+      throw new Error(currentPortfolioQuery.error.message);
+    }
+
+    const currentPortfolio = (currentPortfolioQuery.data ?? null) as PortfolioManagerRow | null;
+    if (!currentPortfolio?.id) {
+      return NextResponse.json({ error: "No se encontró el portfolio." }, { status: 404 });
+    }
+
+    if (managerId) {
+      const managerQuery = await client
+        .from("profiles")
+        .select("id, role")
+        .eq("id", managerId)
+        .maybeSingle();
+
+      if (managerQuery.error) {
+        throw new Error(managerQuery.error.message);
+      }
+
+      const managerRow = (managerQuery.data ?? null) as ManagerProfileRow | null;
+      if (!managerRow?.id || managerRow.role !== "admin") {
+        return NextResponse.json(
+          { error: "Solo puedes asignar usuarios con rol gestor." },
+          { status: 400 },
+        );
+      }
+    }
+
+    const updateQuery = await client
+      .from("portfolios")
+      .update({ manager_id: managerId })
+      .eq("id", portfolioId)
+      .select("id, manager_id")
+      .maybeSingle();
+
+    if (updateQuery.error) {
+      throw new Error(updateQuery.error.message);
+    }
+    if (!updateQuery.data?.id) return NextResponse.json({ error: "No se encontró el portfolio." }, { status: 404 });
+
+    await recordAdminAudit({
+      actorId: access.userId,
+      action: managerId ? "assign_portfolio_manager" : "unassign_portfolio_manager",
+      targetTable: "portfolios",
+      targetId: portfolioId,
+      beforeData: { managerId: currentPortfolio.manager_id ?? null },
+      afterData: { managerId: updateQuery.data.manager_id ?? null },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      row: {
+        id: updateQuery.data.id,
+        managerId: updateQuery.data.manager_id ?? null,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error inesperado asignando gestor.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

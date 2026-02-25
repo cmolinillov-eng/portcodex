@@ -1,26 +1,59 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #020611;
+  --foreground: #eef6ff;
+  --muted: #94a8c2;
+  --surface: #071322;
+  --surface-2: #0a1a2d;
+  --brand: #38bdf8;
+  --brand-soft: #22d3ee;
+  --line: #1b3b5a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-sans: var(--font-heading);
+  --font-mono: var(--font-mono);
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(1200px 680px at 8% -12%, rgba(56, 189, 248, 0.2), transparent 60%),
+    radial-gradient(920px 520px at 94% -20%, rgba(34, 211, 238, 0.15), transparent 62%),
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-heading), sans-serif;
+}
+
+.bg-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(50px);
+  pointer-events: none;
+}
+
+.card-premium {
+  border: 1px solid color-mix(in srgb, var(--brand) 18%, var(--line));
+  background: linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--surface-2) 78%, var(--brand) 22%),
+      var(--surface)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(56, 189, 248, 0.2),
+    0 0 56px rgba(56, 189, 248, 0.1);
+}
+
+.glow-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(56, 189, 248, 0.8) 50%,
+    transparent 100%
+  );
 }

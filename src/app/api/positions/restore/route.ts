@@ -1,0 +1,69 @@
+import { NextResponse, type NextRequest } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
+import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
+import { validateCsrf } from "@/lib/security/csrf";
+
+type RestorePositionPayload = {
+  portfolioId?: string;
+  protocol?: string;
+  positionId?: string;
+};
+
+function sanitizeText(value: string | undefined): string {
+  return (value ?? "").trim();
+}
+
+function getRestoreClient(): SupabaseClient {
+  const serviceClient = getSupabaseServiceClient();
+  if (serviceClient) return serviceClient;
+  return getSupabaseServerClient();
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const csrfCheck = validateCsrf(request);
+    if (!csrfCheck.ok) {
+      return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+    }
+
+    const payload = (await request.json()) as RestorePositionPayload;
+    const portfolioId = sanitizeText(payload.portfolioId);
+    const protocol = sanitizeText(payload.protocol);
+    const positionId = sanitizeText(payload.positionId);
+
+    if (!portfolioId || !protocol || !positionId) {
+      return NextResponse.json(
+        { error: "Faltan datos para restaurar la posición (portfolioId, protocol, positionId)." },
+        { status: 400 },
+      );
+    }
+
+    const access = await getViewerAccess();
+    const accessCheck = ensurePortfolioAccess(access, portfolioId, true);
+    if (!accessCheck.ok) {
+      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
+    }
+
+    const client = getRestoreClient();
+    const { data, error } = await client
+      .from("transactions")
+      .update({ deleted_at: null })
+      .eq("portfolio_id", portfolioId)
+      .eq("protocol", protocol)
+      .eq("position_id", positionId)
+      .select("id");
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      restoredRows: (data ?? []).length,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Error inesperado al restaurar la posición.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
