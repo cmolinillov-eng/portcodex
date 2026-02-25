@@ -6,9 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:math": "node --test tests/math/*.test.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:roles": "node scripts/run-e2e-role-matrix.mjs",
+    "test:e2e:financial": "node scripts/run-e2e-financial-matrix.mjs",
+    "test:e2e:exports": "node scripts/run-e2e-export-matrix.mjs",
+    "test:e2e:exports:ui": "node scripts/run-e2e-export-ui-smoke.mjs",
+    "qa:prepush": "npm run -s lint && npm run -s test:e2e:roles && npm run -s test:e2e:financial && npm run -s test:e2e:exports && npm run -s test:e2e:exports:ui"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "lucide-react": "^0.575.0",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3"
@@ -20,6 +29,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "playwright": "^1.58.2",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

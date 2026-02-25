@@ -1,0 +1,70 @@
+name: E2E QA Matrix
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/e2e-financial-matrix.yml"
+  pull_request:
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/e2e-financial-matrix.yml"
+  workflow_dispatch:
+
+jobs:
+  e2e-qa-matrix:
+    if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' && secrets.SUPERADMIN_USER_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Create .env.local
+        run: |
+          cat > .env.local <<'EOF'
+          NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPERADMIN_USER_ID=${{ secrets.SUPERADMIN_USER_ID }}
+          COINGECKO_API_KEY=${{ secrets.COINGECKO_API_KEY }}
+          ENABLE_DEV_AUTH_FALLBACK=true
+          EOF
+
+      - name: Lint
+        run: npm run -s lint
+
+      - name: Run role E2E matrix
+        run: npm run -s test:e2e:roles
+
+      - name: Run financial E2E matrix
+        run: npm run -s test:e2e:financial
+
+      - name: Run export API E2E matrix
+        run: npm run -s test:e2e:exports
+
+      - name: Run export UI smoke
+        run: npm run -s test:e2e:exports:ui
