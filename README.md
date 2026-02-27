@@ -1,36 +1,65 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Crypto Portfolio Tracker (Web)
 
-## Getting Started
+Aplicación Next.js para gestión manual de portfolios cripto con backend en Supabase, control multi-rol y cálculo financiero (ROI, Lending HF, LP/IL, exportaciones).
 
-First, run the development server:
+## Requisitos
+
+- Node.js 20+
+- npm 10+
+- Proyecto Supabase activo
+
+## Variables de entorno
+
+Crea `.env.local` desde `.env.local.example` y completa:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPERADMIN_USER_ID`
+- `SUPERADMIN_EMAIL`
+- `NEXT_PUBLIC_APP_URL`
+- `COINGECKO_API_KEY` (recomendado)
+- `ENABLE_DEV_AUTH_FALLBACK=false` en producción
+- `DEV_VIEWER_USER_ID` vacío en producción
+
+## Desarrollo local
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+App local:
+- [http://localhost:3000](http://localhost:3000)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Comandos de validación
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run -s lint
+npm run -s test:math
+npm run -s test:e2e:roles
+npm run -s test:e2e:financial
+npm run -s test:e2e:exports
+npm run -s test:e2e:exports:ui
+```
 
-## Learn More
+Suite completa pre-push:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run -s qa:prepush
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Seguridad y SQL
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Antes de desplegar, ejecutar en Supabase SQL Editor:
 
-## Deploy on Vercel
+1. `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/supabase/sql/phase13_integrity_and_audit.sql`
+2. `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/supabase/sql/phase14_security_hardening.sql`
+3. `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/supabase/sql/phase15_security_validation.sql`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Checklists:
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/PRE_PUSH_CHECKLIST.md`
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/SECURITY_PREDEPLOY_CHECKLIST.md`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Runbook de despliegue/rotación:
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/DEPLOY_RUNBOOK.md`

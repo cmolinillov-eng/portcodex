@@ -5,6 +5,9 @@ import { getDashboardData } from "@/lib/dashboard/get-dashboard-data";
 
 export default async function HomePage() {
   const access = await getViewerAccess();
+  if (!access.isAuthenticated) {
+    redirect("/login");
+  }
   if (access.canManageRoles) {
     redirect("/admin");
   }

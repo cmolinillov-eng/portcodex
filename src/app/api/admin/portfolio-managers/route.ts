@@ -4,6 +4,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { recordAdminAudit } from "@/lib/security/admin-audit";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 type UpdateManagerBody = {
   portfolioId?: string;
@@ -42,6 +43,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "Solo el administrador principal puede asignar gestores." },
         { status: 403 },
+      );
+    }
+
+    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const rateLimit = checkRateLimit(
+      `admin-assign-manager:${access.userId ?? "anon"}:${clientIp}`,
+      { limit: 30, windowMs: 60_000 },
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Demasiadas asignaciones en poco tiempo. Inténtalo de nuevo en unos segundos." },
+        { status: 429 },
       );
     }
 

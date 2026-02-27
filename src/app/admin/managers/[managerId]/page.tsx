@@ -79,6 +79,9 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
   noStore();
 
   const access = await getViewerAccess();
+  if (!access.isAuthenticated) {
+    redirect("/login");
+  }
   if (!access.canManageRoles) {
     redirect("/");
   }
@@ -169,39 +172,39 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
   const managerLabel = displayName(manager.full_name, manager.email);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(56,189,248,0.22)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(34,211,238,0.16)]" />
+    <main className="page-shell">
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(0,229,255,0.22)]" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(0,229,255,0.16)]" />
 
-      <section className="mx-auto flex w-full max-w-none flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
-        <header className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/admin"
-              className="inline-flex rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.26)]"
-            >
-              Volver a Admin
-            </Link>
-            <span className="text-sm text-[var(--muted)]">Vista del gestor:</span>
-            <span className="text-sm font-medium">{managerLabel}</span>
+      <section className="page-content">
+        <header className="card-premium page-header-card self-start">
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href="/admin" className="btn-secondary">
+                Volver a Admin
+              </Link>
+              <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Gestor</h1>
+              <span className="text-sm text-[var(--muted)]">{managerLabel}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact">
+                Cerrar sesión
+              </a>
+            </div>
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight md:text-4xl">Panel de Gestor</h1>
-          <p className="mt-2 text-sm text-[var(--muted)]">
-            Vista de supervisión del administrador sobre los clientes y portfolios gestionados por este gestor.
-          </p>
         </header>
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <section className="card-premium page-section-card">
+          <div className="section-header-row flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">Clientes Asignados</h2>
             <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
               Total portfolios gestionados: {rows.length}
             </span>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
+          <div className="page-table-shell">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(34,211,238,0.08)] text-left">
+              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">CLIENTE</th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
@@ -236,10 +239,7 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <Link
-                          href={`/admin/managers/${selectedManagerId}/portfolios/${row.id}`}
-                          className="inline-flex rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.26)]"
-                        >
+                        <Link href={`/admin/managers/${selectedManagerId}/portfolios/${row.id}`} className="btn-secondary">
                           Ver portfolio
                         </Link>
                       </td>

@@ -1,8 +1,8 @@
 export default function Loading() {
   return (
     <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(255,122,26,0.18)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(255,122,26,0.13)]" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(0,229,255,0.18)]" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(0,229,255,0.13)]" />
 
       <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 md:px-10 md:py-10">
         <header className="card-premium rounded-3xl p-6 md:p-8">

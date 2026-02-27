@@ -23,7 +23,7 @@ on:
 
 jobs:
   e2e-qa-matrix:
-    if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' && secrets.SUPERADMIN_USER_ID != '' }}
+    if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' && secrets.SUPERADMIN_USER_ID != '' && secrets.SUPERADMIN_EMAIL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -50,7 +50,9 @@ jobs:
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPERADMIN_USER_ID=${{ secrets.SUPERADMIN_USER_ID }}
+          SUPERADMIN_EMAIL=${{ secrets.SUPERADMIN_EMAIL }}
           COINGECKO_API_KEY=${{ secrets.COINGECKO_API_KEY }}
+          NEXT_PUBLIC_APP_URL=http://127.0.0.1:3100
           ENABLE_DEV_AUTH_FALLBACK=true
           EOF
 

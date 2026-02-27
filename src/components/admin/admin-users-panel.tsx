@@ -356,94 +356,99 @@ export function AdminUsersPanel({
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(56,189,248,0.22)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(34,211,238,0.16)]" />
+    <main className="page-shell">
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(46,168,255,0.07)]" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(25,215,255,0.05)]" />
 
-      <section className="mx-auto flex w-full max-w-none flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
-        <header className="card-premium rounded-3xl p-6 md:p-8">
-          <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Administrador Principal</p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">Panel de Administrador</h1>
-          <div className="mt-4 flex flex-wrap items-end gap-3">
-            <label className="text-sm">
-              <span className="mb-1 block text-[var(--muted)]">Ir a gestor</span>
-              <select
-                value={quickManagerUserId}
-                onChange={(event) => {
-                  const userId = event.target.value;
-                  setQuickManagerUserId(userId);
-                  if (!userId) return;
-                  goToUserPortfolio(userId);
-                }}
-                className="w-[230px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-2 text-xs"
-              >
-                <option value="">Seleccionar gestor</option>
-                {managerUsers.map((manager) => (
-                  <option key={manager.id} value={manager.id}>
-                    {manager.label} {manager.email ? `(${manager.email})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-[var(--muted)]">Ir a cliente</span>
-              <select
-                value={quickClientUserId}
-                onChange={(event) => {
-                  const userId = event.target.value;
-                  setQuickClientUserId(userId);
-                  if (!userId) return;
-                  goToUserPortfolio(userId);
-                }}
-                className="w-[230px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-2 text-xs"
-              >
-                <option value="">Seleccionar cliente</option>
-                {clientUsers.map((client) => (
-                  <option key={client.id} value={client.id}>
-                    {client.label} {client.email ? `(${client.email})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+      <section className="page-content">
+        <header className="card-premium page-header-card">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Administrador</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <span>Ir a gestor</span>
+                <select
+                  value={quickManagerUserId}
+                  onChange={(event) => {
+                    const userId = event.target.value;
+                    setQuickManagerUserId(userId);
+                    if (!userId) return;
+                    goToUserPortfolio(userId);
+                  }}
+                  className="w-[190px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1.5 text-xs"
+                >
+                  <option value="">Seleccionar gestor</option>
+                  {managerUsers.map((manager) => (
+                    <option key={manager.id} value={manager.id}>
+                      {manager.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <span>Ir a cliente</span>
+                <select
+                  value={quickClientUserId}
+                  onChange={(event) => {
+                    const userId = event.target.value;
+                    setQuickClientUserId(userId);
+                    if (!userId) return;
+                    goToUserPortfolio(userId);
+                  }}
+                  className="w-[190px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1.5 text-xs"
+                >
+                  <option value="">Seleccionar cliente</option>
+                  {clientUsers.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact">
+                Cerrar sesión
+              </a>
+            </div>
           </div>
-          {feedbackMessage ? <p className="mt-3 text-sm text-[var(--muted)]">{feedbackMessage}</p> : null}
+          {feedbackMessage ? <p className="mt-2 text-xs text-[var(--muted)]">{feedbackMessage}</p> : null}
         </header>
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">Usuarios</h2>
+        <section className="card-premium page-section-card">
+          <div className="section-header-row flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-2xl font-semibold tracking-tight">Usuarios</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                {(
+                  [
+                    { key: "all", label: `Todos (${counts.all})` },
+                    { key: "cliente", label: `Clientes (${counts.cliente})` },
+                    { key: "autonomo", label: `Autónomos (${counts.autonomo})` },
+                    { key: "admin", label: `Gestores (${counts.admin})` },
+                  ] as Array<{ key: RoleFilter; label: string }>
+                ).map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setFilter(item.key)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs transition ${
+                      filter === item.key
+                        ? "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.18)]"
+                        : "border-[var(--line)] bg-black/20 hover:bg-[rgba(0,229,255,0.1)]"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
               Total usuarios: {counts.all}
             </span>
           </div>
 
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {(
-              [
-                { key: "all", label: `Todos (${counts.all})` },
-                { key: "cliente", label: `Clientes (${counts.cliente})` },
-                { key: "autonomo", label: `Autónomos (${counts.autonomo})` },
-                { key: "admin", label: `Gestores (${counts.admin})` },
-              ] as Array<{ key: RoleFilter; label: string }>
-            ).map((item) => (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setFilter(item.key)}
-                className={`rounded-lg border px-3 py-1.5 text-xs transition ${
-                  filter === item.key
-                    ? "border-[rgba(56,189,248,0.55)] bg-[rgba(56,189,248,0.18)]"
-                    : "border-[var(--line)] bg-black/20 hover:bg-[rgba(56,189,248,0.1)]"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
+          <div className="page-table-shell">
             <table className="w-full min-w-[1320px] border-collapse">
-              <thead className="bg-[rgba(34,211,238,0.08)] text-left">
+              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">USUARIO</th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
@@ -476,7 +481,7 @@ export function AdminUsersPanel({
                           {user.role === "admin" ? (
                             <Link
                               href={`/admin/managers/${user.id}`}
-                              className="text-sky-300 underline decoration-[rgba(56,189,248,0.45)] underline-offset-2 hover:text-sky-200"
+                              className="text-cyan-300 underline decoration-[rgba(0,229,255,0.45)] underline-offset-2 hover:text-cyan-200"
                             >
                               {displayPersonName(user.fullName, user.email)}
                             </Link>
@@ -492,7 +497,7 @@ export function AdminUsersPanel({
                                 user.role === "cliente"
                                   ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300"
                                   : user.role === "admin"
-                                    ? "border-[rgba(56,189,248,0.55)] bg-[rgba(56,189,248,0.16)] text-sky-300"
+                                    ? "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] text-cyan-300"
                                     : "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300"
                               }`}
                             >
@@ -525,7 +530,7 @@ export function AdminUsersPanel({
                               <span className="text-[var(--muted)]">0</span>
                             ) : (
                               <details className="group">
-                                <summary className="cursor-pointer list-none text-sm text-sky-300">
+                                <summary className="cursor-pointer list-none text-sm text-cyan-300">
                                   {managedPortfolios.length} portfolio(s)
                                 </summary>
                                 <div className="mt-2 space-y-2 rounded-xl border border-[var(--line)] bg-black/20 p-2">
@@ -552,10 +557,7 @@ export function AdminUsersPanel({
                               <span className="text-xs text-[var(--muted)]">Sin portfolio</span>
                             ) : portfoliosForAction.length === 1 ? (
                               <div className="flex flex-col gap-1">
-                                <Link
-                                  href={`/admin/users/${user.id}?portfolioId=${portfoliosForAction[0].id}`}
-                                  className="inline-flex w-fit rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.26)]"
-                                >
+                                <Link href={`/admin/users/${user.id}?portfolioId=${portfoliosForAction[0].id}`} className="btn-secondary">
                                   {portfoliosForAction[0].name}
                                 </Link>
                                 <div className={`text-[11px] ${pnlTone(portfoliosForAction[0].pnlUsd)}`}>
@@ -565,7 +567,7 @@ export function AdminUsersPanel({
                               </div>
                             ) : (
                               <details>
-                                <summary className="inline-flex w-fit cursor-pointer rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.26)]">
+                                <summary className="btn-secondary w-fit cursor-pointer list-none">
                                   Ver portfolios ({portfoliosForAction.length})
                                 </summary>
                                 <div className="mt-2 flex flex-col gap-1">
@@ -573,7 +575,7 @@ export function AdminUsersPanel({
                                     <div key={portfolio.id} className="rounded-lg border border-[var(--line)] bg-black/20 p-2">
                                       <Link
                                         href={`/admin/users/${user.id}?portfolioId=${portfolio.id}`}
-                                        className="text-xs text-[var(--muted)] underline decoration-[rgba(56,189,248,0.4)] underline-offset-2 hover:text-foreground"
+                                        className="text-xs text-[var(--muted)] underline decoration-[rgba(0,229,255,0.4)] underline-offset-2 hover:text-foreground"
                                       >
                                         {portfolio.name}
                                       </Link>
@@ -596,8 +598,8 @@ export function AdminUsersPanel({
           </div>
         </section>
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <section className="card-premium page-section-card">
+          <div className="section-header-row flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">Asignación de Gestores</h2>
             <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
               Mostrando {sortedPortfolioRows.length} de {portfolioRows.length}
@@ -645,9 +647,9 @@ export function AdminUsersPanel({
             </label>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
-            <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(34,211,238,0.08)] text-left">
+          <div className="page-table-shell">
+            <table className="w-full min-w-[1240px] border-collapse">
+              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">
                     <button
@@ -666,6 +668,9 @@ export function AdminUsersPanel({
                     >
                       CLIENTE <span className="text-[10px]">{sortIndicator("client")}</span>
                     </button>
+                  </th>
+                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">
+                    ID CLIENTE
                   </th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">
                     <button
@@ -694,7 +699,7 @@ export function AdminUsersPanel({
               <tbody>
                 {sortedPortfolioRows.length === 0 ? (
                   <tr className="border-t border-[var(--line)]">
-                    <td className="px-4 py-4 text-sm text-[var(--muted)]" colSpan={6}>
+                    <td className="px-4 py-4 text-sm text-[var(--muted)]" colSpan={7}>
                       No hay portfolios para los filtros seleccionados.
                     </td>
                   </tr>
@@ -706,36 +711,48 @@ export function AdminUsersPanel({
                       <tr key={portfolio.id} className="border-t border-[var(--line)]">
                         <td className="px-4 py-4 text-sm">
                           <div className="font-medium">{portfolio.name}</div>
-                          <div className="text-xs text-[var(--muted)]">{portfolio.id}</div>
                         </td>
                         <td className="px-4 py-4 text-sm">
                           <div>{portfolio.ownerName || "-"}</div>
-                          <div className="text-xs text-[var(--muted)]">{portfolio.ownerEmail || "-"}</div>
+                        </td>
+                        <td className="px-4 py-4 text-sm">
+                          <details>
+                            <summary className="btn-secondary btn-secondary-compact w-fit cursor-pointer list-none">
+                              ID cliente
+                            </summary>
+                            <div className="mt-2 space-y-1 text-[11px] text-[var(--muted)]">
+                              <p>
+                                <span className="text-foreground">Portfolio ID:</span> {portfolio.id}
+                              </p>
+                              <p>
+                                <span className="text-foreground">Email:</span> {portfolio.ownerEmail || "-"}
+                              </p>
+                            </div>
+                          </details>
                         </td>
                         <td className="px-4 py-4 text-sm">
                           <select
                             value={portfolio.managerId ?? ""}
                             onChange={(event) => updatePortfolioManager(portfolio.id, event.target.value)}
                             disabled={isSavingPortfolioId === portfolio.id}
-                            className="w-full max-w-[360px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1 text-xs disabled:opacity-60"
+                            className="w-full max-w-[220px] rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1 text-xs disabled:opacity-60"
                           >
                             <option value="">Sin gestor</option>
                             {managerUsers.map((manager) => (
                               <option key={manager.id} value={manager.id}>
-                                {manager.label} {manager.email ? `(${manager.email})` : ""}
+                                {manager.label}
                               </option>
                             ))}
                             {hasOrphanManager ? (
                               <option value={portfolio.managerId ?? ""}>
-                                {portfolio.managerName || "Gestor no disponible"}{" "}
-                                {portfolio.managerEmail ? `(${portfolio.managerEmail})` : ""}
+                                {portfolio.managerName || "Gestor no disponible"}
                               </option>
                             ) : null}
                           </select>
                         </td>
                         <td className="px-4 py-4 text-sm">
                           {portfolio.managerId ? (
-                            <span className="inline-flex rounded-full border border-[rgba(56,189,248,0.55)] bg-[rgba(56,189,248,0.16)] px-2.5 py-1 text-xs text-sky-300">
+                            <span className="inline-flex rounded-full border border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] px-2.5 py-1 text-xs text-cyan-300">
                               Gestionado
                             </span>
                           ) : (
@@ -748,15 +765,9 @@ export function AdminUsersPanel({
                           <div className={`font-medium ${pnlTone(portfolio.pnlUsd)}`}>
                             {percent(portfolio.pnlPercent)} · {signedCurrency(portfolio.pnlUsd)}
                           </div>
-                          <div className="text-xs text-[var(--muted)]">
-                            {currency(portfolio.totalValueUsd)} / {currency(portfolio.totalDepositedUsd)}
-                          </div>
                         </td>
                         <td className="px-4 py-4">
-                          <Link
-                            href={`/admin/users/${portfolio.ownerId}`}
-                            className="inline-flex rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.26)]"
-                          >
+                          <Link href={`/admin/users/${portfolio.ownerId}`} className="btn-secondary">
                             Ver portfolio cliente
                           </Link>
                         </td>

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
 
@@ -1007,6 +1008,16 @@ export async function POST(request: NextRequest) {
     const accessCheck = ensurePortfolioAccess(access, payload.portfolioId, true);
     if (!accessCheck.ok) {
       return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
+    }
+
+    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const rateKey = `transactions-write:${access.userId ?? "anon"}:${payload.portfolioId}:${clientIp}`;
+    const rateLimit = checkRateLimit(rateKey, { limit: 60, windowMs: 60_000 });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Demasiadas operaciones en poco tiempo. Inténtalo de nuevo en unos segundos." },
+        { status: 429 },
+      );
     }
 
     const client = getInsertClient();

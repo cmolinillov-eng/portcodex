@@ -53,6 +53,9 @@ export default async function AdminPage() {
   noStore();
 
   const access = await getViewerAccess();
+  if (!access.isAuthenticated) {
+    redirect("/login");
+  }
   if (!access.canManageRoles) {
     redirect("/");
   }

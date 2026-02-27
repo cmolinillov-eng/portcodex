@@ -4,6 +4,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { recordAdminAudit } from "@/lib/security/admin-audit";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 type ProfileUserRow = {
   id: string | null;
@@ -78,6 +79,18 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json(
         { error: "Solo el administrador principal puede cambiar roles." },
         { status: 403 },
+      );
+    }
+
+    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const rateLimit = checkRateLimit(
+      `admin-update-role:${access.userId ?? "anon"}:${clientIp}`,
+      { limit: 20, windowMs: 60_000 },
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Demasiados cambios de rol en poco tiempo. Inténtalo de nuevo en unos segundos." },
+        { status: 429 },
       );
     }
 

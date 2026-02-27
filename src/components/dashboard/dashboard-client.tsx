@@ -235,7 +235,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     recentActivity,
     pricesBySymbol,
     pricesLastUpdatedAt,
-    pricesAreStale,
     viewer,
     portfolioContext,
   } = data;
@@ -255,6 +254,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [isExportingCsv, setIsExportingCsv] = useState(false);
   const [csvErrorMessage, setCsvErrorMessage] = useState("");
   const [hoveredCompositionKey, setHoveredCompositionKey] = useState<string | null>(null);
+  const [isCompactDonut, setIsCompactDonut] = useState(false);
   const [visibleRecentActivityCount, setVisibleRecentActivityCount] = useState(10);
   const isScopedOperation =
     form.operationType === "base_deposit" ||
@@ -278,12 +278,25 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   }, [sections]);
 
   const sectionTotals = useMemo(
-    () =>
-      sections.map((section) => ({
-        key: section.key,
-        title: section.title,
-        value: section.positions.reduce((sum, position) => sum + position.currentValue, 0),
-      })),
+    () => {
+      const sectionMap = new Map(
+        sections.map((section) => [
+          section.key,
+          section.positions.reduce((sum, position) => sum + position.currentValue, 0),
+        ]),
+      );
+      const fixedOrder: Array<{ key: PositionSection["key"]; title: string }> = [
+        { key: "wallet", title: "Wallet (HODL)" },
+        { key: "lending", title: "Lending Protocols" },
+        { key: "liquidity_pools", title: "Liquidity Pools" },
+        { key: "staking", title: "Staking" },
+      ];
+      return fixedOrder.map((entry) => ({
+        key: entry.key,
+        title: entry.title,
+        value: sectionMap.get(entry.key) ?? 0,
+      }));
+    },
     [sections],
   );
 
@@ -409,7 +422,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   ]);
 
   const compositionStyles = useMemo(() => {
-    const palette = ["#22D3EE", "#3B82F6", "#A78BFA", "#4ADE80", "#F43F5E"];
+    const palette = ["#00E5FF", "#35F3FF", "#6AF5FF", "#00B7FF", "#96FBFF"];
     const total = sectionTotals.reduce((sum, item) => sum + item.value, 0);
     if (total <= 0) {
       return {
@@ -446,6 +459,24 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
     return { donutBackground, entries };
   }, [sectionTotals]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1024px)");
+    const sync = () => setIsCompactDonut(media.matches);
+    sync();
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", sync);
+      return () => media.removeEventListener("change", sync);
+    }
+
+    media.addListener(sync);
+    return () => media.removeListener(sync);
+  }, []);
+
+  const donutOuterStroke = isCompactDonut ? 24 : 30;
+  const donutActiveStroke = isCompactDonut ? 30 : 38;
+  const donutInnerInset = isCompactDonut ? 40 : 34;
 
   const visibleRecentActivity = useMemo(
     () => recentActivity.slice(0, visibleRecentActivityCount),
@@ -599,7 +630,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         percent: summary.totalValueUsd > 0 ? (value / summary.totalValueUsd) * 100 : 0,
       }));
 
-    const tokenPalette = ["#22D3EE", "#10B981", "#3B82F6", "#F59E0B", "#E11D48", "#22C55E", "#A855F7"];
+    const tokenPalette = ["#00E5FF", "#35F3FF", "#6AF5FF", "#00B7FF", "#96FBFF", "#4FD4FF", "#8CD7FF"];
     let angleStart = 0;
     const tokenSlices = tokenRows.map((row, index) => {
       const angleSize = (row.percent / 100) * 360;
@@ -1172,10 +1203,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     const showHealthFactor = section.key === "lending";
     const showEntryPriceColumn = section.key !== "liquidity_pools";
     const showYieldColumn = section.key !== "wallet";
+    const sectionToneClass = `card-section-${section.key}`;
 
     return (
-      <section key={section.key} className="card-premium rounded-3xl p-6 md:p-8">
-        <div className="mb-4 flex items-center justify-between">
+      <section key={section.key} className={`card-premium page-section-card ${sectionToneClass}`}>
+        <div className="section-header-row flex items-center justify-between">
           <h2 className="text-2xl font-semibold tracking-tight">{section.title}</h2>
           <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-black/20 px-3 py-1 text-xs text-[var(--muted)]">
             <Layers className="h-3.5 w-3.5" />
@@ -1183,9 +1215,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </span>
         </div>
 
-        <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
+        <div className="page-table-shell">
           <table className="w-full min-w-[1180px] border-collapse">
-            <thead className="bg-[rgba(34,211,238,0.08)] text-left">
+            <thead className="bg-[rgba(0,229,255,0.12)] text-left">
               <tr>
                 <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACTIVO</th>
                 <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">SALDO</th>
@@ -1223,8 +1255,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     return (
                       <>
                   <td className="px-4 py-4">
-                    <p className="font-medium">{position.tokenSymbol}</p>
-                    <p className="text-sm text-[var(--muted)]">{position.positionType}</p>
+                    <p className="token-emphasis">{position.tokenSymbol}</p>
                   </td>
                   <td className="px-4 py-4 font-mono text-sm">
                     {position.balanceLabel ?? position.currentBalance.toLocaleString("en-US")}
@@ -1235,7 +1266,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         position.currentPriceLabel ? (
                           <div className="space-y-1">
                             {position.currentPriceLabel.split("|").map((line, idx) => (
-                              <p key={`${position.positionId}-entry-${idx}`} className="text-sm font-medium text-foreground">
+                              <p
+                                key={`${position.positionId}-entry-${idx}`}
+                                className="whitespace-nowrap text-sm font-medium text-foreground"
+                              >
                                 {line.trim()}
                               </p>
                             ))}
@@ -1253,20 +1287,20 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       ) : null}
                     </td>
                   ) : null}
-                  <td className="px-4 py-4 font-medium">{currency(depositedValue)}</td>
-                  <td className="px-4 py-4 font-medium">{currency(position.currentValue)}</td>
+                  <td className="px-4 py-4 value-emphasis">{currency(depositedValue)}</td>
+                  <td className="px-4 py-4 value-emphasis">{currency(position.currentValue)}</td>
                   <td className="px-4 py-4">
                     <span className="text-sm">{plainPercent(allocationPercent)}</span>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="inline-flex items-center rounded-full border border-[rgba(34,211,238,0.4)] bg-[rgba(34,211,238,0.12)] px-2.5 py-1 text-xs">
+                    <span className="inline-flex items-center rounded-full border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.12)] px-2.5 py-1 text-xs">
                       {position.protocol}
                     </span>
                   </td>
                   {showYieldColumn ? (
                     <td className="px-4 py-4">
                       {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.1)] px-2.5 py-1 text-xs">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(0,229,255,0.35)] bg-[rgba(0,229,255,0.1)] px-2.5 py-1 text-xs">
                           <BadgeDollarSign className="h-3.5 w-3.5" />
                           {currency(position.totalHarvested)}
                         </span>
@@ -1348,7 +1382,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         <button
                           type="button"
                           onClick={() => openModal(position)}
-                          className="rounded-lg border border-[rgba(34,211,238,0.35)] bg-[rgba(34,211,238,0.1)] px-3 py-1.5 text-xs transition hover:bg-[rgba(34,211,238,0.2)]"
+                          className="btn-secondary"
                         >
                           Operar
                         </button>
@@ -1381,113 +1415,217 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   }
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(56,189,248,0.22)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(34,211,238,0.16)]" />
+    <main className="page-shell">
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(41,234,217,0.07)]" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(102,255,241,0.05)]" />
 
-      <section className="mx-auto flex w-full max-w-none flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
-        <header className="card-premium relative overflow-hidden rounded-3xl p-6 md:p-8">
-          <div className="absolute top-0 right-0 h-32 w-32 rounded-full bg-[rgba(56,189,248,0.24)] blur-3xl" />
-
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="min-w-[260px]">
-              <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Saldo Total del Portfolio</p>
-              <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-                {currency(summary.totalValueUsd)}
-              </h1>
-              {portfolioContext ? (
-                <p className="mt-2 text-sm text-[var(--muted)]">
-                  Usuario:{" "}
-                  <span className="text-foreground">
-                    {portfolioContext.ownerName || portfolioContext.ownerEmail || "Sin nombre"}
-                  </span>
-                  {portfolioContext.managerName || portfolioContext.managerEmail ? (
-                    <>
-                      {" · "}Gestor:{" "}
-                      <span className="text-foreground">
-                        {portfolioContext.managerName || portfolioContext.managerEmail}
-                      </span>
-                    </>
-                  ) : null}
-                </p>
-              ) : null}
-              <span
-                className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] ${
-                  viewer.isSuperAdmin
-                    ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.14)] text-indigo-300"
+      <section className="page-content">
+        <header className="card-premium card-header relative overflow-hidden rounded-3xl px-4 pt-3.5 pb-2.5 md:px-5 md:pt-4 md:pb-3">
+          <div className="grid items-start gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.08fr)_minmax(340px,0.54fr)] xl:items-center">
+            <div className="flex flex-col gap-3">
+              <div className="min-w-[260px]">
+                <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Saldo Total del Portfolio</p>
+                <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
+                  {currency(summary.totalValueUsd)}
+                </h1>
+                {portfolioContext ? (
+                  <p className="mt-2 text-sm text-[var(--muted)]">
+                    Usuario:{" "}
+                    <span className="text-foreground">
+                      {portfolioContext.ownerName || portfolioContext.ownerEmail || "Sin nombre"}
+                    </span>
+                    {portfolioContext.managerName || portfolioContext.managerEmail ? (
+                      <>
+                        {" · "}Gestor:{" "}
+                        <span className="text-foreground">
+                          {portfolioContext.managerName || portfolioContext.managerEmail}
+                        </span>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
+                <span
+                  className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] ${
+                    viewer.isSuperAdmin
+                      ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.14)] text-indigo-300"
+                      : viewer.role === "cliente"
+                        ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300"
+                        : viewer.role === "admin"
+                          ? "border-[rgba(0,229,255,0.5)] bg-[rgba(0,229,255,0.14)] text-cyan-300"
+                          : "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300"
+                  }`}
+                >
+                  {viewer.isSuperAdmin
+                    ? "Administrador Principal"
                     : viewer.role === "cliente"
-                    ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300"
-                    : viewer.role === "admin"
-                      ? "border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.14)] text-sky-300"
-                      : "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300"
-                }`}
-              >
-                {viewer.isSuperAdmin
-                  ? "Administrador Principal"
-                  : viewer.role === "cliente"
-                    ? "Cliente (solo lectura)"
-                    : viewer.role === "admin"
-                      ? "Gestor"
-                      : "Usuario Autónomo"}
-              </span>
+                      ? "Cliente (solo lectura)"
+                      : viewer.role === "admin"
+                        ? "Gestor"
+                        : "Usuario Autónomo"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {viewer.canRefreshPrices ? (
+                  <button
+                    type="button"
+                    onClick={refreshPricesNow}
+                    disabled={isRefreshingPrices}
+                    className="btn-secondary px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isRefreshingPrices ? "Actualizando precios..." : "Actualizar precios"}
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={exportCurrentReportPdf}
+                  className="btn-secondary px-5 py-2.5 text-sm font-semibold"
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                  Descargar Reporte (PDF)
+                </button>
+                <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary px-5 py-2.5 text-sm font-semibold">
+                  Cerrar sesión
+                </a>
+              </div>
+              <p className="text-xs text-[var(--muted)]">
+                Última actualización de precios:{" "}
+                {pricesLastUpdatedAt ? new Date(pricesLastUpdatedAt).toLocaleString("es-ES") : "sin datos"}
+              </p>
             </div>
-            <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Total Depositado</div>
-                <p className="mt-1 text-xl font-semibold">{currency(summary.totalDepositedUsd)}</p>
+
+            <aside className="self-start rounded-2xl p-0.5 xl:-ml-4 xl:justify-self-start">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <h2 className="text-lg font-semibold tracking-tight">Composición de la Cartera</h2>
               </div>
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Harvest Total</div>
-                <p className="mt-1 text-xl font-semibold">{currency(summary.totalHarvestUsd)}</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                <div className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  Posiciones activas
+              <div className="grid gap-2 lg:grid-cols-[224px_minmax(0,1fr)] lg:items-center">
+                <div className="flex items-center justify-center">
+                  <div className="relative h-56 w-56">
+                    <svg
+                      viewBox="0 0 220 220"
+                      className="h-56 w-56"
+                      style={{ filter: "drop-shadow(0 0 14px rgba(0,229,255,0.28))" }}
+                    >
+                      <circle
+                        cx="110"
+                        cy="110"
+                        r="78"
+                        fill="none"
+                        stroke="rgba(43,29,20,0.92)"
+                        strokeWidth={donutOuterStroke}
+                      />
+                      {compositionStyles.entries.map((entry) => {
+                        const ratio = Math.max(0, Math.min(1, entry.percent / 100));
+                        const circumference = 2 * Math.PI * 78;
+                        const segmentLength = circumference * ratio;
+                        const segmentGap = Math.max(0, circumference - segmentLength);
+                        const isActive = hoveredCompositionKey === entry.key;
+                        const hasHovered = hoveredCompositionKey !== null;
+                        return (
+                          <circle
+                            key={entry.key}
+                            cx="110"
+                            cy="110"
+                            r="78"
+                            fill="none"
+                            stroke={entry.color}
+                            strokeWidth={isActive ? donutActiveStroke : donutOuterStroke}
+                            strokeLinecap="butt"
+                            strokeDasharray={`${segmentLength} ${segmentGap}`}
+                            strokeDashoffset={-(entry.start / 360) * circumference}
+                            transform="rotate(-90 110 110)"
+                            className="cursor-pointer transition-all duration-200"
+                            style={{
+                              filter: isActive ? "drop-shadow(0 0 10px rgba(0,229,255,0.45))" : "none",
+                              opacity: hasHovered && !isActive ? 0.28 : 1,
+                            }}
+                            onMouseEnter={() => setHoveredCompositionKey(entry.key)}
+                            onMouseLeave={() => setHoveredCompositionKey(null)}
+                          />
+                        );
+                      })}
+                    </svg>
+                    <div
+                      className="pointer-events-none absolute rounded-full bg-[rgba(5,5,6,0.95)]"
+                      style={{ inset: `${donutInnerInset}px` }}
+                    />
+                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center">
+                      <div className="px-3">
+                        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Valor Total</p>
+                        <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalValueUsd)}</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <p className="mt-1 text-xl font-semibold">{totalActivePositions}</p>
+
+                <div>
+                  <div className="grid grid-cols-2 gap-2 auto-rows-fr">
+                    {compositionStyles.entries.map((entry) => (
+                      <div
+                        key={entry.key}
+                        onMouseEnter={() => setHoveredCompositionKey(entry.key)}
+                        onMouseLeave={() => setHoveredCompositionKey(null)}
+                        className={`rounded-xl border px-3.5 py-3 transition-all duration-200 ${
+                          hoveredCompositionKey === entry.key
+                            ? "border-[rgba(0,229,255,0.72)] bg-[rgba(0,229,255,0.18)] shadow-[0_0_0_1px_rgba(0,229,255,0.36),0_0_14px_rgba(0,229,255,0.24)]"
+                            : "border-[var(--line)] bg-black/25"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                          <span className="text-xs text-[var(--muted)]">{plainPercent(entry.percent)}</span>
+                        </div>
+                        <p className="mt-1 text-sm font-medium leading-tight">{entry.title}</p>
+                        <p className="mt-1 text-base font-semibold">{currency(entry.value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">P&L %</div>
-                <p className={`mt-1 text-xl font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                  {percent(summary.pnlPercent)}
-                </p>
+            </aside>
+
+            <div className="self-center xl:justify-self-end">
+              <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-2.5">
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
+                    <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Total Depositado</div>
+                    <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalDepositedUsd)}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
+                    <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Harvest Total</div>
+                    <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalHarvestUsd)}</p>
+                  </div>
+                </div>
+                <div className="glow-divider my-1.5" />
+                <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L %</div>
+                      <p className={`mt-1 text-xl leading-tight font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {percent(summary.pnlPercent)}
+                      </p>
+                    </div>
+                    <div>
+                      <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L (US$)</div>
+                      <p className={`mt-1 text-xl leading-tight font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                        {signedCurrency(summary.pnlUsd)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                <div className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">P&L (US$)</div>
-                <p className={`mt-1 text-xl font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                  {signedCurrency(summary.pnlUsd)}
-                </p>
-              </div>
+              {viewer.canOperate ? (
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    onClick={() => openModal()}
+                    className="btn-secondary w-full px-5 py-2.5 text-sm font-semibold"
+                  >
+                    Nueva Operación
+                  </button>
+                </div>
+              ) : null}
             </div>
-          </div>
-
-          <div className="glow-divider mt-5 mb-4" />
-
-          <div className="flex flex-wrap items-center gap-3">
-            {viewer.canRefreshPrices ? (
-              <button
-                type="button"
-                onClick={refreshPricesNow}
-                disabled={isRefreshingPrices}
-                className="inline-flex w-fit items-center rounded-lg border border-[rgba(56,189,248,0.5)] bg-[rgba(56,189,248,0.16)] px-3 py-1.5 text-xs font-medium transition hover:bg-[rgba(56,189,248,0.28)] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRefreshingPrices ? "Actualizando precios..." : "Actualizar precios"}
-              </button>
-            ) : null}
-            {viewer.canOperate ? (
-              <button
-                type="button"
-                onClick={() => openModal()}
-                className="inline-flex w-fit items-center rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.16)] px-3 py-1.5 text-xs font-medium transition hover:bg-[rgba(34,211,238,0.28)]"
-              >
-                Nueva Operación
-              </button>
-            ) : null}
-            <p className={`text-xs ${pricesAreStale ? "text-amber-300" : "text-[var(--muted)]"}`}>
-              Precios actualizados: {pricesLastUpdatedAt ? new Date(pricesLastUpdatedAt).toLocaleString("es-ES") : "sin datos"}
-              {pricesAreStale ? " · desactualizados (más de 10 min)" : ""}
-            </p>
           </div>
         </header>
 
@@ -1512,94 +1650,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </section>
         ) : null}
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">Composición de la Cartera</h2>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Distribución por categoría</span>
-              <button
-                type="button"
-                onClick={exportCurrentReportPdf}
-                className="inline-flex items-center gap-2 rounded-xl border border-[rgba(59,130,246,0.4)] bg-[rgba(59,130,246,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(59,130,246,0.22)]"
-              >
-                <FileDown className="h-4 w-4" />
-                Descargar Reporte (PDF)
-              </button>
-            </div>
-          </div>
-          <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-            <div className="flex items-center justify-center">
-              <div className="relative h-52 w-52">
-                <svg
-                  viewBox="0 0 220 220"
-                  className="h-52 w-52"
-                  style={{ filter: "drop-shadow(0 0 18px rgba(34,211,238,0.22))" }}
-                >
-                  <circle cx="110" cy="110" r="78" fill="none" stroke="rgba(30,41,59,0.9)" strokeWidth="30" />
-                  {compositionStyles.entries.map((entry) => {
-                    const ratio = Math.max(0, Math.min(1, entry.percent / 100));
-                    const circumference = 2 * Math.PI * 78;
-                    const segmentLength = circumference * ratio;
-                    const segmentGap = Math.max(0, circumference - segmentLength);
-                    const isActive = hoveredCompositionKey === entry.key;
-                    return (
-                      <circle
-                        key={entry.key}
-                        cx="110"
-                        cy="110"
-                        r="78"
-                        fill="none"
-                        stroke={entry.color}
-                        strokeWidth={isActive ? 36 : 30}
-                        strokeLinecap="butt"
-                        strokeDasharray={`${segmentLength} ${segmentGap}`}
-                        strokeDashoffset={-(entry.start / 360) * circumference}
-                        transform="rotate(-90 110 110)"
-                        className="cursor-pointer transition-all duration-200"
-                        style={{ filter: isActive ? "drop-shadow(0 0 8px rgba(255,255,255,0.35))" : "none" }}
-                        onMouseEnter={() => setHoveredCompositionKey(entry.key)}
-                        onMouseLeave={() => setHoveredCompositionKey(null)}
-                      />
-                    );
-                  })}
-                </svg>
-                <div className="pointer-events-none absolute inset-[34px] rounded-full bg-[rgba(5,6,10,0.95)]" />
-                <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center">
-                  <div>
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-[var(--muted)]">Valor Total</p>
-                    <p className="mt-1 text-lg font-semibold">{currency(summary.totalValueUsd)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              {compositionStyles.entries.map((entry) => (
-                <div
-                  key={entry.key}
-                  onMouseEnter={() => setHoveredCompositionKey(entry.key)}
-                  onMouseLeave={() => setHoveredCompositionKey(null)}
-                  className={`rounded-2xl border p-4 transition-all duration-200 ${
-                    hoveredCompositionKey === entry.key
-                      ? "border-[rgba(56,189,248,0.7)] bg-[rgba(56,189,248,0.14)] shadow-[0_0_0_1px_rgba(56,189,248,0.35),0_0_18px_rgba(56,189,248,0.25)]"
-                      : "border-[var(--line)] bg-black/20"
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                      <p className="text-sm font-medium">{entry.title}</p>
-                    </div>
-                    <span className="text-sm text-[var(--muted)]">{plainPercent(entry.percent)}</span>
-                  </div>
-                  <p className="mt-2 text-lg font-semibold">{currency(entry.value)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
         {sections.length === 0 ? (
-          <section className="card-premium rounded-3xl p-8 text-center">
+          <section className="card-premium page-section-card text-center">
             <p className="text-sm text-[var(--muted)]">
               No hay posiciones activas (`is_active = true`) en `defi_positions_analytics` para este usuario.
             </p>
@@ -1608,21 +1660,21 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           sections.map(renderSection)
         )}
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <section className="card-premium card-activity page-section-card">
+          <div className="section-header-row flex items-center justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">Actividad Reciente</h2>
             <button
               type="button"
               onClick={() => setIsCsvModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-[rgba(56,189,248,0.4)] bg-[rgba(56,189,248,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(56,189,248,0.22)]"
+              className="inline-flex items-center gap-2 rounded-xl border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(0,229,255,0.22)]"
             >
               <FileSpreadsheet className="h-4 w-4" />
               Exportar Operaciones (CSV)
             </button>
           </div>
-          <div className="overflow-x-auto rounded-2xl border border-[var(--line)]">
+          <div className="page-table-shell">
             <table className="w-full min-w-[980px] border-collapse">
-              <thead className="bg-[rgba(34,211,238,0.08)] text-left">
+              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">FECHA</th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TIPO</th>
@@ -1681,7 +1733,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               <button
                 type="button"
                 onClick={() => setVisibleRecentActivityCount((current) => current + 10)}
-                className="rounded-xl border border-[rgba(56,189,248,0.45)] bg-[rgba(56,189,248,0.14)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(56,189,248,0.24)]"
+                className="rounded-xl border border-[rgba(0,229,255,0.45)] bg-[rgba(0,229,255,0.14)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(0,229,255,0.24)]"
               >
                 Ver movimientos anteriores
               </button>
@@ -2340,7 +2392,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "rebalance" ? (
-                <div className="grid gap-3 rounded-xl border border-[rgba(59,130,246,0.25)] bg-[rgba(59,130,246,0.08)] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-[rgba(87,239,255,0.25)] bg-[rgba(87,239,255,0.08)] p-3 sm:grid-cols-2">
                   <p className="col-span-full text-xs text-[var(--muted)]">
                     Rebalanceo: mueve valor de una posición origen a una posición destino usando precios actuales.
                   </p>
@@ -2658,7 +2710,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "liquidity_pool" ? (
-                <div className="grid gap-3 rounded-xl border border-[rgba(34,211,238,0.25)] bg-[rgba(34,211,238,0.06)] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-[rgba(0,229,255,0.25)] bg-[rgba(0,229,255,0.06)] p-3 sm:grid-cols-2">
                   <p className="col-span-full text-xs text-[var(--muted)]">
                     Liquidity Pool V3: dos tokens + rango. Con esto se habilita el cálculo de IL automáticamente.
                   </p>
@@ -2756,7 +2808,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 type="button"
                 onClick={submitOperation}
                 disabled={isSaving}
-                className="rounded-lg border border-[rgba(34,211,238,0.5)] bg-[rgba(34,211,238,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(34,211,238,0.3)] disabled:opacity-60"
+                className="rounded-lg border border-[rgba(0,229,255,0.5)] bg-[rgba(0,229,255,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(0,229,255,0.3)] disabled:opacity-60"
               >
                 {isSaving ? "Guardando..." : "Guardar operación"}
               </button>

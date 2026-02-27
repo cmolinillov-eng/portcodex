@@ -178,6 +178,10 @@ function toNumber(value: string | number | null | undefined): number {
   return 0;
 }
 
+function formatUsdLabel(value: number): string {
+  return `${value.toLocaleString("es-ES", { maximumFractionDigits: 2 })}\u00A0US$`;
+}
+
 function formatTokenAmounts(tokenAmounts: Record<string, number>): string {
   return Object.entries(tokenAmounts)
     .filter(([, amount]) => amount > 0)
@@ -1093,14 +1097,14 @@ export async function getDashboardData(options?: {
     const collateralEntryLabel = collateralTokens
       .map((token) => {
         const tokenPosition = group.find((item) => item.tokenSymbol.toUpperCase() === token);
-        return tokenPosition ? `${token}: ${tokenPosition.averageEntryPrice.toLocaleString("es-ES", { maximumFractionDigits: 2 })} US$` : null;
+        return tokenPosition ? `${token}: ${formatUsdLabel(tokenPosition.averageEntryPrice)}` : null;
       })
       .filter((item): item is string => Boolean(item))
       .join(" · ");
     const debtEntryLabel = debtTokens
       .map((token) => {
         const tokenPosition = group.find((item) => item.tokenSymbol.toUpperCase() === token);
-        return tokenPosition ? `${token}: ${tokenPosition.averageEntryPrice.toLocaleString("es-ES", { maximumFractionDigits: 2 })} US$` : null;
+        return tokenPosition ? `${token}: ${formatUsdLabel(tokenPosition.averageEntryPrice)}` : null;
       })
       .filter((item): item is string => Boolean(item))
       .join(" · ");

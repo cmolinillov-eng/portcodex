@@ -20,6 +20,9 @@ export default async function ManagerPortfolioPage({ params }: PageProps) {
   noStore();
 
   const access = await getViewerAccess();
+  if (!access.isAuthenticated) {
+    redirect("/login");
+  }
   if (access.canManageRoles) {
     redirect("/admin");
   }
@@ -57,12 +60,9 @@ export default async function ManagerPortfolioPage({ params }: PageProps) {
 
   return (
     <>
-      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(56,189,248,0.55)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
+      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(0,229,255,0.55)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm">
-          <Link
-            href="/manager"
-            className="inline-flex rounded-lg border border-[rgba(34,211,238,0.45)] bg-[rgba(34,211,238,0.14)] px-2.5 py-1 transition hover:bg-[rgba(34,211,238,0.26)]"
-          >
+          <Link href="/manager" className="btn-secondary btn-secondary-compact">
             Volver a Gestor
           </Link>
           <span className="text-[var(--muted)]">Portfolio:</span>
@@ -79,7 +79,7 @@ export default async function ManagerPortfolioPage({ params }: PageProps) {
                     href={`/manager/portfolios/${id}`}
                     className={`inline-flex rounded-md border px-2 py-1 ${
                       isActive
-                        ? "border-[rgba(56,189,248,0.55)] bg-[rgba(56,189,248,0.16)] text-sky-300"
+                        ? "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] text-cyan-300"
                         : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:text-foreground"
                     }`}
                   >

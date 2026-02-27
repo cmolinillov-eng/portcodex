@@ -1,9 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
+import { ACCESS_TOKEN_COOKIE_NAME } from "@/lib/auth/session";
 
 export type ViewerRole = "autonomo" | "admin" | "cliente";
 
 export type ViewerAccess = {
+  isAuthenticated: boolean;
   userId: string | null;
   role: ViewerRole;
   isSuperAdmin: boolean;
@@ -48,8 +51,32 @@ type CurrentViewer = {
   email: string | null;
 };
 
+type SessionCookies = {
+  accessToken: string | null;
+};
+
+async function readSessionCookies(): Promise<SessionCookies> {
+  const cookieStore = await cookies();
+  const accessToken = sanitizeText(cookieStore.get(ACCESS_TOKEN_COOKIE_NAME)?.value);
+  return {
+    accessToken: accessToken || null,
+  };
+}
+
 async function getCurrentViewer(): Promise<CurrentViewer> {
   const authClient = getAuthClient();
+
+  const sessionCookies = await readSessionCookies();
+  if (sessionCookies.accessToken) {
+    const fromCookie = await authClient.auth.getUser(sessionCookies.accessToken);
+    if (!fromCookie.error && fromCookie.data.user?.id) {
+      return {
+        userId: fromCookie.data.user.id,
+        email: sanitizeText(fromCookie.data.user.email ?? "").toLowerCase() || null,
+      };
+    }
+  }
+
   const { data, error } = await authClient.auth.getUser();
   if (!error && data.user?.id) {
     return {
@@ -128,6 +155,7 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
   const client = getReadClient();
   const viewer = await getCurrentViewer();
   const userId = viewer.userId;
+  const isAuthenticated = Boolean(userId);
   const profile = await getViewerProfile(client, userId);
   const role = normalizeRole(profile?.role ?? "autonomo");
   const superAdminUserId = sanitizeText(process.env.SUPERADMIN_USER_ID);
@@ -142,10 +170,11 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
   const isSuperAdmin = isSuperAdminById || isSuperAdminByEmail;
   const allowedPortfolioIds = await getAllowedPortfolioIds(client, userId, role, isSuperAdmin);
 
-  const canRead = isSuperAdmin || allowedPortfolioIds.length > 0;
-  const canOperate = isSuperAdmin || role !== "cliente";
+  const canRead = isAuthenticated && (isSuperAdmin || allowedPortfolioIds.length > 0);
+  const canOperate = isAuthenticated && (isSuperAdmin || role !== "cliente");
 
   return {
+    isAuthenticated,
     userId,
     role,
     isSuperAdmin,
@@ -166,6 +195,9 @@ export function ensurePortfolioAccess(
   const cleanPortfolioId = sanitizeText(portfolioId);
   if (!cleanPortfolioId) {
     return { ok: false, error: "portfolioId es obligatorio.", status: 400 };
+  }
+  if (!access.isAuthenticated) {
+    return { ok: false, error: "Debes iniciar sesión.", status: 401 };
   }
   if (!access.canRead) {
     return { ok: false, error: "No autorizado para consultar portfolios.", status: 403 };

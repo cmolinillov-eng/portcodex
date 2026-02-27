@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
+import { checkRateLimit } from "@/lib/security/rate-limit";
 
 type DeletePositionPayload = {
   portfolioId?: string;
@@ -43,6 +44,18 @@ export async function POST(request: NextRequest) {
     const accessCheck = ensurePortfolioAccess(access, portfolioId, true);
     if (!accessCheck.ok) {
       return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
+    }
+
+    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const rateLimit = checkRateLimit(
+      `positions-delete:${access.userId ?? "anon"}:${portfolioId}:${clientIp}`,
+      { limit: 20, windowMs: 60_000 },
+    );
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Demasiadas eliminaciones en poco tiempo. Inténtalo de nuevo en unos segundos." },
+        { status: 429 },
+      );
     }
 
     const client = getDeleteClient();

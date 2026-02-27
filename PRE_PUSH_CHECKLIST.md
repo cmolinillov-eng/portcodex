@@ -51,6 +51,7 @@ Verifica que en `Settings > Secrets and variables > Actions` estén definidos:
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SUPERADMIN_USER_ID`
+- `SUPERADMIN_EMAIL`
 - `COINGECKO_API_KEY` (recomendado)
 
 Sin esos secrets, el workflow de E2E no correrá.
