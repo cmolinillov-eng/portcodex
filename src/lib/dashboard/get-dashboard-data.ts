@@ -816,7 +816,7 @@ export async function getDashboardData(options?: {
 
   let positions: DefiPosition[] = rows
     .filter((row) => row.is_active === true)
-    .map((row) => {
+    .map<DefiPosition>((row) => {
       const tokenSymbol = (row.token_symbol ?? "").toUpperCase();
       const positionType = normalizePositionType(row.position_type);
       const averageEntryPrice = toNumber(row.average_entry_price);
