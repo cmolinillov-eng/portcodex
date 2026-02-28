@@ -29,7 +29,17 @@ function isValidEmail(value: string): boolean {
 
 function resolveAppOrigin(request: NextRequest): string {
   const configured = cleanText(process.env.NEXT_PUBLIC_APP_URL);
-  if (configured) return configured;
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      const isLocalhost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+      if (!(process.env.NODE_ENV === "production" && isLocalhost)) {
+        return url.origin;
+      }
+    } catch {
+      // Si la variable no es una URL válida, caemos a origen detectado por request.
+    }
+  }
   return request.nextUrl.origin;
 }
 

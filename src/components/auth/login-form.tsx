@@ -49,6 +49,20 @@ export function LoginForm() {
 
     const search = new URLSearchParams(window.location.search);
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+    const errorCode = (hash.get("error_code") ?? search.get("error_code") ?? "").trim().toLowerCase();
+    const errorDescription = (hash.get("error_description") ?? search.get("error_description") ?? "").trim();
+    if (errorCode) {
+      if (errorCode === "otp_expired") {
+        setErrorMessage("El enlace de recuperación ha expirado o ya fue usado. Solicita uno nuevo.");
+      } else {
+        const decoded = errorDescription ? decodeURIComponent(errorDescription.replace(/\+/g, " ")) : "";
+        setErrorMessage(decoded || "No se pudo validar el enlace de recuperación.");
+      }
+      setAuthView("recover");
+      window.history.replaceState({}, "", "/login");
+      return;
+    }
+
     const type = (hash.get("type") ?? search.get("type") ?? "").trim().toLowerCase();
 
     if (type !== "recovery") return;
