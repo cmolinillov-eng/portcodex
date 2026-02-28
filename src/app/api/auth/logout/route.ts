@@ -13,6 +13,23 @@ function clearSessionCookies(response: NextResponse): void {
   });
 }
 
+function isSafeLogoutNavigation(request: NextRequest): boolean {
+  const fetchSite = (request.headers.get("sec-fetch-site") ?? "").trim().toLowerCase();
+  if (fetchSite && fetchSite !== "same-origin" && fetchSite !== "same-site" && fetchSite !== "none") {
+    return false;
+  }
+
+  const referer = (request.headers.get("referer") ?? "").trim();
+  if (!referer) return true;
+
+  try {
+    const refererOrigin = new URL(referer).origin;
+    return refererOrigin === request.nextUrl.origin;
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   const csrfCheck = validateCsrf(request);
   if (!csrfCheck.ok) {
@@ -26,6 +43,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
+  if (!isSafeLogoutNavigation(request)) {
+    return NextResponse.json({ error: "Petición bloqueada por seguridad de origen." }, { status: 403 });
+  }
+
   const redirectTo = request.nextUrl.searchParams.get("redirectTo") ?? "/login";
   const target = redirectTo.startsWith("/") ? redirectTo : "/login";
   const response = NextResponse.redirect(new URL(target, request.url));
