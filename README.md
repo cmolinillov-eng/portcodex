@@ -63,3 +63,8 @@ Checklists:
 
 Runbook de despliegue/rotación:
 - `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/DEPLOY_RUNBOOK.md`
+
+Operación post-release:
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/BACKUP_RESTORE_RUNBOOK.md`
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/POST_RELEASE_MONITORING_48H.md`
+- `/Users/carlosmolinillo/Desktop/PROGRAMACIÓN/Codex/Portfolio codex/web/VERCEL_GIT_AUTODEPLOY_FIX.md`
