@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { AdminUsersPanel } from "@/components/admin/admin-users-panel";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { getDashboardData } from "@/lib/dashboard/get-dashboard-data";
+import { ensureOwnedPortfoliosForProfiles } from "@/lib/portfolios/ensure-owned-portfolios";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 
 type AdminUserRow = {
@@ -18,8 +19,14 @@ type PortfolioWithOwnerRow = {
   name: string | null;
   manager_id: string | null;
   owner_id: string | null;
-  owner: { full_name: string | null; email: string | null } | Array<{ full_name: string | null; email: string | null }> | null;
-  manager: { full_name: string | null; email: string | null } | Array<{ full_name: string | null; email: string | null }> | null;
+  owner:
+    | { full_name: string | null; email: string | null; role: "autonomo" | "admin" | "cliente" | null }
+    | Array<{ full_name: string | null; email: string | null; role: "autonomo" | "admin" | "cliente" | null }>
+    | null;
+  manager:
+    | { full_name: string | null; email: string | null }
+    | Array<{ full_name: string | null; email: string | null }>
+    | null;
 };
 
 type PortfolioMetrics = {
@@ -31,11 +38,12 @@ type PortfolioMetrics = {
 
 function readOwnerData(
   owner: PortfolioWithOwnerRow["owner"],
-): { fullName: string; email: string } {
+): { fullName: string; email: string; role: "autonomo" | "admin" | "cliente" | null } {
   const ownerObj = Array.isArray(owner) ? owner[0] ?? null : owner;
   return {
     fullName: ownerObj?.full_name ?? "",
     email: ownerObj?.email ?? "",
+    role: ownerObj?.role ?? null,
   };
 }
 
@@ -61,25 +69,35 @@ export default async function AdminPage() {
   }
 
   const client = getSupabaseServiceClient() ?? getSupabaseServerClient();
-  const [profilesQuery, portfoliosQuery] = await Promise.all([
-    client
-      .from("profiles")
-      .select("id, email, full_name, role, created_at")
-      .order("created_at", { ascending: false }),
-    client
-      .from("portfolios")
-      .select("id, name, manager_id, owner_id, owner:profiles!owner_id(full_name, email), manager:profiles!manager_id(full_name, email)")
-      .order("created_at", { ascending: false }),
-  ]);
+
+  const profilesQuery = await client
+    .from("profiles")
+    .select("id, email, full_name, role, created_at")
+    .order("created_at", { ascending: false });
 
   if (profilesQuery.error) {
     throw new Error(`Error consultando usuarios: ${profilesQuery.error.message}`);
   }
+
+  const profileRows = (profilesQuery.data ?? []) as AdminUserRow[];
+  try {
+    await ensureOwnedPortfoliosForProfiles(client, profileRows);
+  } catch (provisionError) {
+    console.error("No se pudo completar el backfill de portfolios en admin", provisionError);
+  }
+
+  const portfoliosQuery = await client
+    .from("portfolios")
+    .select("id, name, manager_id, owner_id, owner:profiles!owner_id(full_name, email, role), manager:profiles!manager_id(full_name, email)")
+    .order("created_at", { ascending: false });
+
   if (portfoliosQuery.error) {
     throw new Error(`Error consultando portfolios gestionados: ${portfoliosQuery.error.message}`);
   }
 
-  const managedByManagerId = ((portfoliosQuery.data ?? []) as PortfolioWithOwnerRow[]).reduce(
+  const sourcePortfolios = (portfoliosQuery.data ?? []) as PortfolioWithOwnerRow[];
+
+  const managedByManagerId = sourcePortfolios.reduce(
     (acc, row) => {
       const managerId = row.manager_id ?? "";
       if (!managerId) return acc;
@@ -100,7 +118,7 @@ export default async function AdminPage() {
     >,
   );
 
-  const userRows = ((profilesQuery.data ?? []) as AdminUserRow[]).map((row) => ({
+  const userRows = profileRows.map((row) => ({
     id: row.id ?? "",
     email: row.email ?? "",
     fullName: row.full_name ?? "",
@@ -110,7 +128,7 @@ export default async function AdminPage() {
     managedPortfolios: managedByManagerId[row.id ?? ""] ?? [],
   }));
 
-  const rawPortfolioRows = ((portfoliosQuery.data ?? []) as PortfolioWithOwnerRow[]).map((row) => {
+  const rawPortfolioRows = sourcePortfolios.map((row) => {
     const ownerData = readOwnerData(row.owner);
     const managerData = readManagerData(row.manager);
     return {
@@ -119,6 +137,7 @@ export default async function AdminPage() {
       ownerId: row.owner_id ?? "",
       ownerName: ownerData.fullName,
       ownerEmail: ownerData.email,
+      ownerRole: ownerData.role,
       managerId: row.manager_id ?? null,
       managerName: managerData.fullName,
       managerEmail: managerData.email,

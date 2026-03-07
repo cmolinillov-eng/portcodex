@@ -16,9 +16,14 @@ type ManagerProfileRow = {
   role: "autonomo" | "admin" | "cliente" | null;
 };
 
+type PortfolioOwnerRef = {
+  role: "autonomo" | "admin" | "cliente" | null;
+};
+
 type PortfolioManagerRow = {
   id: string | null;
   manager_id: string | null;
+  owner: PortfolioOwnerRef | PortfolioOwnerRef[] | null;
 };
 
 function getClient(): SupabaseClient {
@@ -29,6 +34,11 @@ function getClient(): SupabaseClient {
 
 function cleanText(value: string | null | undefined): string {
   return (value ?? "").trim();
+}
+
+function readOwnerRole(owner: PortfolioManagerRow["owner"]): "autonomo" | "admin" | "cliente" | null {
+  const ownerRef = Array.isArray(owner) ? owner[0] ?? null : owner;
+  return ownerRef?.role ?? null;
 }
 
 export async function PATCH(request: NextRequest) {
@@ -70,7 +80,7 @@ export async function PATCH(request: NextRequest) {
     const client = getClient();
     const currentPortfolioQuery = await client
       .from("portfolios")
-      .select("id, manager_id")
+      .select("id, manager_id, owner:profiles!owner_id(role)")
       .eq("id", portfolioId)
       .maybeSingle();
     if (currentPortfolioQuery.error) {
@@ -80,6 +90,14 @@ export async function PATCH(request: NextRequest) {
     const currentPortfolio = (currentPortfolioQuery.data ?? null) as PortfolioManagerRow | null;
     if (!currentPortfolio?.id) {
       return NextResponse.json({ error: "No se encontró el portfolio." }, { status: 404 });
+    }
+
+    const ownerRole = readOwnerRole(currentPortfolio.owner);
+    if (managerId && ownerRole !== "cliente") {
+      return NextResponse.json(
+        { error: "Solo se puede asignar gestor a portfolios cuyo propietario sea cliente." },
+        { status: 400 },
+      );
     }
 
     if (managerId) {
@@ -94,9 +112,10 @@ export async function PATCH(request: NextRequest) {
       }
 
       const managerRow = (managerQuery.data ?? null) as ManagerProfileRow | null;
-      if (!managerRow?.id || managerRow.role !== "admin") {
+      const isCurrentSuperAdmin = Boolean(access.userId && managerId === access.userId);
+      if (!managerRow?.id || (managerRow.role !== "admin" && !isCurrentSuperAdmin)) {
         return NextResponse.json(
-          { error: "Solo puedes asignar usuarios con rol gestor." },
+          { error: "Solo puedes asignar usuarios con rol gestor (o a ti como superadmin)." },
           { status: 400 },
         );
       }
@@ -112,22 +131,41 @@ export async function PATCH(request: NextRequest) {
     if (updateQuery.error) {
       throw new Error(updateQuery.error.message);
     }
-    if (!updateQuery.data?.id) return NextResponse.json({ error: "No se encontró el portfolio." }, { status: 404 });
+
+    const persistedQuery = await client
+      .from("portfolios")
+      .select("id, manager_id")
+      .eq("id", portfolioId)
+      .maybeSingle();
+
+    if (persistedQuery.error) {
+      throw new Error(persistedQuery.error.message);
+    }
+
+    const persisted = (persistedQuery.data ?? null) as { id: string | null; manager_id: string | null } | null;
+    if (!persisted?.id) {
+      return NextResponse.json({ error: "No se encontró el portfolio." }, { status: 404 });
+    }
+
+    const persistedManagerId = persisted.manager_id ?? null;
+    if (persistedManagerId !== managerId) {
+      throw new Error("La asignación no se pudo confirmar en base de datos. Inténtalo de nuevo.");
+    }
 
     await recordAdminAudit({
       actorId: access.userId,
       action: managerId ? "assign_portfolio_manager" : "unassign_portfolio_manager",
       targetTable: "portfolios",
       targetId: portfolioId,
-      beforeData: { managerId: currentPortfolio.manager_id ?? null },
-      afterData: { managerId: updateQuery.data.manager_id ?? null },
+      beforeData: { managerId: currentPortfolio.manager_id ?? null, ownerRole },
+      afterData: { managerId: persistedManagerId, ownerRole },
     });
 
     return NextResponse.json({
       ok: true,
       row: {
-        id: updateQuery.data.id,
-        managerId: updateQuery.data.manager_id ?? null,
+        id: persisted.id,
+        managerId: persistedManagerId,
       },
     });
   } catch (error) {

@@ -19,6 +19,7 @@ type ProfileReference = {
   full_name: string | null;
   email: string | null;
   created_at: string | null;
+  role: "autonomo" | "admin" | "cliente" | null;
 };
 
 type ManagedPortfolioRow = {
@@ -110,7 +111,7 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
 
   const managedQuery = await client
     .from("portfolios")
-    .select("id, name, owner_id, owner:profiles!owner_id(full_name, email, created_at)")
+    .select("id, name, owner_id, owner:profiles!owner_id(full_name, email, created_at, role)")
     .eq("manager_id", selectedManagerId)
     .order("created_at", { ascending: false });
 
@@ -150,7 +151,8 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
   );
 
   const metricsByPortfolioId = new Map<string, PortfolioMetrics>(metricsEntries);
-  const rows = rawRows.map((row) => {
+  const rows = rawRows
+    .map((row) => {
     const owner = readProfile(row.owner);
     const id = (row.id ?? "").trim();
     const metrics = metricsByPortfolioId.get(id) ?? {
@@ -165,11 +167,16 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
       ownerName: displayName(owner?.full_name ?? null, owner?.email ?? null),
       ownerEmail: (owner?.email ?? "").trim() || "-",
       ownerCreatedAt: owner?.created_at ?? null,
+      ownerRole: owner?.role ?? null,
       ...metrics,
     };
-  });
+  })
+    .filter((row) => row.ownerRole === "cliente");
 
   const managerLabel = displayName(manager.full_name, manager.email);
+  const averagePnlPercent = rows.length > 0
+    ? rows.reduce((acc, row) => acc + row.pnlPercent, 0) / rows.length
+    : 0;
 
   return (
     <main className="page-shell">
@@ -195,11 +202,18 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
         </header>
 
         <section className="card-premium page-section-card">
-          <div className="section-header-row flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">Clientes Asignados</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-black/20 px-4 py-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Rentabilidad media del gestor</p>
+              <p className={`text-lg font-semibold ${pnlTone(averagePnlPercent)}`}>{percent(averagePnlPercent)}</p>
+            </div>
             <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
               Total portfolios gestionados: {rows.length}
             </span>
+          </div>
+
+          <div className="section-header-row flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-2xl font-semibold tracking-tight">Clientes Asignados</h2>
           </div>
 
           <div className="page-table-shell">

@@ -19,12 +19,22 @@ function cleanText(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
 
+function normalizeEmail(value: string | undefined): string {
+  return cleanText(value).normalize("NFKC").replace(/\s+/g, "").toLowerCase();
+}
+
 function getAuthClient(): SupabaseClient {
   return getSupabaseServerClient();
 }
 
-function isValidEmail(value: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function isLikelyEmail(value: string): boolean {
+  if (!value || value.length > 320) return false;
+  const at = value.indexOf("@");
+  if (at <= 0 || at !== value.lastIndexOf("@")) return false;
+  const local = value.slice(0, at);
+  const domain = value.slice(at + 1);
+  if (!local || !domain || domain.startsWith(".") || domain.endsWith(".")) return false;
+  return domain.includes(".");
 }
 
 function resolveAppOrigin(request: NextRequest): string {
@@ -52,13 +62,13 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as RegisterBody;
     const fullName = cleanText(body.fullName);
-    const email = cleanText(body.email).toLowerCase();
+    const email = normalizeEmail(body.email);
     const password = cleanText(body.password);
 
     if (!fullName) {
       return NextResponse.json({ error: "El nombre de usuario es obligatorio." }, { status: 400 });
     }
-    if (!email || !isValidEmail(email)) {
+    if (!email || !isLikelyEmail(email)) {
       return NextResponse.json({ error: "Debes indicar un email válido." }, { status: 400 });
     }
     if (password.length < 8) {

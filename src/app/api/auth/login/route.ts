@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/session";
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { ensureOwnedPortfoliosForProfiles } from "@/lib/portfolios/ensure-owned-portfolios";
 
 type LoginBody = {
   identifier?: string;
@@ -16,6 +17,13 @@ type LoginBody = {
 
 type ProfileEmailRow = {
   email: string | null;
+};
+
+type ProfileForProvision = {
+  id: string | null;
+  full_name: string | null;
+  email: string | null;
+  role: "autonomo" | "admin" | "cliente" | null;
 };
 
 function cleanText(value: string | null | undefined): string {
@@ -103,9 +111,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Credenciales inválidas." }, { status: 401 });
     }
 
+    const session = loginResult.data.session;
+
+    // Garantiza portfolio propio para cliente/autónomo al entrar (usuarios legacy incluidos).
+    try {
+      const provisionClient = getSupabaseServiceClient() ?? getSupabaseServerClient();
+      const userId = cleanText(loginResult.data.user?.id ?? session.user?.id ?? "");
+      if (userId) {
+        const profileQuery = await provisionClient
+          .from("profiles")
+          .select("id, full_name, email, role")
+          .eq("id", userId)
+          .maybeSingle();
+
+        if (!profileQuery.error) {
+          let profile = (profileQuery.data ?? null) as ProfileForProvision | null;
+
+          if (!profile?.id) {
+            const profileUpsert = await provisionClient
+              .from("profiles")
+              .upsert(
+                {
+                  id: userId,
+                  email,
+                  role: "autonomo",
+                },
+                { onConflict: "id" },
+              );
+
+            if (!profileUpsert.error) {
+              profile = {
+                id: userId,
+                full_name: null,
+                email,
+                role: "autonomo",
+              };
+            }
+          }
+
+          if (profile?.id) {
+            await ensureOwnedPortfoliosForProfiles(provisionClient, [profile]);
+          }
+        }
+      }
+    } catch (provisionError) {
+      console.error("No se pudo garantizar portfolio por login", provisionError);
+    }
+
     const response = NextResponse.json({ ok: true });
     response.headers.set("cache-control", "no-store");
-    const session = loginResult.data.session;
     const secure = isProductionEnvironment();
 
     response.cookies.set(ACCESS_TOKEN_COOKIE_NAME, session.access_token, {
