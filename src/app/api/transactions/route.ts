@@ -89,6 +89,8 @@ type OperationPayload = {
   lpRangeLower?: number;
   lpRangeUpper?: number;
   spotPrice?: number;
+  transactionDate?: string;
+  spotPricesBySymbol?: Record<string, number | string>;
 };
 
 function sanitizeUppercase(value: string | undefined): string {
@@ -107,6 +109,33 @@ function sanitizePositive(value: number | undefined): number {
 function sanitizeSpotPrice(value: number | undefined): number {
   if (Number.isFinite(value) && Number(value) > 0) return Number(value);
   return 0;
+}
+
+function sanitizeSpotPriceMap(value: OperationPayload["spotPricesBySymbol"]): Map<string, number> {
+  const map = new Map<string, number>();
+  if (!value || typeof value !== "object") return map;
+
+  for (const [rawSymbol, rawPrice] of Object.entries(value)) {
+    const symbol = sanitizeUppercase(rawSymbol);
+    if (!symbol) continue;
+    const parsed = typeof rawPrice === "string" ? Number(rawPrice.replace(",", ".")) : Number(rawPrice);
+    if (!Number.isFinite(parsed) || parsed <= 0) continue;
+    map.set(symbol, parsed);
+  }
+
+  return map;
+}
+
+function sanitizeTransactionDate(value: string | undefined): string {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return new Date().toISOString();
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Fecha de operación inválida.");
+  }
+
+  return parsed.toISOString();
 }
 
 function toNumber(value: string | number | null | undefined): number {
@@ -263,7 +292,7 @@ async function buildRows(
   pricesBySymbol: Map<string, number>,
   client: SupabaseClient,
 ): Promise<TransactionInsert[]> {
-  const timestamp = new Date().toISOString();
+  const timestamp = sanitizeTransactionDate(payload.transactionDate);
   const operationGroupId = randomUUID();
   const { portfolioId, protocol, positionId } = validateBaseFields(payload);
   const makeRow = (
@@ -276,11 +305,16 @@ async function buildRows(
   const tokenSymbol = sanitizeUppercase(payload.tokenSymbol);
   const amount = sanitizePositive(payload.amount);
   const fallbackSpotPrice = sanitizeSpotPrice(payload.spotPrice);
+  const customSpotPrices = sanitizeSpotPriceMap(payload.spotPricesBySymbol);
   const spotPriceFor = (symbol: string): number => {
-    const price = pricesBySymbol.get(sanitizeUppercase(symbol));
+    const normalizedSymbol = sanitizeUppercase(symbol);
+    const customPrice = customSpotPrices.get(normalizedSymbol);
+    if (customPrice && customPrice > 0) return customPrice;
+
+    const price = pricesBySymbol.get(normalizedSymbol);
     if (price && price > 0) return price;
     if (fallbackSpotPrice > 0) return fallbackSpotPrice;
-    throw new Error(`No hay precio disponible para ${sanitizeUppercase(symbol)} en cached_prices.`);
+    throw new Error(`No hay precio disponible para ${normalizedSymbol} en cached_prices.`);
   };
 
   if (payload.operationType === "base_deposit") {

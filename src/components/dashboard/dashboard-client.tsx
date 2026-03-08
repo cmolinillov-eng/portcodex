@@ -26,6 +26,8 @@ type FormState = {
   portfolioId: string;
   positionId: string;
   protocol: string;
+  transactionDate: string;
+  manualSpotPrices: Record<string, string>;
   positionContextType: string;
   tokenSymbol: string;
   amount: string;
@@ -91,51 +93,65 @@ type DeletedPositionState = {
   canUndo: boolean;
 };
 
-const emptyForm: FormState = {
-  operationType: "base_deposit",
-  operationScope: "increase_existing",
-  portfolioId: "",
-  positionId: "",
-  protocol: "Wallet",
-  positionContextType: "Hold",
-  tokenSymbol: "",
-  amount: "",
-  harvestSourceKey: "",
-  harvestTargetPositionId: "",
-  harvestTargetProtocol: "",
-  harvestTargetPositionType: "",
-  harvestTargetKey: "",
-  harvestTargetTokenSymbol: "",
-  harvestTargetAmount: "",
-  harvestTargetLpTokenSymbolB: "",
-  harvestTargetLpAmountB: "",
-  harvestTargetLendingMode: "collateral",
-  harvestTargetCollateralToken: "",
-  harvestTargetCollateralAmount: "",
-  harvestTargetDebtToken: "",
-  harvestTargetDebtAmount: "",
-  lendingCollateralToken: "",
-  lendingCollateralAmount: "",
-  lendingDebtToken: "",
-  lendingDebtAmount: "",
-  lpTokenSymbolB: "",
-  lpAmountB: "",
-  lpRangeLower: "",
-  lpRangeUpper: "",
-  baseDepositTargetKey: "",
-  baseDepositTokenSymbol: "",
-  baseDepositLendingMode: "collateral",
-  rebalanceSourceKey: "",
-  rebalanceSourceTokenSymbol: "",
-  rebalanceSourceAmount: "",
-  rebalanceSourceLpTokenSymbolB: "",
-  rebalanceSourceLpAmountB: "",
-  rebalanceTargetKey: "",
-  rebalanceTargetTokenSymbol: "",
-  rebalanceTargetAmount: "",
-  rebalanceTargetLpTokenSymbolB: "",
-  rebalanceTargetLpAmountB: "",
-};
+function toDateTimeLocalValue(date: Date): string {
+  const pad = (value: number) => value.toString().padStart(2, "0");
+  const year = date.getFullYear();
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hours = pad(date.getHours());
+  const minutes = pad(date.getMinutes());
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function createEmptyForm(): FormState {
+  return {
+    operationType: "base_deposit",
+    operationScope: "increase_existing",
+    portfolioId: "",
+    positionId: "",
+    protocol: "Wallet",
+    transactionDate: toDateTimeLocalValue(new Date()),
+    manualSpotPrices: {},
+    positionContextType: "Hold",
+    tokenSymbol: "",
+    amount: "",
+    harvestSourceKey: "",
+    harvestTargetPositionId: "",
+    harvestTargetProtocol: "",
+    harvestTargetPositionType: "",
+    harvestTargetKey: "",
+    harvestTargetTokenSymbol: "",
+    harvestTargetAmount: "",
+    harvestTargetLpTokenSymbolB: "",
+    harvestTargetLpAmountB: "",
+    harvestTargetLendingMode: "collateral",
+    harvestTargetCollateralToken: "",
+    harvestTargetCollateralAmount: "",
+    harvestTargetDebtToken: "",
+    harvestTargetDebtAmount: "",
+    lendingCollateralToken: "",
+    lendingCollateralAmount: "",
+    lendingDebtToken: "",
+    lendingDebtAmount: "",
+    lpTokenSymbolB: "",
+    lpAmountB: "",
+    lpRangeLower: "",
+    lpRangeUpper: "",
+    baseDepositTargetKey: "",
+    baseDepositTokenSymbol: "",
+    baseDepositLendingMode: "collateral",
+    rebalanceSourceKey: "",
+    rebalanceSourceTokenSymbol: "",
+    rebalanceSourceAmount: "",
+    rebalanceSourceLpTokenSymbolB: "",
+    rebalanceSourceLpAmountB: "",
+    rebalanceTargetKey: "",
+    rebalanceTargetTokenSymbol: "",
+    rebalanceTargetAmount: "",
+    rebalanceTargetLpTokenSymbolB: "",
+    rebalanceTargetLpAmountB: "",
+  };
+}
 
 type BaseDepositTarget = {
   key: string;
@@ -226,6 +242,17 @@ function downloadTextFile(filename: string, content: string, mimeType: string): 
   URL.revokeObjectURL(url);
 }
 
+function parseManualSpotPrices(input: Record<string, string>): Record<string, number> {
+  const entries = Object.entries(input).flatMap(([rawSymbol, rawValue]) => {
+    const symbol = rawSymbol.trim().toUpperCase();
+    const parsed = Number(rawValue.replace(",", "."));
+    if (!symbol || !Number.isFinite(parsed) || parsed <= 0) return [];
+    return [[symbol, parsed] as const];
+  });
+
+  return Object.fromEntries(entries);
+}
+
 export function DashboardClient({ data }: { data: DashboardData }) {
   const router = useRouter();
   const {
@@ -246,7 +273,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [lastDeletedPosition, setLastDeletedPosition] = useState<DeletedPositionState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPosition, setSelectedPosition] = useState<DefiPosition | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState<FormState>(createEmptyForm);
 
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvStartDate, setCsvStartDate] = useState("");
@@ -276,6 +303,51 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     }
     return "";
   }, [sections]);
+
+  const activePortfolioId = useMemo(() => {
+    const scopedPortfolioId = (portfolioContext?.portfolioId ?? "").trim();
+    if (scopedPortfolioId) return scopedPortfolioId;
+    return primaryPortfolioId;
+  }, [portfolioContext?.portfolioId, primaryPortfolioId]);
+
+  const manualPriceSymbols = useMemo(() => {
+    const rawSymbols = [
+      form.tokenSymbol,
+      form.baseDepositTokenSymbol,
+      form.lpTokenSymbolB,
+      form.lendingCollateralToken,
+      form.lendingDebtToken,
+      form.harvestTargetTokenSymbol,
+      form.harvestTargetLpTokenSymbolB,
+      form.harvestTargetCollateralToken,
+      form.harvestTargetDebtToken,
+      form.rebalanceSourceTokenSymbol,
+      form.rebalanceSourceLpTokenSymbolB,
+      form.rebalanceTargetTokenSymbol,
+      form.rebalanceTargetLpTokenSymbolB,
+    ];
+    return Array.from(
+      new Set(
+        rawSymbols
+          .map((symbol) => symbol.trim().toUpperCase())
+          .filter((symbol) => symbol.length > 0),
+      ),
+    );
+  }, [
+    form.baseDepositTokenSymbol,
+    form.harvestTargetCollateralToken,
+    form.harvestTargetDebtToken,
+    form.harvestTargetLpTokenSymbolB,
+    form.harvestTargetTokenSymbol,
+    form.lendingCollateralToken,
+    form.lendingDebtToken,
+    form.lpTokenSymbolB,
+    form.rebalanceSourceLpTokenSymbolB,
+    form.rebalanceSourceTokenSymbol,
+    form.rebalanceTargetLpTokenSymbolB,
+    form.rebalanceTargetTokenSymbol,
+    form.tokenSymbol,
+  ]);
 
   const sectionTotals = useMemo(
     () => {
@@ -500,7 +572,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
     const nextForm: FormState = position
       ? {
-          ...emptyForm,
+          ...createEmptyForm(),
           operationType: inferOperationType(position.positionType),
           operationScope: "increase_existing",
           portfolioId: position.portfolioId,
@@ -515,7 +587,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           baseDepositTokenSymbol: suggestedToken,
           baseDepositLendingMode: "collateral",
         }
-      : { ...emptyForm, portfolioId: primaryPortfolioId };
+      : { ...createEmptyForm(), portfolioId: activePortfolioId };
 
     setSelectedPosition(position ?? null);
     setForm(nextForm);
@@ -526,7 +598,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   function closeModal() {
     setIsModalOpen(false);
     setSelectedPosition(null);
-    setForm(emptyForm);
+    setForm(createEmptyForm());
     setErrorMessage("");
   }
 
@@ -803,7 +875,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   async function exportTransactionsCsv() {
     setCsvErrorMessage("");
 
-    if (!primaryPortfolioId) {
+    if (!activePortfolioId) {
       setCsvErrorMessage("No se encontró portfolio activo para exportar.");
       return;
     }
@@ -821,7 +893,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     try {
       setIsExportingCsv(true);
       const query = new URLSearchParams({
-        portfolioId: primaryPortfolioId,
+        portfolioId: activePortfolioId,
         startDate: csvStartDate,
         endDate: csvEndDate,
       });
@@ -908,7 +980,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
   async function submitOperation() {
     setErrorMessage("");
-    const effectivePortfolioId = form.portfolioId.trim() || primaryPortfolioId;
+    const effectivePortfolioId = form.portfolioId.trim() || activePortfolioId;
+    const effectiveProtocol = form.protocol.trim() || "Wallet";
 
     if (form.operationType === "base_deposit") {
       if (!isCreateMode && !form.baseDepositTargetKey) {
@@ -974,7 +1047,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       }
     }
     const hasPortfolio = effectivePortfolioId.length > 0;
-    const hasProtocol = form.protocol.trim().length > 0;
+    const hasProtocol = effectiveProtocol.length > 0;
     if (!hasPortfolio || !hasProtocol) {
       setErrorMessage("Portfolio ID y protocolo son obligatorios.");
       return;
@@ -1135,7 +1208,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           operationType: form.operationType,
           portfolioId: effectivePortfolioId,
           positionId: form.positionId,
-          protocol: form.protocol,
+          protocol: effectiveProtocol,
+          transactionDate: form.transactionDate || undefined,
+          spotPricesBySymbol: parseManualSpotPrices(form.manualSpotPrices),
           positionContextType: form.positionContextType,
           tokenSymbol:
             form.operationType === "base_deposit"
@@ -1145,7 +1220,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           baseDepositLendingMode: form.baseDepositLendingMode,
           harvestReinvest: true,
           harvestSourcePositionId: form.positionId,
-          harvestSourceProtocol: form.protocol,
+          harvestSourceProtocol: effectiveProtocol,
           harvestTargetPositionType: form.harvestTargetPositionType,
           harvestTargetTokenSymbol: form.harvestTargetTokenSymbol,
           harvestTargetAmount: Number(form.harvestTargetAmount || 0),
@@ -1809,6 +1884,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 </label>
               ) : null}
 
+              <label className="text-sm">
+                <span className="mb-1 block text-[var(--muted)]">Fecha y hora de operación</span>
+                <input
+                  type="datetime-local"
+                  value={form.transactionDate}
+                  onChange={(event) => setForm((prev) => ({ ...prev, transactionDate: event.target.value }))}
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                />
+              </label>
+
               {form.operationType !== "harvest" && form.operationType !== "rebalance" ? (
                 <div className="grid gap-3">
                   <p className="text-xs text-[var(--muted)]">
@@ -1823,6 +1908,35 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       placeholder="Wallet, Aave, Lido, Uniswap..."
                     />
                   </label>
+                </div>
+              ) : null}
+
+              {manualPriceSymbols.length > 0 ? (
+                <div className="rounded-xl border border-[rgba(14,165,233,0.3)] bg-[rgba(14,165,233,0.08)] p-3">
+                  <p className="mb-2 text-xs text-[var(--muted)]">
+                    Precio de compra manual (opcional). Si no lo rellenas, usamos el precio actual en caché.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {manualPriceSymbols.map((symbol) => (
+                      <label key={symbol} className="text-sm">
+                        <span className="mb-1 block text-[var(--muted)]">Precio {symbol} (USD)</span>
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={form.manualSpotPrices[symbol] ?? ""}
+                          onChange={(event) =>
+                            setForm((prev) => ({
+                              ...prev,
+                              manualSpotPrices: { ...prev.manualSpotPrices, [symbol]: event.target.value },
+                            }))
+                          }
+                          className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                          placeholder="Ej: 42650.25"
+                        />
+                      </label>
+                    ))}
+                  </div>
                 </div>
               ) : null}
 
