@@ -154,8 +154,8 @@ export async function POST(request: NextRequest) {
           }
         }
       }
-    } catch (provisionError) {
-      console.error("No se pudo garantizar portfolio por login", provisionError);
+    } catch (_provisionError) {
+      // Provisión de portfolio no es crítica; no bloqueamos el login.
     }
 
     const response = NextResponse.json({ ok: true });
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado iniciando sesión.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Login error:", error);
+    return NextResponse.json({ error: "Error inesperado iniciando sesión." }, { status: 500 });
   }
 }

@@ -1088,7 +1088,9 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ ok: true, inserted: rows.length });
   } catch (error) {
+    if (process.env.NODE_ENV !== "production") console.error("Transaction error:", error);
     const message = error instanceof Error ? error.message : "Error inesperado al guardar la operación.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    const isSafeMessage = message.startsWith("Operación") || message.startsWith("Portfolio") || message.startsWith("No hay precio") || message.startsWith("Depósito") || message.startsWith("Staking") || message.startsWith("LP") || message.startsWith("Harvest") || message.startsWith("Rebalanceo") || message.startsWith("Falta") || message.startsWith("Debes") || message.startsWith("Para") || message.startsWith("Indica") || message.startsWith("Selecciona") || message.startsWith("Rango") || message.startsWith("El valor") || message.startsWith("Si el") || message.startsWith("No se pudo") || message.startsWith("Fecha");
+    return NextResponse.json({ error: isSafeMessage ? message : "Error inesperado al guardar la operación." }, { status: 400 });
   }
 }

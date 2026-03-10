@@ -109,7 +109,7 @@ function normalizeCreateAuthError(message: string): string {
   if (lower.includes("password")) {
     return "La contraseña no cumple las reglas mínimas.";
   }
-  return message;
+  return "No se pudo completar la operación de autenticación.";
 }
 
 async function assertManagerCanBeAssigned(
@@ -168,8 +168,8 @@ export async function GET() {
 
     return NextResponse.json({ rows });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado consultando usuarios.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("List users error:", error);
+    return NextResponse.json({ error: "Error inesperado consultando usuarios." }, { status: 500 });
   }
 }
 
@@ -273,15 +273,11 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (createPortfolio.error) {
+        if (process.env.NODE_ENV !== "production") console.error("Create portfolio error:", createPortfolio.error.message);
         await client.from("profiles").delete().eq("id", userId);
         await serviceClient.auth.admin.deleteUser(userId);
         return NextResponse.json(
-          {
-            error:
-              role === "cliente"
-                ? `No se pudo crear el cliente: ${createPortfolio.error.message}`
-                : `No se pudo crear el portfolio del autónomo: ${createPortfolio.error.message}`,
-          },
+          { error: "No se pudo crear el portfolio del usuario." },
           { status: 400 },
         );
       }
@@ -329,8 +325,8 @@ export async function POST(request: NextRequest) {
       assignedPortfolioIds: role === "admin" ? assignPortfolioIds : [],
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado creando usuario.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Create user error:", error);
+    return NextResponse.json({ error: "Error inesperado creando usuario." }, { status: 500 });
   }
 }
 
@@ -504,8 +500,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado actualizando usuario.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Update user error:", error);
+    return NextResponse.json({ error: "Error inesperado actualizando usuario." }, { status: 500 });
   }
 }
 
@@ -646,7 +642,7 @@ export async function DELETE(request: NextRequest) {
       unassignedManagedPortfolios: (managedElsewhereUpdate.data ?? []).length,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado eliminando usuario.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Delete user error:", error);
+    return NextResponse.json({ error: "Error inesperado eliminando usuario." }, { status: 500 });
   }
 }

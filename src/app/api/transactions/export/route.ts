@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ rows });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado exportando transacciones.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Export error:", error);
+    return NextResponse.json({ error: "Error inesperado exportando transacciones." }, { status: 500 });
   }
 }

@@ -59,26 +59,28 @@ export async function POST(request: NextRequest) {
     }
 
     const client = getDeleteClient();
-    const hardDeleteAttempt = await client
+    const now = new Date().toISOString();
+    const softDeleteAttempt = await client
       .from("transactions")
-      .delete()
+      .update({ deleted_at: now })
       .eq("portfolio_id", portfolioId)
       .eq("protocol", protocol)
       .eq("position_id", positionId)
+      .is("deleted_at", null)
       .select("id");
 
-    if (hardDeleteAttempt.error) {
-      throw new Error(hardDeleteAttempt.error.message);
+    if (softDeleteAttempt.error) {
+      throw new Error(softDeleteAttempt.error.message);
     }
 
     return NextResponse.json({
       ok: true,
-      mode: "hard_delete",
-      canUndo: false,
-      deletedRows: (hardDeleteAttempt.data ?? []).length,
+      mode: "soft_delete",
+      canUndo: true,
+      deletedRows: (softDeleteAttempt.data ?? []).length,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado al eliminar la posición.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (process.env.NODE_ENV !== "production") console.error("Delete position error:", error);
+    return NextResponse.json({ error: "Error inesperado al eliminar la posición." }, { status: 400 });
   }
 }

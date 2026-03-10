@@ -54,13 +54,13 @@ export async function POST(request: NextRequest) {
 
     const updateResult = await authClient.auth.updateUser({ password });
     if (updateResult.error) {
-      return NextResponse.json({ error: updateResult.error.message }, { status: 400 });
+      return NextResponse.json({ error: "No se pudo actualizar la contraseña. Solicita un nuevo enlace de recuperación." }, { status: 400 });
     }
 
     await authClient.auth.signOut();
     return NextResponse.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado al cambiar la contraseña.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Reset password error:", error);
+    return NextResponse.json({ error: "Error inesperado al cambiar la contraseña." }, { status: 500 });
   }
 }

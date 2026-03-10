@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
       restoredRows: (data ?? []).length,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado al restaurar la posición.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (process.env.NODE_ENV !== "production") console.error("Restore position error:", error);
+    return NextResponse.json({ error: "Error inesperado al restaurar la posición." }, { status: 400 });
   }
 }

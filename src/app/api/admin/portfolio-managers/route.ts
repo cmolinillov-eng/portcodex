@@ -169,7 +169,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado asignando gestor.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Assign manager error:", error);
+    return NextResponse.json({ error: "Error inesperado asignando gestor." }, { status: 500 });
   }
 }

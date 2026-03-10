@@ -23,11 +23,17 @@ on:
 
 jobs:
   e2e-qa-matrix:
-    if: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' && secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY != '' && secrets.SUPABASE_SERVICE_ROLE_KEY != '' && secrets.SUPERADMIN_USER_ID != '' && secrets.SUPERADMIN_EMAIL != '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
     steps:
+      - name: Check secrets are configured
+        run: |
+          if [ -z "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" ] || [ -z "${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" ]; then
+            echo "::error::Required secrets are not configured. Skipping E2E tests."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -45,7 +51,7 @@ jobs:
 
       - name: Create .env.local
         run: |
-          cat > .env.local <<'EOF'
+          cat > .env.local <<EOF
           NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           SUPABASE_SERVICE_ROLE_KEY=${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

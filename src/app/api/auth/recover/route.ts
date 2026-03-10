@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       message: "Si el correo existe, recibirás un enlace de recuperación en unos minutos.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado solicitando recuperación.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Recover error:", error);
+    return NextResponse.json({ error: "Error inesperado solicitando recuperación." }, { status: 500 });
   }
 }

@@ -109,10 +109,14 @@ export async function POST(request: NextRequest) {
     });
 
     if (signUpResult.error || !signUpResult.data.user?.id) {
-      return NextResponse.json(
-        { error: signUpResult.error?.message ?? "No se pudo completar el registro." },
-        { status: 400 },
-      );
+      const raw = (signUpResult.error?.message ?? "").toLowerCase();
+      const safeMessage =
+        raw.includes("already") || raw.includes("registered") || raw.includes("exists")
+          ? "Ese correo ya está registrado."
+          : raw.includes("password")
+            ? "La contraseña no cumple los requisitos mínimos."
+            : "No se pudo completar el registro.";
+      return NextResponse.json({ error: safeMessage }, { status: 400 });
     }
 
     const userId = signUpResult.data.user.id;
@@ -130,8 +134,9 @@ export async function POST(request: NextRequest) {
           { onConflict: "id" },
         );
       if (profileUpdate.error) {
+        if (process.env.NODE_ENV !== "production") console.error("Profile update error:", profileUpdate.error.message);
         return NextResponse.json(
-          { error: `Usuario creado pero no se pudo completar el perfil: ${profileUpdate.error.message}` },
+          { error: "Usuario creado pero no se pudo completar el perfil." },
           { status: 500 },
         );
       }
@@ -167,7 +172,7 @@ export async function POST(request: NextRequest) {
 
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Error inesperado durante el registro.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (process.env.NODE_ENV !== "production") console.error("Register error:", error);
+    return NextResponse.json({ error: "Error inesperado durante el registro." }, { status: 500 });
   }
 }
