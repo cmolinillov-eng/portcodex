@@ -5,6 +5,7 @@ import {
   FileDown,
   FileSpreadsheet,
   Layers,
+  Pencil,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -277,6 +278,21 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPosition, setSelectedPosition] = useState<DefiPosition | null>(null);
   const [form, setForm] = useState<FormState>(createEmptyForm);
+
+  // Edit modal state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editPosition, setEditPosition] = useState<DefiPosition | null>(null);
+  const [editForm, setEditForm] = useState({
+    tokenSymbol: "",
+    amount: "",
+    entryPrice: "",
+    lpTokenSymbolB: "",
+    lpAmountB: "",
+    lpEntryPriceB: "",
+    lpRangeLower: "",
+    lpRangeUpper: "",
+  });
 
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [csvStartDate, setCsvStartDate] = useState("");
@@ -676,6 +692,83 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error desconocido al restaurar la posición.";
       setErrorMessage(message);
+    }
+  }
+
+  function openEditModal(position: DefiPosition) {
+    if (!viewer.canOperate) return;
+    const isLp = position.positionType.toLowerCase().includes("liquidity") || position.positionType.toLowerCase().includes("pool");
+    const tokens = position.tokenSymbol.split("/").map((t) => t.trim());
+    setEditPosition(position);
+    setEditForm({
+      tokenSymbol: tokens[0] ?? position.tokenSymbol,
+      amount: position.currentBalance > 0 ? String(position.currentBalance) : (position.balanceLabel?.split("+")[0]?.replace(/[^0-9.,]/g, "").trim() ?? ""),
+      entryPrice: position.averageEntryPrice > 0 ? String(position.averageEntryPrice) : "",
+      lpTokenSymbolB: isLp && tokens[1] ? tokens[1] : "",
+      lpAmountB: isLp && position.balanceLabel ? (position.balanceLabel.split("+")[1]?.replace(/[^0-9.,]/g, "").trim() ?? "") : "",
+      lpEntryPriceB: "",
+      lpRangeLower: position.lpRangeLabel?.match(/Rango\s+([\d.,]+)/)?.[1]?.replace(",", "") ?? "",
+      lpRangeUpper: position.lpRangeLabel?.match(/-\s+([\d.,]+)/)?.[1]?.replace(",", "") ?? "",
+    });
+    setErrorMessage("");
+    setIsEditModalOpen(true);
+  }
+
+  async function saveEditPosition() {
+    if (!editPosition) return;
+    const isLp = editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool");
+    const amount = Number(editForm.amount.replace(",", "."));
+    const entryPrice = Number(editForm.entryPrice.replace(",", "."));
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      setErrorMessage("Cantidad inválida.");
+      return;
+    }
+    if (!Number.isFinite(entryPrice) || entryPrice < 0) {
+      setErrorMessage("Precio de entrada inválido.");
+      return;
+    }
+
+    try {
+      setErrorMessage("");
+      setIsSavingEdit(true);
+      const payload: Record<string, unknown> = {
+        portfolioId: editPosition.portfolioId,
+        protocol: editPosition.protocol,
+        positionId: editPosition.positionId,
+        positionType: editPosition.positionType,
+        tokenSymbol: editForm.tokenSymbol.trim().toUpperCase(),
+        amount,
+        entryPrice,
+      };
+
+      if (isLp && editForm.lpTokenSymbolB) {
+        payload.lpTokenSymbolB = editForm.lpTokenSymbolB.trim().toUpperCase();
+        payload.lpAmountB = Number(editForm.lpAmountB.replace(",", ".")) || 0;
+        payload.lpEntryPriceB = Number(editForm.lpEntryPriceB.replace(",", ".")) || 0;
+        payload.lpRangeLower = Number(editForm.lpRangeLower.replace(",", ".")) || 0;
+        payload.lpRangeUpper = Number(editForm.lpRangeUpper.replace(",", ".")) || 0;
+      }
+
+      const response = await fetch("/api/positions/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "No se pudo guardar la edición.");
+      }
+
+      setIsEditModalOpen(false);
+      setEditPosition(null);
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido al editar la posición.";
+      setErrorMessage(message);
+    } finally {
+      setIsSavingEdit(false);
     }
   }
 
@@ -1491,9 +1584,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
-                          onClick={() => openModal(position)}
+                          onClick={() => openEditModal(position)}
                           className="btn-secondary"
                         >
+                          <Pencil className="mr-1 inline h-3.5 w-3.5" />
                           Modificar
                         </button>
                         {viewer.canDeletePosition ? (
@@ -3084,6 +3178,138 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 className="btn-secondary flex-1 py-2 text-sm font-semibold"
               >
                 Omitir
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isEditModalOpen && editPosition ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">
+                Modificar posición · {editPosition.tokenSymbol}
+              </h3>
+              <button type="button" onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}>
+                <X className="h-5 w-5 text-[var(--muted)]" />
+              </button>
+            </div>
+
+            {errorMessage ? (
+              <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{errorMessage}</p>
+            ) : null}
+
+            <div className="space-y-4">
+              <div>
+                <span className="mb-1 block text-sm text-[var(--muted)]">Token</span>
+                <input
+                  type="text"
+                  className="input-base w-full"
+                  value={editForm.tokenSymbol}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, tokenSymbol: e.target.value }))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <span className="mb-1 block text-sm text-[var(--muted)]">Saldo (cantidad)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="input-base w-full"
+                    value={editForm.amount}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada (USD)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    className="input-base w-full"
+                    value={editForm.entryPrice}
+                    onChange={(e) => setEditForm((prev) => ({ ...prev, entryPrice: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              {(editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool")) ? (
+                <>
+                  <hr className="border-[var(--line)]" />
+                  <p className="text-xs text-[var(--muted)]">Datos del par LP</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Token B</span>
+                      <input
+                        type="text"
+                        className="input-base w-full"
+                        value={editForm.lpTokenSymbolB}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpTokenSymbolB: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Saldo Token B</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input-base w-full"
+                        value={editForm.lpAmountB}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpAmountB: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada Token B (USD)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="input-base w-full"
+                      value={editForm.lpEntryPriceB}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango mínimo</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input-base w-full"
+                        value={editForm.lpRangeLower}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeLower: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango máximo</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input-base w-full"
+                        value={editForm.lpRangeUpper}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeUpper: e.target.value }))}
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={saveEditPosition}
+                disabled={isSavingEdit}
+                className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
+                style={{ background: "var(--brand)" }}
+              >
+                {isSavingEdit ? "Guardando..." : "Guardar cambios"}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
+                className="btn-secondary flex-1 py-2 text-sm font-semibold"
+              >
+                Cancelar
               </button>
             </div>
           </div>

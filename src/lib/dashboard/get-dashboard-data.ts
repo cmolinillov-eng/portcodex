@@ -245,7 +245,7 @@ function normalizeLpMetadata(candidate: unknown): LpMetadata | null {
     const rangeLower = Number(lp.rangeLower ?? 0);
     const rangeUpper = Number(lp.rangeUpper ?? 0);
     const entryPriceRatio = Number(lp.entryPriceRatio ?? 0);
-    if (rangeLower <= 0 || rangeUpper <= rangeLower || entryPriceRatio <= 0) return null;
+    if (rangeLower < 0 || rangeUpper <= 0 || rangeUpper <= rangeLower || entryPriceRatio <= 0) return null;
     return {
       tokenA: lp.tokenA.toUpperCase(),
       tokenB: lp.tokenB.toUpperCase(),
@@ -730,6 +730,20 @@ export async function getDashboardData(options?: {
     .filter((id) => access.isSuperAdmin || allowedPortfolioIds.includes(id));
   const portfolioTransactions = await fetchPortfolioTransactions(portfolioIds);
 
+  // Build set of position keys that have at least one active (non-deleted) transaction
+  const activePositionKeys = new Set<string>();
+  for (const tx of portfolioTransactions) {
+    if (tx.portfolio_id && tx.position_id) {
+      activePositionKeys.add(positionCompositeKey(tx.portfolio_id, tx.protocol ?? "Wallet", tx.position_id));
+    }
+  }
+
+  // Filter out positions from the view that have no active transactions (soft-deleted)
+  const filteredRows = rows.filter((row) => {
+    if (!row.portfolio_id || !row.position_id) return false;
+    return activePositionKeys.has(positionCompositeKey(row.portfolio_id, row.protocol ?? "Wallet", row.position_id));
+  });
+
   const lendingMetrics = lendingTransactions.reduce(
     (acc, row) => {
       if (!row.position_id) return acc;
@@ -822,7 +836,7 @@ export async function getDashboardData(options?: {
     {} as Record<string, { metadata: LpMetadata; at: number }>,
   );
 
-  let positions: DefiPosition[] = rows
+  let positions: DefiPosition[] = filteredRows
     .filter((row) => row.is_active === true)
     .map<DefiPosition>((row) => {
       const tokenSymbol = (row.token_symbol ?? "").toUpperCase();
