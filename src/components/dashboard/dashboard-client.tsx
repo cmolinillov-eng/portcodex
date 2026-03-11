@@ -270,6 +270,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isDeletingPositionKey, setIsDeletingPositionKey] = useState("");
   const [isRefreshingPrices, setIsRefreshingPrices] = useState(false);
+  const [unmappedTokens, setUnmappedTokens] = useState<string[]>([]);
+  const [manualPriceInputs, setManualPriceInputs] = useState<Record<string, string>>({});
+  const [isManualPriceModalOpen, setIsManualPriceModalOpen] = useState(false);
   const [lastDeletedPosition, setLastDeletedPosition] = useState<DeletedPositionState | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPosition, setSelectedPosition] = useState<DefiPosition | null>(null);
@@ -958,16 +961,30 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     }
   }
 
-  async function refreshPricesNow() {
+  async function refreshPricesNow(manualPrices?: Array<{ symbol: string; price: number }>) {
     try {
       setErrorMessage("");
       setIsRefreshingPrices(true);
       const response = await fetch("/api/prices/refresh", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(manualPrices ? { manualPrices } : {}),
       });
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as {
+        error?: string;
+        unmappedSymbols?: string[];
+      };
       if (!response.ok) {
         throw new Error(body.error ?? "No se pudieron actualizar precios.");
+      }
+      const unmapped = (body.unmappedSymbols ?? []).filter((s) => s.length > 0);
+      if (unmapped.length > 0 && !manualPrices) {
+        setUnmappedTokens(unmapped);
+        setManualPriceInputs({});
+        setIsManualPriceModalOpen(true);
+      } else {
+        setUnmappedTokens([]);
+        setIsManualPriceModalOpen(false);
       }
       router.refresh();
     } catch (error) {
@@ -976,6 +993,24 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     } finally {
       setIsRefreshingPrices(false);
     }
+  }
+
+  function submitManualPrices() {
+    const prices = unmappedTokens
+      .map((symbol) => {
+        const raw = (manualPriceInputs[symbol] ?? "").replace(",", ".");
+        const price = Number(raw);
+        if (!Number.isFinite(price) || price <= 0) return null;
+        return { symbol, price };
+      })
+      .filter((item): item is { symbol: string; price: number } => item !== null);
+
+    if (prices.length === 0) {
+      setErrorMessage("Introduce al menos un precio válido.");
+      return;
+    }
+    setIsManualPriceModalOpen(false);
+    refreshPricesNow(prices);
   }
 
   async function submitOperation() {
@@ -1459,7 +1494,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           onClick={() => openModal(position)}
                           className="btn-secondary"
                         >
-                          Operar
+                          Modificar
                         </button>
                         {viewer.canDeletePosition ? (
                           <button
@@ -1544,7 +1579,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 {viewer.canRefreshPrices ? (
                   <button
                     type="button"
-                    onClick={refreshPricesNow}
+                    onClick={() => refreshPricesNow()}
                     disabled={isRefreshingPrices}
                     className="btn-secondary px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
                   >
@@ -2992,6 +3027,63 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 className="rounded-lg border border-[rgba(16,185,129,0.5)] bg-[rgba(16,185,129,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(16,185,129,0.3)] disabled:opacity-60"
               >
                 {isExportingCsv ? "Exportando..." : "Descargar CSV"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isManualPriceModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="card-premium w-full max-w-md rounded-2xl p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-[var(--foreground)]">Precios no disponibles</h3>
+              <button
+                type="button"
+                onClick={() => setIsManualPriceModalOpen(false)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)]"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-[var(--muted)]">
+              Los siguientes tokens no tienen precio en CoinGecko. Introduce el precio actual en USD para actualizar los cálculos.
+            </p>
+            <div className="grid gap-3">
+              {unmappedTokens.map((symbol) => (
+                <label key={symbol} className="text-sm">
+                  <span className="mb-1 block font-medium text-[var(--foreground)]">{symbol} (USD)</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Ej: 25.50"
+                    value={manualPriceInputs[symbol] ?? ""}
+                    onChange={(e) =>
+                      setManualPriceInputs((prev) => ({ ...prev, [symbol]: e.target.value }))
+                    }
+                    className="input-field w-full"
+                  />
+                </label>
+              ))}
+            </div>
+            {errorMessage ? (
+              <p className="mt-3 text-xs text-rose-400">{errorMessage}</p>
+            ) : null}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={submitManualPrices}
+                disabled={isRefreshingPrices}
+                className="btn-primary flex-1 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRefreshingPrices ? "Guardando..." : "Guardar precios"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsManualPriceModalOpen(false)}
+                className="btn-secondary flex-1 py-2 text-sm font-semibold"
+              >
+                Omitir
               </button>
             </div>
           </div>

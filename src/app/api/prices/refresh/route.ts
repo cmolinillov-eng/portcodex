@@ -85,6 +85,19 @@ const symbolToCoinGeckoId: Record<string, string> = {
   PYTH: "pyth-network",
   W: "wormhole",
   JTO: "jito-governance-token",
+  HYPE: "hyperliquid",
+  WIF: "dogwifcoin",
+  BONK: "bonk",
+  MEME: "memecoin",
+  TRX: "tron",
+  TON: "the-open-network",
+  KAS: "kaspa",
+  RENDER: "render-token",
+  STRK: "starknet",
+  MANTA: "manta-network",
+  DYM: "dymension",
+  BOME: "book-of-meme",
+  MEW: "cat-in-a-dogs-world",
 };
 
 function normalizeSymbol(value: string | null): string | null {
@@ -142,6 +155,8 @@ async function fetchPricesWithRetry(coinIds: string[], apiKey?: string, attempts
   throw lastError ?? new Error("Error desconocido consultando CoinGecko");
 }
 
+type ManualPrice = { symbol: string; price: number };
+
 export async function POST(request: NextRequest) {
   try {
     const csrfCheck = validateCsrf(request);
@@ -170,16 +185,38 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Leer precios manuales del body (opcional)
+    let manualPrices: ManualPrice[] = [];
+    try {
+      const body = (await request.json()) as { manualPrices?: Array<{ symbol?: string; price?: number }> };
+      if (Array.isArray(body.manualPrices)) {
+        manualPrices = body.manualPrices
+          .filter((item) => {
+            const symbol = (item.symbol ?? "").trim().toUpperCase();
+            const price = Number(item.price);
+            return symbol.length > 0 && Number.isFinite(price) && price > 0;
+          })
+          .map((item) => ({
+            symbol: (item.symbol ?? "").trim().toUpperCase(),
+            price: Number(item.price),
+          }));
+      }
+    } catch {
+      // Body vacío o no-JSON está bien, simplemente no hay precios manuales
+    }
+
     const client = getClient();
     const tokensQuery = access.isSuperAdmin
       ? await client
           .from("transactions")
           .select("token_in_symbol, token_out_symbol")
+          .is("deleted_at", null)
           .limit(10000)
       : await client
           .from("transactions")
           .select("token_in_symbol, token_out_symbol")
           .in("portfolio_id", access.allowedPortfolioIds)
+          .is("deleted_at", null)
           .limit(10000);
 
     if (tokensQuery.error) {
@@ -197,6 +234,10 @@ export async function POST(request: NextRequest) {
     const mapped = Array.from(symbols)
       .map((symbol) => ({ symbol, coinId: symbolToCoinGeckoId[symbol] }))
       .filter((item) => item.coinId) as Array<{ symbol: string; coinId: string }>;
+
+    const unmappedSymbols = Array.from(symbols).filter(
+      (symbol) => !symbolToCoinGeckoId[symbol],
+    );
 
     const uniqueCoinIds = Array.from(new Set(mapped.map((item) => item.coinId)));
     const batches = chunk(uniqueCoinIds, 100);
@@ -226,6 +267,15 @@ export async function POST(request: NextRequest) {
       })
       .filter((item) => item !== null);
 
+    // Añadir precios manuales al upsert
+    for (const manual of manualPrices) {
+      rows.push({
+        token_symbol: manual.symbol,
+        price: manual.price,
+        last_updated: nowIso,
+      });
+    }
+
     if (rows.length > 0) {
       const upsert = await client
         .from("cached_prices")
@@ -240,6 +290,7 @@ export async function POST(request: NextRequest) {
       updatedRows: rows.length,
       trackedSymbols: symbols.size,
       mappedSymbols: mapped.length,
+      unmappedSymbols,
     });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Price refresh error:", error);

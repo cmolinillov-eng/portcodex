@@ -516,7 +516,8 @@ async function fetchLendingTransactions(allowedPortfolioIds: string[]): Promise<
     .from("transactions")
     .select("portfolio_id, position_id, protocol, type, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount")
     .in("portfolio_id", allowedPortfolioIds)
-    .in("type", ["lending_supply", "lending_borrow", "lending_withdraw", "withdrawal"]);
+    .in("type", ["lending_supply", "lending_borrow", "lending_withdraw", "withdrawal"])
+    .is("deleted_at", null);
   const publicData = (publicQuery.data ?? null) as LendingTransactionRow[] | null;
   const publicError = publicQuery.error;
 
@@ -531,7 +532,8 @@ async function fetchLendingTransactions(allowedPortfolioIds: string[]): Promise<
     .from("transactions")
     .select("portfolio_id, position_id, protocol, type, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount")
     .in("portfolio_id", allowedPortfolioIds)
-    .in("type", ["lending_supply", "lending_borrow", "lending_withdraw", "withdrawal"]);
+    .in("type", ["lending_supply", "lending_borrow", "lending_withdraw", "withdrawal"])
+    .is("deleted_at", null);
   const serviceData = (serviceQuery.data ?? null) as LendingTransactionRow[] | null;
   const serviceError = serviceQuery.error;
 
@@ -550,7 +552,8 @@ async function fetchLpMetadataRows(allowedPortfolioIds: string[]): Promise<LpMet
     .from("transactions")
     .select("portfolio_id, position_id, protocol, metadata, notes, transaction_date")
     .in("portfolio_id", allowedPortfolioIds)
-    .eq("type", "lp_deposit");
+    .eq("type", "lp_deposit")
+    .is("deleted_at", null);
   const publicData = (publicQuery.data ?? null) as LpMetadataRow[] | null;
   const publicError = publicQuery.error;
 
@@ -565,7 +568,8 @@ async function fetchLpMetadataRows(allowedPortfolioIds: string[]): Promise<LpMet
     .from("transactions")
     .select("portfolio_id, position_id, protocol, metadata, notes, transaction_date")
     .in("portfolio_id", allowedPortfolioIds)
-    .eq("type", "lp_deposit");
+    .eq("type", "lp_deposit")
+    .is("deleted_at", null);
   const serviceData = (serviceQuery.data ?? null) as LpMetadataRow[] | null;
   const serviceError = serviceQuery.error;
 
@@ -583,7 +587,8 @@ async function fetchPortfolioTransactions(portfolioIds: string[]): Promise<Portf
   const publicQuery = await publicClient
     .from("transactions")
     .select("portfolio_id, protocol, position_id, type, position_type, transaction_date, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
-    .in("portfolio_id", portfolioIds);
+    .in("portfolio_id", portfolioIds)
+    .is("deleted_at", null);
   const publicData = (publicQuery.data ?? null) as PortfolioTransactionRow[] | null;
   const publicError = publicQuery.error;
 
@@ -597,7 +602,8 @@ async function fetchPortfolioTransactions(portfolioIds: string[]): Promise<Portf
   const serviceQuery = await serviceClient
     .from("transactions")
     .select("portfolio_id, protocol, position_id, type, position_type, transaction_date, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
-    .in("portfolio_id", portfolioIds);
+    .in("portfolio_id", portfolioIds)
+    .is("deleted_at", null);
   const serviceData = (serviceQuery.data ?? null) as PortfolioTransactionRow[] | null;
   const serviceError = serviceQuery.error;
 
@@ -618,6 +624,7 @@ async function fetchRecentActivityRows(allowedPortfolioIds: string[], limit = 10
       "portfolio_id, transaction_date, type, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
     )
     .in("portfolio_id", allowedPortfolioIds)
+    .is("deleted_at", null)
     .order("transaction_date", { ascending: false })
     .limit(limit);
 
@@ -650,6 +657,7 @@ async function fetchRecentActivityRows(allowedPortfolioIds: string[], limit = 10
       "portfolio_id, transaction_date, type, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
     )
     .in("portfolio_id", allowedPortfolioIds)
+    .is("deleted_at", null)
     .order("transaction_date", { ascending: false })
     .limit(limit);
 
