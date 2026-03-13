@@ -88,6 +88,7 @@ type OperationPayload = {
   lpAmountB?: number;
   lpRangeLower?: number;
   lpRangeUpper?: number;
+  isCorrelated?: boolean;
   spotPrice?: number;
   transactionDate?: string;
   spotPricesBySymbol?: Record<string, number | string>;
@@ -336,6 +337,7 @@ async function buildRows(
           rangeLower: sanitizePositive(payload.lpRangeLower),
           rangeUpper: sanitizePositive(payload.lpRangeUpper),
           entryPriceRatio: amountB / amountA,
+          isCorrelated: payload.isCorrelated === true,
         },
       };
 

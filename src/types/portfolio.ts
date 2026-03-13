@@ -24,7 +24,7 @@ export type DefiPosition = {
   impermanentLossValue: number | null;
   healthFactor: number | null;
   healthStatus: "safe" | "warning" | "critical" | "na";
-  lpRangeStatus: "in_range" | "out_of_range" | "na";
+  lpRangeStatus: "in_range" | "out_of_range" | "na" | "correlated";
   lpRangeLabel: string | null;
   currentPriceLabel: string | null;
   dataQualityIssue: string | null;

@@ -19,6 +19,7 @@ type EditPositionPayload = {
   lpEntryPriceB?: number;
   lpRangeLower?: number;
   lpRangeUpper?: number;
+  isCorrelated?: boolean;
 };
 
 function sanitize(value: string | undefined): string {
@@ -121,6 +122,7 @@ export async function POST(request: NextRequest) {
           rangeLower: lpRangeLower,
           rangeUpper: lpRangeUpper,
           entryPriceRatio,
+          isCorrelated: payload.isCorrelated === true,
         },
       };
 

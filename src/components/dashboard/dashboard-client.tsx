@@ -54,6 +54,7 @@ type FormState = {
   lpAmountB: string;
   lpRangeLower: string;
   lpRangeUpper: string;
+  isCorrelated: boolean;
   baseDepositTargetKey: string;
   baseDepositTokenSymbol: string;
   baseDepositLendingMode: BaseDepositLendingMode;
@@ -138,6 +139,7 @@ function createEmptyForm(): FormState {
     lpAmountB: "",
     lpRangeLower: "",
     lpRangeUpper: "",
+    isCorrelated: false,
     baseDepositTargetKey: "",
     baseDepositTokenSymbol: "",
     baseDepositLendingMode: "collateral",
@@ -292,6 +294,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     lpEntryPriceB: "",
     lpRangeLower: "",
     lpRangeUpper: "",
+    isCorrelated: false,
   });
 
   const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
@@ -709,6 +712,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       lpEntryPriceB: "",
       lpRangeLower: position.lpRangeLabel?.match(/Rango\s+([\d.,]+)/)?.[1]?.replace(",", "") ?? "",
       lpRangeUpper: position.lpRangeLabel?.match(/-\s+([\d.,]+)/)?.[1]?.replace(",", "") ?? "",
+      isCorrelated: position.lpRangeStatus === "correlated",
     });
     setErrorMessage("");
     setIsEditModalOpen(true);
@@ -748,6 +752,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         payload.lpEntryPriceB = Number(editForm.lpEntryPriceB.replace(",", ".")) || 0;
         payload.lpRangeLower = Number(editForm.lpRangeLower.replace(",", ".")) || 0;
         payload.lpRangeUpper = Number(editForm.lpRangeUpper.replace(",", ".")) || 0;
+        payload.isCorrelated = editForm.isCorrelated;
       }
 
       const response = await fetch("/api/positions/edit", {
@@ -1383,6 +1388,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           lpAmountB: Number(form.lpAmountB || 0),
           lpRangeLower: Number(form.lpRangeLower || 0),
           lpRangeUpper: Number(form.lpRangeUpper || 0),
+          isCorrelated: form.isCorrelated,
         }),
       });
 
@@ -1557,7 +1563,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   {showIlColumn ? (
                     <td className="px-4 py-4">
                       <div className="space-y-1">
-                        {position.lpRangeStatus !== "na" ? (
+                        {position.lpRangeStatus === "correlated" ? (
+                          <span className="inline-flex rounded-full border border-[rgba(147,130,255,0.45)] bg-[rgba(147,130,255,0.12)] px-2.5 py-1 text-[11px] text-violet-300">
+                            Pool correlacionado
+                          </span>
+                        ) : position.lpRangeStatus !== "na" ? (
                           <span
                             className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] ${
                               position.lpRangeStatus === "out_of_range"
@@ -2827,6 +2837,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
                             />
                           </label>
+                          <label className="flex items-center gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={form.isCorrelated}
+                              onChange={(e) => setForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
+                              className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
+                            />
+                            <span className="text-[var(--muted)]">Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)</span>
+                          </label>
                           <label className="text-sm">
                             <span className="mb-1 block text-[var(--muted)]">Rango mínimo LP (opcional)</span>
                             <input
@@ -2998,6 +3017,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
                       placeholder="2500"
                     />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.isCorrelated}
+                      onChange={(e) => setForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
+                      className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
+                    />
+                    <span className="text-[var(--muted)]">Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)</span>
                   </label>
                   <label className="text-sm">
                     <span className="mb-1 block text-[var(--muted)]">Rango mínimo</span>
@@ -3236,6 +3264,18 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               {(editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool")) ? (
                 <>
                   <hr className="border-[var(--line)]" />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="isCorrelated"
+                      checked={editForm.isCorrelated}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
+                      className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
+                    />
+                    <label htmlFor="isCorrelated" className="text-sm text-[var(--muted)]">
+                      Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)
+                    </label>
+                  </div>
                   <p className="text-xs text-[var(--muted)]">Datos del par LP</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>

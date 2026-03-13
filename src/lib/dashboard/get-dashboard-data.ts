@@ -92,6 +92,7 @@ type LpMetadata = {
   rangeLower: number;
   rangeUpper: number;
   entryPriceRatio: number;
+  isCorrelated: boolean;
 };
 
 type LpMetadataRow = {
@@ -238,20 +239,24 @@ function normalizeLpMetadata(candidate: unknown): LpMetadata | null {
         rangeLower?: number;
         rangeUpper?: number;
         entryPriceRatio?: number;
+        isCorrelated?: boolean;
       };
     };
     const lp = parsed.lp;
     if (!lp?.tokenA || !lp?.tokenB) return null;
+    const isCorrelated = lp.isCorrelated === true;
     const rangeLower = Number(lp.rangeLower ?? 0);
     const rangeUpper = Number(lp.rangeUpper ?? 0);
     const entryPriceRatio = Number(lp.entryPriceRatio ?? 0);
-    if (rangeLower < 0 || rangeUpper <= 0 || rangeUpper <= rangeLower || entryPriceRatio <= 0) return null;
+    // Correlated pools don't need valid range/ratio
+    if (!isCorrelated && (rangeLower < 0 || rangeUpper <= 0 || rangeUpper <= rangeLower || entryPriceRatio <= 0)) return null;
     return {
       tokenA: lp.tokenA.toUpperCase(),
       tokenB: lp.tokenB.toUpperCase(),
       rangeLower,
       rangeUpper,
       entryPriceRatio,
+      isCorrelated,
     };
   } catch {
     return null;
@@ -836,15 +841,50 @@ export async function getDashboardData(options?: {
     {} as Record<string, { metadata: LpMetadata; at: number }>,
   );
 
+  // Compute accurate balance and avg entry price from active transactions (not VIEW)
+  const txBalanceByTokenPosition = new Map<string, { balance: number; costUsd: number; depositedAmount: number }>();
+  for (const tx of portfolioTransactions) {
+    const txType = (tx.type ?? "").trim();
+    const inAmount = toNumber(tx.token_in_amount);
+    const outAmount = toNumber(tx.token_out_amount);
+    const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
+    const spotPrice = toNumber(tx.spot_price);
+    const portfolioId = tx.portfolio_id ?? "";
+    const protocol = (tx.protocol ?? "Wallet").trim();
+    const positionId = tx.position_id ?? "";
+    if (!inSymbol || !positionId) continue;
+    const tpKey = `${positionCompositeKey(portfolioId, protocol, positionId)}::${inSymbol}`;
+    if (!txBalanceByTokenPosition.has(tpKey)) {
+      txBalanceByTokenPosition.set(tpKey, { balance: 0, costUsd: 0, depositedAmount: 0 });
+    }
+    const entry = txBalanceByTokenPosition.get(tpKey)!;
+    if (["deposit", "staking_deposit", "lp_deposit", "lending_supply"].includes(txType)) {
+      entry.balance += inAmount;
+      entry.costUsd += inAmount * spotPrice;
+      entry.depositedAmount += inAmount;
+    } else if (["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"].includes(txType)) {
+      entry.balance -= outAmount;
+    }
+  }
+
   let positions: DefiPosition[] = filteredRows
     .filter((row) => row.is_active === true)
     .map<DefiPosition>((row) => {
       const tokenSymbol = (row.token_symbol ?? "").toUpperCase();
       const positionType = normalizePositionType(row.position_type);
-      const averageEntryPrice = toNumber(row.average_entry_price);
+      const viewBalance = toNumber(row.current_balance);
+      const viewAvgPrice = toNumber(row.average_entry_price);
+
+      // Use transaction-computed balance if available, otherwise fall back to view
+      const tpKey = `${positionCompositeKey(row.portfolio_id ?? "", row.protocol ?? "Wallet", row.position_id ?? "")}::${tokenSymbol}`;
+      const txData = txBalanceByTokenPosition.get(tpKey);
+      const currentBalance = txData ? Math.max(0, txData.balance) : viewBalance;
+      const averageEntryPrice = txData && txData.depositedAmount > 0
+        ? txData.costUsd / txData.depositedAmount
+        : viewAvgPrice;
+
       const livePrice = cachedPrices.pricesBySymbol.get(tokenSymbol) ?? 0;
       const currentPrice = livePrice > 0 ? livePrice : averageEntryPrice;
-      const currentBalance = toNumber(row.current_balance);
       const currentValue = currentBalance * currentPrice;
       const roiPercent = calculateRoiPercent(currentPrice, averageEntryPrice);
       const impermanentLossPercent = isLiquidityPoolPosition(positionType)
@@ -915,14 +955,20 @@ export async function getDashboardData(options?: {
     if (!lpEntry) return position;
 
     const meta = lpEntry.metadata;
+
+    // Correlated pools: no IL calculation, no range status
+    if (meta.isCorrelated) {
+      return { ...position, lpRangeStatus: "correlated" as DefiPosition["lpRangeStatus"] };
+    }
+
     const priceA = cachedPrices.pricesBySymbol.get(meta.tokenA) ?? 0;
     const priceB = cachedPrices.pricesBySymbol.get(meta.tokenB) ?? 0;
     if (priceA <= 0 || priceB <= 0 || meta.entryPriceRatio <= 0) return position;
 
     const currentRatio = priceA / priceB;
-    const ratioChange = currentRatio / meta.entryPriceRatio;
     const rangeLowerRatio = meta.rangeLower / meta.entryPriceRatio;
     const rangeUpperRatio = meta.rangeUpper / meta.entryPriceRatio;
+    const ratioChange = currentRatio / meta.entryPriceRatio;
     const lpRangeStatus: DefiPosition["lpRangeStatus"] =
       ratioChange < rangeLowerRatio || ratioChange > rangeUpperRatio ? "out_of_range" : "in_range";
 
@@ -998,17 +1044,23 @@ export async function getDashboardData(options?: {
 
     if (lpEntry) {
       const meta = lpEntry.metadata;
-      const priceA = cachedPrices.pricesBySymbol.get(meta.tokenA) ?? 0;
-      const priceB = cachedPrices.pricesBySymbol.get(meta.tokenB) ?? 0;
-      lpRangeLabel = `Rango ${meta.rangeLower.toLocaleString("en-US")} - ${meta.rangeUpper.toLocaleString("en-US")}`;
-      if (priceA > 0 && priceB > 0) {
-        const ratio = priceA / priceB;
-        currentPriceLabel = `${meta.tokenA}/${meta.tokenB}: ${ratio.toLocaleString("en-US", {
-          maximumFractionDigits: 4,
-        })}`;
-        lpRangeStatus = ratio < meta.rangeLower || ratio > meta.rangeUpper ? "out_of_range" : "in_range";
+      if (meta.isCorrelated) {
+        lpRangeLabel = "Pool correlacionado";
+        lpRangeStatus = "correlated";
+        currentPriceLabel = null;
       } else {
-        lpRangeStatus = "na";
+        const priceA = cachedPrices.pricesBySymbol.get(meta.tokenA) ?? 0;
+        const priceB = cachedPrices.pricesBySymbol.get(meta.tokenB) ?? 0;
+        lpRangeLabel = `Rango ${meta.rangeLower.toLocaleString("en-US")} - ${meta.rangeUpper.toLocaleString("en-US")}`;
+        if (priceA > 0 && priceB > 0) {
+          const ratio = priceA / priceB;
+          currentPriceLabel = `${meta.tokenA}/${meta.tokenB}: ${ratio.toLocaleString("en-US", {
+            maximumFractionDigits: 4,
+          })}`;
+          lpRangeStatus = ratio < meta.rangeLower || ratio > meta.rangeUpper ? "out_of_range" : "in_range";
+        } else {
+          lpRangeStatus = "na";
+        }
       }
     } else {
       lpRangeLabel = "Rango no disponible (falta metadata LP)";
