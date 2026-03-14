@@ -427,6 +427,18 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     return targets;
   }, [sections]);
 
+  const positionByKey = useMemo(() => {
+    const map = new Map<string, DefiPosition>();
+    for (const section of sections) {
+      for (const pos of section.positions) {
+        if (pos.portfolioId && pos.positionId) {
+          map.set(`${pos.portfolioId}::${pos.protocol}::${pos.positionId}`, pos);
+        }
+      }
+    }
+    return map;
+  }, [sections]);
+
   const scopedTargets = useMemo(
     () =>
       baseDepositTargets.filter((target) => targetMatchesOperation(target.positionType, form.operationType)),
@@ -1958,12 +1970,13 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="card-premium w-full max-w-xl rounded-2xl p-6">
-            <div className="mb-5 flex items-start justify-between">
+          <div className="card-premium flex w-full max-w-2xl flex-col rounded-2xl" style={{ maxHeight: "90vh" }}>
+            {/* Header fijo */}
+            <div className="flex flex-shrink-0 items-start justify-between border-b border-[var(--line)] px-6 py-4">
               <div>
                 <h3 className="text-xl font-semibold">Nueva Operación</h3>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Todo cuelga del tipo de operación: Hold, harvest, staking, lending/borrow o LP.
+                <p className="mt-0.5 text-xs text-[var(--muted)]">
+                  Elige el tipo y rellena los campos — solo aparecen los relevantes.
                 </p>
               </div>
               <button type="button" onClick={closeModal} className="rounded-lg p-1 text-[var(--muted)] hover:bg-white/10">
@@ -1971,34 +1984,49 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </button>
             </div>
 
+            {/* Cuerpo con scroll interno */}
+            <div className="flex-1 overflow-y-auto px-6 py-4">
             <div className="grid gap-4">
-              <label className="text-sm">
-                <span className="mb-1 block text-[var(--muted)]">Tipo de operación</span>
-                <select
-                  value={form.operationType}
-                  onChange={(event) => {
-                    const nextOperationType = event.target.value as OperationType;
-                    setForm((prev) => ({
-                      ...prev,
-                      operationType: nextOperationType,
-                      operationScope:
-                        nextOperationType === "harvest" || nextOperationType === "rebalance"
-                          ? "increase_existing"
-                          : prev.operationScope,
-                      positionContextType: defaultPositionContextType(nextOperationType),
-                      baseDepositTargetKey: "",
-                    }));
-                  }}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                >
-                  <option value="base_deposit">Hold</option>
-                  <option value="harvest">Harvest</option>
-                  <option value="rebalance">Rebalanceo</option>
-                  <option value="staking">Staking</option>
-                  <option value="lending_borrow">Lending / Borrow</option>
-                  <option value="liquidity_pool">Liquidity Pool (V3)</option>
-                </select>
-              </label>
+              {/* Fila 1: tipo + fecha en 2 columnas */}
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm">
+                  <span className="mb-1 block text-[var(--muted)]">Tipo de operación</span>
+                  <select
+                    value={form.operationType}
+                    onChange={(event) => {
+                      const nextOperationType = event.target.value as OperationType;
+                      setForm((prev) => ({
+                        ...prev,
+                        operationType: nextOperationType,
+                        operationScope:
+                          nextOperationType === "harvest" || nextOperationType === "rebalance"
+                            ? "increase_existing"
+                            : prev.operationScope,
+                        positionContextType: defaultPositionContextType(nextOperationType),
+                        baseDepositTargetKey: "",
+                      }));
+                    }}
+                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                  >
+                    <option value="base_deposit">Hold</option>
+                    <option value="harvest">Harvest</option>
+                    <option value="rebalance">Rebalanceo</option>
+                    <option value="staking">Staking</option>
+                    <option value="lending_borrow">Lending / Borrow</option>
+                    <option value="liquidity_pool">Liquidity Pool (V3)</option>
+                  </select>
+                </label>
+
+                <label className="text-sm">
+                  <span className="mb-1 block text-[var(--muted)]">Fecha y hora</span>
+                  <input
+                    type="datetime-local"
+                    value={form.transactionDate}
+                    onChange={(event) => setForm((prev) => ({ ...prev, transactionDate: event.target.value }))}
+                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                  />
+                </label>
+              </div>
 
               {isScopedOperation ? (
                 <label className="text-sm">
@@ -2022,16 +2050,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   </select>
                 </label>
               ) : null}
-
-              <label className="text-sm">
-                <span className="mb-1 block text-[var(--muted)]">Fecha y hora de operación</span>
-                <input
-                  type="datetime-local"
-                  value={form.transactionDate}
-                  onChange={(event) => setForm((prev) => ({ ...prev, transactionDate: event.target.value }))}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                />
-              </label>
 
               {form.operationType !== "harvest" && form.operationType !== "rebalance" ? (
                 <div className="grid gap-3">
@@ -2654,16 +2672,30 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <select
                       value={form.rebalanceSourceKey}
                       onChange={(event) => {
-                        const source = baseDepositTargets.find((item) => item.key === event.target.value);
+                        const key = event.target.value;
+                        const source = baseDepositTargets.find((item) => item.key === key);
+                        const sourcePos = positionByKey.get(key);
                         const sourceType = (source?.positionType ?? "").toLowerCase();
+                        const isLpSrc = sourceType.includes("liquidity") || sourceType.includes("lp");
+                        // Auto-fill balances from current position data
+                        let autoAmountA = "";
+                        let autoAmountB = "";
+                        if (sourcePos) {
+                          if (isLpSrc) {
+                            const parts = (sourcePos.balanceLabel ?? "").split("+");
+                            autoAmountA = parts[0]?.replace(/[^0-9.]/g, "").trim() ?? "";
+                            autoAmountB = parts[1]?.replace(/[^0-9.]/g, "").trim() ?? "";
+                          } else {
+                            autoAmountA = sourcePos.currentBalance > 0 ? String(sourcePos.currentBalance) : "";
+                          }
+                        }
                         setForm((prev) => ({
                           ...prev,
-                          rebalanceSourceKey: event.target.value,
+                          rebalanceSourceKey: key,
                           rebalanceSourceTokenSymbol: source?.availableTokens[0] ?? "",
-                          rebalanceSourceLpTokenSymbolB:
-                            sourceType.includes("liquidity") || sourceType.includes("lp")
-                              ? source?.availableTokens[1] ?? ""
-                              : "",
+                          rebalanceSourceLpTokenSymbolB: isLpSrc ? source?.availableTokens[1] ?? "" : "",
+                          rebalanceSourceAmount: autoAmountA,
+                          rebalanceSourceLpAmountB: autoAmountB,
                           portfolioId: source?.portfolioId ?? prev.portfolioId,
                         }));
                       }}
@@ -2677,6 +2709,24 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       ))}
                     </select>
                   </label>
+                  {/* Capital disponible de la posición origen */}
+                  {form.rebalanceSourceKey ? (() => {
+                    const srcPos = positionByKey.get(form.rebalanceSourceKey);
+                    if (!srcPos) return null;
+                    const availableUsd = srcPos.currentValue;
+                    return (
+                      <div className="col-span-full rounded-lg border border-[rgba(0,229,255,0.25)] bg-[rgba(0,229,255,0.06)] px-3 py-2 text-sm">
+                        <span className="text-[var(--muted)]">Capital disponible: </span>
+                        <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
+                        {srcPos.balanceLabel ? (
+                          <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.balanceLabel})</span>
+                        ) : srcPos.currentBalance > 0 ? (
+                          <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.currentBalance} {srcPos.tokenSymbol})</span>
+                        ) : null}
+                      </div>
+                    );
+                  })() : null}
+
                   {(() => {
                     const source = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
                     const sourceType = (source?.positionType ?? "").toLowerCase();
@@ -2846,8 +2896,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             />
                             <span className="text-[var(--muted)]">Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)</span>
                           </label>
+                          <div className="col-span-full rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
+                            <strong className="text-amber-400">Rango:</strong> precio caro ÷ precio barato → siempre &gt; 1.
+                          </div>
                           <label className="text-sm">
-                            <span className="mb-1 block text-[var(--muted)]">Rango mínimo LP (opcional)</span>
+                            <span className="mb-1 block text-[var(--muted)]">Rango mínimo (caro/barato)</span>
                             <input
                               type="number"
                               step="any"
@@ -2855,11 +2908,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               value={form.lpRangeLower}
                               onChange={(event) => setForm((prev) => ({ ...prev, lpRangeLower: event.target.value }))}
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                              placeholder="Si falta metadata, se usará este valor"
+                              placeholder="ej: 15.0"
                             />
                           </label>
                           <label className="text-sm">
-                            <span className="mb-1 block text-[var(--muted)]">Rango máximo LP (opcional)</span>
+                            <span className="mb-1 block text-[var(--muted)]">Rango máximo (caro/barato)</span>
                             <input
                               type="number"
                               step="any"
@@ -2867,7 +2920,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               value={form.lpRangeUpper}
                               onChange={(event) => setForm((prev) => ({ ...prev, lpRangeUpper: event.target.value }))}
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                              placeholder="Si falta metadata, se usará este valor"
+                              placeholder="ej: 25.0"
                             />
                           </label>
                         </>
@@ -3027,8 +3080,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     />
                     <span className="text-[var(--muted)]">Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)</span>
                   </label>
+                  <div className="col-span-full rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
+                    <strong className="text-amber-400">Convención de rango:</strong> expresa siempre como <em>precio caro ÷ precio barato</em> → resultado &gt; 1. Ej: pool BTC/ETH → rango 15 – 25 (BTC/ETH). Pool HYPE/BTC → rango 3500 – 4500 (BTC/HYPE).
+                  </div>
                   <label className="text-sm">
-                    <span className="mb-1 block text-[var(--muted)]">Rango mínimo</span>
+                    <span className="mb-1 block text-[var(--muted)]">Rango mínimo (activo caro / barato)</span>
                     <input
                       type="number"
                       step="any"
@@ -3036,11 +3092,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       value={form.lpRangeLower}
                       onChange={(event) => setForm((prev) => ({ ...prev, lpRangeLower: event.target.value }))}
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                      placeholder="0.90"
+                      placeholder="ej: 15.0"
                     />
                   </label>
                   <label className="text-sm">
-                    <span className="mb-1 block text-[var(--muted)]">Rango máximo</span>
+                    <span className="mb-1 block text-[var(--muted)]">Rango máximo (activo caro / barato)</span>
                     <input
                       type="number"
                       step="any"
@@ -3048,7 +3104,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       value={form.lpRangeUpper}
                       onChange={(event) => setForm((prev) => ({ ...prev, lpRangeUpper: event.target.value }))}
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                      placeholder="1.30"
+                      placeholder="ej: 25.0"
                     />
                   </label>
                 </div>
@@ -3056,18 +3112,20 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             </div>
 
             {selectedPosition ? (
-              <p className="mt-3 text-xs text-[var(--muted)]">
+              <p className="mt-2 text-xs text-[var(--muted)]">
                 Posición seleccionada: {selectedPosition.tokenSymbol} / {selectedPosition.protocol}
               </p>
             ) : null}
+            </div>{/* fin scroll */}
 
+            {/* Footer fijo con botones */}
+            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4">
             {errorMessage ? (
-              <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              <p className="mb-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
                 {errorMessage}
               </p>
             ) : null}
-
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={closeModal}
@@ -3083,6 +3141,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               >
                 {isSaving ? "Guardando..." : "Guardar operación"}
               </button>
+            </div>
             </div>
           </div>
         </div>
@@ -3308,23 +3367,28 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
                     />
                   </div>
+                  <p className="rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
+                    <strong className="text-amber-400">Rango:</strong> precio caro ÷ precio barato → siempre &gt; 1. Ej: BTC/ETH → 15–25.
+                  </p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango mínimo</span>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango mín (caro/barato)</span>
                       <input
                         type="text"
                         inputMode="decimal"
                         className="input-base w-full"
+                        placeholder="ej: 15.0"
                         value={editForm.lpRangeLower}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeLower: e.target.value }))}
                       />
                     </div>
                     <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango máximo</span>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango máx (caro/barato)</span>
                       <input
                         type="text"
                         inputMode="decimal"
                         className="input-base w-full"
+                        placeholder="ej: 25.0"
                         value={editForm.lpRangeUpper}
                         onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeUpper: e.target.value }))}
                       />
