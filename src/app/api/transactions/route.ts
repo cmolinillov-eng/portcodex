@@ -6,7 +6,7 @@ import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
-type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
+type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance" | "lending_adjust";
 
 type TransactionType =
   | "deposit"
@@ -84,6 +84,10 @@ type OperationPayload = {
   lendingCollateralAmount?: number;
   lendingDebtToken?: string;
   lendingDebtAmount?: number;
+  lendingAdjustType?: "add_collateral" | "remove_collateral" | "add_debt" | "repay_debt";
+  lendingAdjustToken?: string;
+  lendingAdjustAmount?: number;
+  harvestNoReinvest?: boolean;
   lpTokenSymbolB?: string;
   lpAmountB?: number;
   lpRangeLower?: number;
@@ -618,6 +622,11 @@ async function buildRows(
       }),
     ];
 
+    // If harvestNoReinvest, only record the harvest transaction and return early
+    if (payload.harvestNoReinvest) {
+      return rows;
+    }
+
     const targetPositionId = sanitizeText(payload.harvestTargetPositionId, sourcePositionId);
     const targetProtocol = sanitizeText(payload.harvestTargetProtocol, sourceProtocol);
     const targetPositionType = sanitizeText(payload.harvestTargetPositionType, sourceType);
@@ -1114,6 +1123,71 @@ async function buildRows(
     return allRows;
   }
 
+  if (payload.operationType === "lending_adjust") {
+    const adjustType = payload.lendingAdjustType;
+    const adjustToken = sanitizeUppercase(payload.lendingAdjustToken);
+    const adjustAmount = sanitizePositive(payload.lendingAdjustAmount);
+
+    if (!adjustType) throw new Error("Falta tipo de ajuste lending.");
+    if (!adjustToken) throw new Error("Falta token para ajuste lending.");
+    if (adjustAmount <= 0) throw new Error("Cantidad de ajuste debe ser mayor a 0.");
+
+    const adjustPrice = spotPriceFor(adjustToken);
+    let txType: TransactionType;
+    let tokenIn: string | null = null;
+    let tokenInAmount: number | null = null;
+    let tokenOut: string | null = null;
+    let tokenOutAmount: number | null = null;
+    let noteLabel: string;
+
+    switch (adjustType) {
+      case "add_collateral":
+        txType = "lending_supply";
+        tokenIn = adjustToken;
+        tokenInAmount = adjustAmount;
+        noteLabel = `+Colateral ${adjustAmount} ${adjustToken}`;
+        break;
+      case "remove_collateral":
+        txType = "lending_withdraw";
+        tokenOut = adjustToken;
+        tokenOutAmount = adjustAmount;
+        noteLabel = `-Colateral ${adjustAmount} ${adjustToken}`;
+        break;
+      case "add_debt":
+        txType = "lending_borrow";
+        tokenIn = adjustToken;
+        tokenInAmount = adjustAmount;
+        noteLabel = `+Préstamo ${adjustAmount} ${adjustToken}`;
+        break;
+      case "repay_debt":
+        txType = "lending_borrow";
+        tokenOut = adjustToken;
+        tokenOutAmount = adjustAmount;
+        noteLabel = `-Préstamo ${adjustAmount} ${adjustToken}`;
+        break;
+      default:
+        throw new Error("Tipo de ajuste lending no válido.");
+    }
+
+    return [
+      makeRow({
+        portfolio_id: portfolioId,
+        type: txType,
+        token_in_symbol: tokenIn,
+        token_in_amount: tokenInAmount,
+        token_out_symbol: tokenOut,
+        token_out_amount: tokenOutAmount,
+        spot_price: adjustPrice,
+        protocol,
+        position_id: positionId,
+        position_type: "Lending",
+        metadata: { adjustType },
+        timestamp,
+        notes: noteLabel,
+      }),
+    ];
+  }
+
   throw new Error("Tipo de operación no soportado.");
 }
 
@@ -1155,6 +1229,7 @@ export async function POST(request: NextRequest) {
       payload.rebalanceSourceLpTokenSymbolB,
       payload.rebalanceTargetTokenSymbol,
       payload.rebalanceTargetLpTokenSymbolB,
+      payload.lendingAdjustToken,
     ].filter((value): value is string => typeof value === "string");
     const pricesBySymbol = await getCachedPricesBySymbol(client, symbolsToPrice);
     const rows = await buildRows(payload, pricesBySymbol, client);
@@ -1177,7 +1252,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Transaction error:", error);
     const message = error instanceof Error ? error.message : "Error inesperado al guardar la operación.";
-    const isSafeMessage = message.startsWith("Operación") || message.startsWith("Portfolio") || message.startsWith("No hay precio") || message.startsWith("Depósito") || message.startsWith("Staking") || message.startsWith("LP") || message.startsWith("Harvest") || message.startsWith("Rebalanceo") || message.startsWith("Falta") || message.startsWith("Debes") || message.startsWith("Para") || message.startsWith("Indica") || message.startsWith("Selecciona") || message.startsWith("Rango") || message.startsWith("El valor") || message.startsWith("Si el") || message.startsWith("No se pudo") || message.startsWith("Fecha");
+    const isSafeMessage = message.startsWith("Operación") || message.startsWith("Portfolio") || message.startsWith("No hay precio") || message.startsWith("Depósito") || message.startsWith("Staking") || message.startsWith("LP") || message.startsWith("Harvest") || message.startsWith("Rebalanceo") || message.startsWith("Falta") || message.startsWith("Debes") || message.startsWith("Para") || message.startsWith("Indica") || message.startsWith("Selecciona") || message.startsWith("Rango") || message.startsWith("El valor") || message.startsWith("Si el") || message.startsWith("No se pudo") || message.startsWith("Fecha") || message.startsWith("Cantidad") || message.startsWith("+") || message.startsWith("-") || message.startsWith("Tipo de ajuste");
     return NextResponse.json({ error: isSafeMessage ? message : "Error inesperado al guardar la operación." }, { status: 400 });
   }
 }

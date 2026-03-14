@@ -317,6 +317,24 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     realizedPnl: number;
     destToken?: string;
   }>>([]);
+  // Lending adjust modal state
+  const [isLendingAdjustOpen, setIsLendingAdjustOpen] = useState(false);
+  const [lendingAdjustPosition, setLendingAdjustPosition] = useState<DefiPosition | null>(null);
+  const [lendingAdjustType, setLendingAdjustType] = useState<"add_collateral" | "remove_collateral" | "add_debt" | "repay_debt">("add_collateral");
+  const [lendingAdjustToken, setLendingAdjustToken] = useState("");
+  const [lendingAdjustAmount, setLendingAdjustAmount] = useState("");
+  const [isSavingLendingAdjust, setIsSavingLendingAdjust] = useState(false);
+
+  // Quick harvest modal state
+  const [isQuickHarvestOpen, setIsQuickHarvestOpen] = useState(false);
+  const [quickHarvestPosition, setQuickHarvestPosition] = useState<DefiPosition | null>(null);
+  const [quickHarvestToken, setQuickHarvestToken] = useState("");
+  const [quickHarvestAmount, setQuickHarvestAmount] = useState("");
+  const [quickHarvestReinvest, setQuickHarvestReinvest] = useState(false);
+  const [quickHarvestTargetKey, setQuickHarvestTargetKey] = useState("");
+  const [quickHarvestTargetToken, setQuickHarvestTargetToken] = useState("");
+  const [isSavingQuickHarvest, setIsSavingQuickHarvest] = useState(false);
+
   const [hoveredCompositionKey, setHoveredCompositionKey] = useState<string | null>(null);
   const [isCompactDonut, setIsCompactDonut] = useState(false);
   const [visibleRecentActivityCount, setVisibleRecentActivityCount] = useState(10);
@@ -722,6 +740,108 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error desconocido al restaurar la posición.";
       setErrorMessage(message);
+    }
+  }
+
+  function openLendingAdjust(position: DefiPosition, adjustType: "add_collateral" | "remove_collateral" | "add_debt" | "repay_debt") {
+    if (!viewer.canOperate) return;
+    setLendingAdjustPosition(position);
+    setLendingAdjustType(adjustType);
+    setLendingAdjustToken("");
+    setLendingAdjustAmount("");
+    setErrorMessage("");
+    setIsLendingAdjustOpen(true);
+  }
+
+  async function saveLendingAdjust() {
+    if (!lendingAdjustPosition) return;
+    const token = lendingAdjustToken.trim().toUpperCase();
+    const amount = Number(lendingAdjustAmount.replace(",", "."));
+    if (!token) { setErrorMessage("Indica el token."); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage("Indica una cantidad válida."); return; }
+
+    try {
+      setErrorMessage("");
+      setIsSavingLendingAdjust(true);
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operationType: "lending_adjust",
+          portfolioId: lendingAdjustPosition.portfolioId,
+          positionId: lendingAdjustPosition.positionId,
+          protocol: lendingAdjustPosition.protocol,
+          lendingAdjustType,
+          lendingAdjustToken: token,
+          lendingAdjustAmount: amount,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Error al ajustar posición lending.");
+      setIsLendingAdjustOpen(false);
+      setLendingAdjustPosition(null);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
+    } finally {
+      setIsSavingLendingAdjust(false);
+    }
+  }
+
+  function openQuickHarvest(position: DefiPosition) {
+    if (!viewer.canOperate) return;
+    const firstToken = position.tokenSymbol.split("/")[0]?.trim().toUpperCase() ?? "";
+    setQuickHarvestPosition(position);
+    setQuickHarvestToken(firstToken);
+    setQuickHarvestAmount("");
+    setQuickHarvestReinvest(false);
+    setQuickHarvestTargetKey(`${position.portfolioId}::${position.protocol}::${position.positionId}`);
+    setQuickHarvestTargetToken(firstToken);
+    setErrorMessage("");
+    setIsQuickHarvestOpen(true);
+  }
+
+  async function saveQuickHarvest() {
+    if (!quickHarvestPosition) return;
+    const token = quickHarvestToken.trim().toUpperCase();
+    const amount = Number(quickHarvestAmount.replace(",", "."));
+    if (!token) { setErrorMessage("Indica el token del harvest."); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage("Indica la cantidad ganada en USD."); return; }
+
+    const targetInfo = quickHarvestReinvest ? baseDepositTargets.find((t) => t.key === quickHarvestTargetKey) : null;
+
+    try {
+      setErrorMessage("");
+      setIsSavingQuickHarvest(true);
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operationType: "harvest",
+          portfolioId: quickHarvestPosition.portfolioId,
+          positionId: quickHarvestPosition.positionId,
+          protocol: quickHarvestPosition.protocol,
+          positionContextType: quickHarvestPosition.positionType,
+          tokenSymbol: token,
+          amount,
+          harvestSourcePositionId: quickHarvestPosition.positionId,
+          harvestSourceProtocol: quickHarvestPosition.protocol,
+          harvestNoReinvest: !quickHarvestReinvest,
+          harvestTargetPositionId: targetInfo?.positionId ?? quickHarvestPosition.positionId,
+          harvestTargetProtocol: targetInfo?.protocol ?? quickHarvestPosition.protocol,
+          harvestTargetPositionType: targetInfo?.positionType ?? quickHarvestPosition.positionType,
+          harvestTargetTokenSymbol: quickHarvestReinvest ? quickHarvestTargetToken.trim().toUpperCase() : token,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Error al registrar harvest.");
+      setIsQuickHarvestOpen(false);
+      setQuickHarvestPosition(null);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
+    } finally {
+      setIsSavingQuickHarvest(false);
     }
   }
 
@@ -1674,24 +1794,40 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   ) : null}
                   <td className="px-4 py-4">
                     {viewer.canOperate ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(position)}
-                          className="btn-secondary"
-                        >
-                          <Pencil className="mr-1 inline h-3.5 w-3.5" />
-                          Modificar
-                        </button>
-                        {viewer.canDeletePosition ? (
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={() => deletePosition(position)}
-                            disabled={isDeletingPositionKey === positionCompositeUiKey(position)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.12)] px-3 py-1.5 text-xs text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                            onClick={() => openEditModal(position)}
+                            className="btn-secondary"
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            {isDeletingPositionKey === positionCompositeUiKey(position) ? "Eliminando..." : "Eliminar"}
+                            <Pencil className="mr-1 inline h-3.5 w-3.5" />
+                            Modificar
+                          </button>
+                          {viewer.canDeletePosition ? (
+                            <button
+                              type="button"
+                              onClick={() => deletePosition(position)}
+                              disabled={isDeletingPositionKey === positionCompositeUiKey(position)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.12)] px-3 py-1.5 text-xs text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {isDeletingPositionKey === positionCompositeUiKey(position) ? "Eliminando..." : "Eliminar"}
+                            </button>
+                          ) : null}
+                        </div>
+                        {section.key === "lending" ? (
+                          <div className="flex flex-wrap gap-1">
+                            <button type="button" onClick={() => openLendingAdjust(position, "add_collateral")} className="inline-flex items-center rounded border border-[rgba(16,185,129,0.4)] bg-[rgba(16,185,129,0.1)] px-2 py-0.5 text-[10px] text-emerald-300 transition hover:bg-[rgba(16,185,129,0.2)]">+Colateral</button>
+                            <button type="button" onClick={() => openLendingAdjust(position, "remove_collateral")} className="inline-flex items-center rounded border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.1)] px-2 py-0.5 text-[10px] text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)]">−Colateral</button>
+                            <button type="button" onClick={() => openLendingAdjust(position, "add_debt")} className="inline-flex items-center rounded border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.1)] px-2 py-0.5 text-[10px] text-amber-300 transition hover:bg-[rgba(245,158,11,0.2)]">+Préstamo</button>
+                            <button type="button" onClick={() => openLendingAdjust(position, "repay_debt")} className="inline-flex items-center rounded border border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.1)] px-2 py-0.5 text-[10px] text-indigo-300 transition hover:bg-[rgba(99,102,241,0.2)]">−Préstamo</button>
+                          </div>
+                        ) : null}
+                        {(section.key === "staking" || section.key === "liquidity_pools") ? (
+                          <button type="button" onClick={() => openQuickHarvest(position)} className="inline-flex items-center gap-1 self-start rounded border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.1)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition hover:bg-[rgba(0,229,255,0.2)]">
+                            <BadgeDollarSign className="h-3 w-3" />
+                            Harvest
                           </button>
                         ) : null}
                       </div>
@@ -3621,6 +3757,210 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 className="w-full rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
               >
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Lending Adjust Modal */}
+      {isLendingAdjustOpen && lendingAdjustPosition ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative mx-4 flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4">
+              <h2 className="text-lg font-semibold">
+                {lendingAdjustType === "add_collateral" ? "Añadir Colateral" :
+                 lendingAdjustType === "remove_collateral" ? "Retirar Colateral" :
+                 lendingAdjustType === "add_debt" ? "Pedir Préstamo" :
+                 "Devolver Préstamo"}
+              </h2>
+              <button type="button" onClick={() => { setIsLendingAdjustOpen(false); setErrorMessage(""); }} className="text-[var(--muted)] hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <p className="text-xs text-[var(--muted)]">
+                {lendingAdjustPosition.tokenSymbol} · {lendingAdjustPosition.protocol} · {lendingAdjustPosition.positionId}
+              </p>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted)]">Token</label>
+                <input
+                  type="text"
+                  value={lendingAdjustToken}
+                  onChange={(e) => setLendingAdjustToken(e.target.value)}
+                  placeholder="ej. USDC, ETH..."
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={lendingAdjustAmount}
+                  onChange={(e) => setLendingAdjustAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                />
+                {lendingAdjustToken.trim() && Number(lendingAdjustAmount.replace(",", ".")) > 0 ? (
+                  <p className="mt-1 text-[11px] text-[var(--muted)]">
+                    ≈ {currency(Number(lendingAdjustAmount.replace(",", ".")) * (tokenPriceMap.get(lendingAdjustToken.trim().toUpperCase()) ?? 0))}
+                  </p>
+                ) : null}
+              </div>
+
+              {errorMessage ? (
+                <p className="text-xs text-rose-400">{errorMessage}</p>
+              ) : null}
+            </div>
+
+            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setIsLendingAdjustOpen(false); setErrorMessage(""); }}
+                className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveLendingAdjust}
+                disabled={isSavingLendingAdjust}
+                className="flex-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-black transition hover:opacity-90 disabled:opacity-50"
+              >
+                {isSavingLendingAdjust ? "Guardando..." : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Quick Harvest Modal */}
+      {isQuickHarvestOpen && quickHarvestPosition ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative mx-4 flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-2xl">
+            <div className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4">
+              <h2 className="text-lg font-semibold">Registrar Harvest</h2>
+              <button type="button" onClick={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }} className="text-[var(--muted)] hover:text-white">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+              <p className="text-xs text-[var(--muted)]">
+                {quickHarvestPosition.tokenSymbol} · {quickHarvestPosition.protocol} · {quickHarvestPosition.positionId}
+              </p>
+
+              {(() => {
+                const posKey = `${quickHarvestPosition.portfolioId}::${quickHarvestPosition.protocol}::${quickHarvestPosition.positionId}`;
+                const harvestInfo = harvestByPosition.find((h) => h.key === posKey);
+                return harvestInfo ? (
+                  <div className="rounded-lg border border-[var(--line)] bg-black/20 px-3 py-2 text-xs">
+                    <span className="text-[var(--muted)]">Histórico harvest: </span>
+                    <span className="font-medium">{currency(harvestInfo.harvestedUsd)}</span>
+                    {harvestInfo.pendingByToken.length > 0 ? (
+                      <>
+                        <span className="text-[var(--muted)]"> · Pendiente: </span>
+                        <span className="font-medium text-amber-300">{currency(harvestInfo.pendingUsd)}</span>
+                        <span className="text-[var(--muted)]"> ({harvestInfo.pendingByToken.map((t) => `${t.amount.toFixed(4)} ${t.tokenSymbol}`).join(", ")})</span>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null;
+              })()}
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted)]">Token del harvest</label>
+                <input
+                  type="text"
+                  value={quickHarvestToken}
+                  onChange={(e) => setQuickHarvestToken(e.target.value)}
+                  placeholder="ej. ETH, USDC..."
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad ganada (USD)</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={quickHarvestAmount}
+                  onChange={(e) => setQuickHarvestAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                />
+              </div>
+
+              <div className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-black/20 px-3 py-3">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={quickHarvestReinvest}
+                    onChange={(e) => setQuickHarvestReinvest(e.target.checked)}
+                    className="accent-[var(--accent)]"
+                  />
+                  Reinvertir ahora
+                </label>
+                {!quickHarvestReinvest ? (
+                  <span className="text-[10px] text-[var(--muted)]">Se acumulará como harvest pendiente</span>
+                ) : null}
+              </div>
+
+              {quickHarvestReinvest ? (
+                <div className="space-y-3 rounded-lg border border-[rgba(0,229,255,0.2)] bg-[rgba(0,229,255,0.05)] p-3">
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--muted)]">Posición destino</label>
+                    <select
+                      value={quickHarvestTargetKey}
+                      onChange={(e) => {
+                        setQuickHarvestTargetKey(e.target.value);
+                        const target = baseDepositTargets.find((t) => t.key === e.target.value);
+                        if (target?.availableTokens[0]) setQuickHarvestTargetToken(target.availableTokens[0]);
+                      }}
+                      className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                    >
+                      {baseDepositTargets.map((target) => (
+                        <option key={target.key} value={target.key}>{target.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--muted)]">Token destino</label>
+                    <input
+                      type="text"
+                      value={quickHarvestTargetToken}
+                      onChange={(e) => setQuickHarvestTargetToken(e.target.value)}
+                      placeholder="ej. ETH"
+                      className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              {errorMessage ? (
+                <p className="text-xs text-rose-400">{errorMessage}</p>
+              ) : null}
+            </div>
+
+            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4 flex gap-3">
+              <button
+                type="button"
+                onClick={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }}
+                className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={saveQuickHarvest}
+                disabled={isSavingQuickHarvest}
+                className="flex-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-black transition hover:opacity-90 disabled:opacity-50"
+              >
+                {isSavingQuickHarvest ? "Guardando..." : (quickHarvestReinvest ? "Registrar y reinvertir" : "Solo acumular")}
               </button>
             </div>
           </div>
