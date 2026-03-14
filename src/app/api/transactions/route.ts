@@ -1026,7 +1026,92 @@ async function buildRows(
       );
     }
 
-    return [...sourceRows, ...targetRows];
+    // Insert closure snapshot for the source position (P&L history)
+    const snapshotRow = await (async () => {
+      try {
+        // Compute source position cost basis from historical transactions
+        const { data: srcTxs } = await client
+          .from("transactions")
+          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
+          .eq("portfolio_id", portfolioId)
+          .eq("protocol", sourceProtocol)
+          .eq("position_id", sourcePositionId)
+          .is("deleted_at", null);
+
+        const srcCapitalIn = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+        const srcCapitalOut = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+        let srcTotalDeposited = 0;
+        let srcTotalValue = 0;
+        const srcBalances: Record<string, number> = {};
+
+        for (const tx of srcTxs ?? []) {
+          const t = ((tx.type ?? "") as string).trim();
+          if (t === "position_closed") continue;
+          const inAmt = toNumber(tx.token_in_amount);
+          const outAmt = toNumber(tx.token_out_amount);
+          const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
+          const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
+          const sp = toNumber(tx.spot_price);
+          if (srcCapitalIn.has(t)) {
+            srcTotalDeposited += inAmt * sp;
+            if (inSym) srcBalances[inSym] = (srcBalances[inSym] ?? 0) + inAmt;
+          } else if (srcCapitalOut.has(t)) {
+            srcTotalDeposited -= outAmt * sp;
+            if (outSym) srcBalances[outSym] = (srcBalances[outSym] ?? 0) - outAmt;
+          }
+        }
+
+        // Current value of source position (before rebalance withdrawal)
+        for (const sym of Object.keys(srcBalances)) {
+          const bal = Math.max(0, srcBalances[sym] ?? 0);
+          const price = spotPriceFor(sym);
+          srcTotalValue += bal * price;
+        }
+
+        // Pro-rate: what fraction of the position is being rebalanced
+        const fraction = srcTotalValue > 0 ? rebalanceUsd / srcTotalValue : 1;
+        const proratedDeposited = srcTotalDeposited * Math.min(1, fraction);
+        const realizedPnl = rebalanceUsd - proratedDeposited;
+
+        const tokenLabel = sourceTokenB
+          ? `${sourceToken}/${sourceTokenB}`
+          : sourceToken;
+
+        return createRow({
+          portfolio_id: portfolioId,
+          type: "position_closed" as TransactionType,
+          token_in_symbol: tokenLabel,
+          token_in_amount: 0,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: 0,
+          protocol: sourceProtocol,
+          position_id: sourcePositionId,
+          position_type: sourcePositionType,
+          metadata: {
+            closure: {
+              totalDeposited: proratedDeposited,
+              valueAtClose: rebalanceUsd,
+              realizedPnl,
+              reason: "rebalanced",
+              closedAt: timestamp,
+              balances: srcBalances,
+              destPositionId: targetPositionId,
+              destProtocol: targetProtocol,
+              destToken: targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken,
+            },
+          },
+          timestamp,
+          notes: `Rebalanceo → ${targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken}`,
+        });
+      } catch {
+        return null;
+      }
+    })();
+
+    const allRows = [...sourceRows, ...targetRows];
+    if (snapshotRow) allRows.push(snapshotRow);
+    return allRows;
   }
 
   throw new Error("Tipo de operación no soportado.");

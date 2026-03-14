@@ -1410,7 +1410,21 @@ export async function getDashboardData(options?: {
     .filter((section) => section.positions.length > 0);
 
   const adjustedTotalValueUsd = adjustedPositions.reduce((acc, position) => acc + position.currentValue, 0);
-  const adjustedPnlUsd = adjustedTotalValueUsd - totalDepositedUsd;
+
+  // Compute realized P&L from position_closed snapshots
+  let totalRealizedPnl = 0;
+  for (const tx of portfolioTransactions) {
+    const txType = ((tx.type ?? "") as string).trim();
+    if (txType !== "position_closed") continue;
+    const meta = tx.metadata as Record<string, unknown> | null;
+    if (!meta || typeof meta !== "object") continue;
+    const closure = meta.closure as Record<string, unknown> | undefined;
+    if (!closure || typeof closure !== "object") continue;
+    const pnl = Number(closure.realizedPnl ?? 0);
+    if (Number.isFinite(pnl)) totalRealizedPnl += pnl;
+  }
+
+  const adjustedPnlUsd = adjustedTotalValueUsd - totalDepositedUsd + totalRealizedPnl;
   const adjustedPnlPercent = totalDepositedUsd > 0 ? (adjustedPnlUsd / totalDepositedUsd) * 100 : 0;
 
   const summary: PortfolioSummary = {
@@ -1419,6 +1433,7 @@ export async function getDashboardData(options?: {
     pnlUsd: adjustedPnlUsd,
     pnlPercent: adjustedPnlPercent,
     totalHarvestUsd,
+    totalRealizedPnl,
   };
 
   const portfolioContextById = portfolioContexts.reduce(

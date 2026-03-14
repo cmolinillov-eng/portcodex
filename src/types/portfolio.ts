@@ -4,6 +4,7 @@ export type PortfolioSummary = {
   pnlUsd: number;
   pnlPercent: number;
   totalHarvestUsd: number;
+  totalRealizedPnl: number;
 };
 
 export type DashboardCategoryKey = "wallet" | "lending" | "liquidity_pools" | "staking";
