@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME } from "@/lib/auth/session";
+import { ACCESS_TOKEN_COOKIE_NAME, REFRESH_TOKEN_COOKIE_NAME, PROFILE_ID_COOKIE_NAME } from "@/lib/auth/session";
 import { validateCsrf } from "@/lib/security/csrf";
 
 function clearSessionCookies(response: NextResponse): void {
@@ -8,6 +8,10 @@ function clearSessionCookies(response: NextResponse): void {
     maxAge: 0,
   });
   response.cookies.set(REFRESH_TOKEN_COOKIE_NAME, "", {
+    path: "/",
+    maxAge: 0,
+  });
+  response.cookies.set(PROFILE_ID_COOKIE_NAME, "", {
     path: "/",
     maxAge: 0,
   });

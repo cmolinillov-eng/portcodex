@@ -4,6 +4,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import {
   ACCESS_TOKEN_COOKIE_NAME,
   REFRESH_TOKEN_COOKIE_NAME,
+  PROFILE_ID_COOKIE_NAME,
   isProductionEnvironment,
 } from "@/lib/auth/session";
 import { validateCsrf } from "@/lib/security/csrf";
@@ -24,6 +25,12 @@ type ProfileForProvision = {
   full_name: string | null;
   email: string | null;
   role: "autonomo" | "admin" | "cliente" | null;
+};
+
+type ProfileListRow = {
+  id: string;
+  role: "autonomo" | "admin" | "cliente";
+  full_name: string | null;
 };
 
 function cleanText(value: string | null | undefined): string {
@@ -112,56 +119,74 @@ export async function POST(request: NextRequest) {
     }
 
     const session = loginResult.data.session;
+    const userId = cleanText(loginResult.data.user?.id ?? session.user?.id ?? "");
 
-    // Garantiza portfolio propio para cliente/autónomo al entrar (usuarios legacy incluidos).
-    try {
-      const provisionClient = getSupabaseServiceClient() ?? getSupabaseServerClient();
-      const userId = cleanText(loginResult.data.user?.id ?? session.user?.id ?? "");
-      if (userId) {
-        const profileQuery = await provisionClient
+    // Obtener todos los perfiles de este auth user
+    let profiles: ProfileForProvision[] = [];
+    const provisionClient = getSupabaseServiceClient() ?? getSupabaseServerClient();
+
+    if (userId) {
+      const profilesQuery = await provisionClient
+        .from("profiles")
+        .select("id, full_name, email, role")
+        .eq("auth_user_id", userId)
+        .order("created_at", { ascending: true });
+
+      if (!profilesQuery.error && profilesQuery.data) {
+        profiles = profilesQuery.data as ProfileForProvision[];
+      }
+
+      // Fallback legacy: buscar por id = userId
+      if (profiles.length === 0) {
+        const legacyQuery = await provisionClient
           .from("profiles")
           .select("id, full_name, email, role")
           .eq("id", userId)
           .maybeSingle();
 
-        if (!profileQuery.error) {
-          let profile = (profileQuery.data ?? null) as ProfileForProvision | null;
-
-          if (!profile?.id) {
-            const profileUpsert = await provisionClient
-              .from("profiles")
-              .upsert(
-                {
-                  id: userId,
-                  email,
-                  role: "autonomo",
-                },
-                { onConflict: "id" },
-              );
-
-            if (!profileUpsert.error) {
-              profile = {
-                id: userId,
-                full_name: null,
-                email,
-                role: "autonomo",
-              };
-            }
-          }
-
-          if (profile?.id) {
-            await ensureOwnedPortfoliosForProfiles(provisionClient, [profile]);
-          }
+        if (!legacyQuery.error && legacyQuery.data) {
+          profiles = [legacyQuery.data as ProfileForProvision];
         }
       }
-    } catch (_provisionError) {
-      // Provisión de portfolio no es crítica; no bloqueamos el login.
+
+      // Si aún no hay perfil, provisionar uno como autónomo
+      if (profiles.length === 0) {
+        const upsertResult = await provisionClient
+          .from("profiles")
+          .upsert(
+            {
+              id: userId,
+              auth_user_id: userId,
+              email,
+              role: "autonomo",
+            },
+            { onConflict: "id" },
+          );
+
+        if (!upsertResult.error) {
+          profiles = [{ id: userId, full_name: null, email, role: "autonomo" }];
+        }
+      }
+
+      // Garantizar portfolio propio para cada perfil cliente/autónomo
+      try {
+        const operableProfiles = profiles.filter(
+          (p): p is ProfileForProvision & { id: string } =>
+            Boolean(p.id) && (p.role === "autonomo" || p.role === "cliente"),
+        );
+        if (operableProfiles.length > 0) {
+          await ensureOwnedPortfoliosForProfiles(provisionClient, operableProfiles);
+        }
+      } catch (_provisionError) {
+        // No bloquear el login por esto
+      }
     }
 
+    const secure = isProductionEnvironment();
     const response = NextResponse.json({ ok: true });
     response.headers.set("cache-control", "no-store");
-    const secure = isProductionEnvironment();
 
+    // Siempre poner cookies de sesión auth
     response.cookies.set(ACCESS_TOKEN_COOKIE_NAME, session.access_token, {
       httpOnly: true,
       secure,
@@ -180,7 +205,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return response;
+    // Si solo hay un perfil → seleccionarlo automáticamente con cookie
+    if (profiles.length <= 1) {
+      const singleProfileId = profiles[0]?.id;
+      if (singleProfileId) {
+        response.cookies.set(PROFILE_ID_COOKIE_NAME, singleProfileId, {
+          httpOnly: true,
+          secure,
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 30,
+        });
+      }
+      return response;
+    }
+
+    // Si hay múltiples perfiles → devolver lista para que el usuario elija
+    const profileList: ProfileListRow[] = profiles
+      .filter((p): p is ProfileForProvision & { id: string; role: "autonomo" | "admin" | "cliente" } =>
+        Boolean(p.id) && Boolean(p.role),
+      )
+      .map((p) => ({
+        id: p.id,
+        role: p.role,
+        full_name: p.full_name ?? null,
+      }));
+
+    return NextResponse.json(
+      { ok: true, requiresProfileSelection: true, profiles: profileList },
+      {
+        headers: {
+          "cache-control": "no-store",
+          "set-cookie": response.headers.get("set-cookie") ?? "",
+        },
+      },
+    );
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Login error:", error);
     return NextResponse.json({ error: "Error inesperado iniciando sesión." }, { status: 500 });

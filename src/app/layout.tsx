@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { IBM_Plex_Mono, Plus_Jakarta_Sans, Readex_Pro } from "next/font/google";
 import "./globals.css";
 
 const uiFont = Plus_Jakarta_Sans({
@@ -14,9 +14,15 @@ const monoFont = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
 });
 
+const designerFont = Readex_Pro({
+  variable: "--font-designer",
+  subsets: ["latin"],
+  weight: ["200", "300", "400"],
+});
+
 export const metadata: Metadata = {
-  title: "Crypto Portfolio Tracker",
-  description: "Dashboard de seguimiento de portfolio cripto",
+  title: "PortCodex | Claridad y Control",
+  description: "Elite Crypto Portfolio Tracker",
 };
 
 export default function RootLayout({
@@ -25,8 +31,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body className={`${uiFont.variable} ${monoFont.variable} antialiased`}>
+    <html lang="es" className="dark">
+      <body className={`${uiFont.variable} ${monoFont.variable} ${designerFont.variable} antialiased bg-[#0A0A0B] text-white`}>
         {children}
       </body>
     </html>

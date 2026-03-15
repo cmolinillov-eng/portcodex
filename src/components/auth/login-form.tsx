@@ -3,9 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+type ProfileChoice = {
+  id: string;
+  role: "autonomo" | "admin" | "cliente";
+  full_name: string | null;
+};
+
 type LoginApiResponse = {
   ok?: boolean;
   error?: string;
+  requiresProfileSelection?: boolean;
+  profiles?: ProfileChoice[];
 };
 
 type RegisterApiResponse = {
@@ -28,9 +36,13 @@ type ResetPasswordApiResponse = {
 
 type AuthView = "login" | "register" | "recover";
 
-export function LoginForm() {
+interface LoginFormProps {
+  initialView?: AuthView;
+}
+
+export function LoginForm({ initialView = "login" }: LoginFormProps) {
   const router = useRouter();
-  const [authView, setAuthView] = useState<AuthView>("login");
+  const [authView, setAuthView] = useState<AuthView>(initialView);
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -43,6 +55,8 @@ export function LoginForm() {
   const [isRecoveryMode, setIsRecoveryMode] = useState(false);
   const [recoveryAccessToken, setRecoveryAccessToken] = useState("");
   const [recoveryRefreshToken, setRecoveryRefreshToken] = useState("");
+  const [profileChoices, setProfileChoices] = useState<ProfileChoice[]>([]);
+  const [isSelectingProfile, setIsSelectingProfile] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -85,13 +99,8 @@ export function LoginForm() {
   async function submitLogin(): Promise<void> {
     const response = await fetch("/api/auth/login", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        identifier,
-        password,
-      }),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ identifier, password }),
     });
 
     const body = (await response.json()) as LoginApiResponse;
@@ -99,8 +108,36 @@ export function LoginForm() {
       throw new Error(body.error ?? "No se pudo iniciar sesión.");
     }
 
+    if (body.requiresProfileSelection && body.profiles && body.profiles.length > 1) {
+      setProfileChoices(body.profiles);
+      setIsSelectingProfile(true);
+      return;
+    }
+
     router.replace("/");
     router.refresh();
+  }
+
+  async function selectProfile(profileId: string): Promise<void> {
+    setIsSubmitting(true);
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/auth/select-profile", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profileId }),
+      });
+      const body = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error ?? "No se pudo seleccionar el perfil.");
+      }
+      router.replace("/");
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Error al seleccionar perfil.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function submitRegister(): Promise<void> {
@@ -228,17 +265,61 @@ export function LoginForm() {
     }
   }
 
+  const roleLabel: Record<string, string> = {
+    autonomo: "Autónomo",
+    admin: "Gestor",
+    cliente: "Cliente",
+  };
+
+  if (isSelectingProfile) {
+    return (
+      <div className="space-y-5">
+        <p className="text-sm text-[var(--muted)]">
+          Este correo tiene varios perfiles. ¿Con cuál quieres entrar?
+        </p>
+        {errorMessage ? (
+          <p className="rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.12)] px-3 py-2 text-sm text-rose-300">
+            {errorMessage}
+          </p>
+        ) : null}
+        <div className="space-y-2">
+          {profileChoices.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              disabled={isSubmitting}
+              onClick={() => selectProfile(p.id)}
+              className="flex w-full items-center justify-between rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-4 py-3 text-left transition hover:border-[rgba(160,210,255,0.45)] hover:bg-[rgba(160,210,255,0.06)] disabled:opacity-60"
+            >
+              <span className="font-medium">{p.full_name ?? p.id.slice(0, 8)}</span>
+              <span className="rounded-full border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.08)] px-2.5 py-0.5 text-xs text-[#A0D2FF]">
+                {roleLabel[p.role] ?? p.role}
+              </span>
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => { setIsSelectingProfile(false); setErrorMessage(""); }}
+          className="w-full text-center text-xs text-[var(--muted)] hover:text-white"
+        >
+          ← Volver al inicio de sesión
+        </button>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {!isRecoveryMode ? (
-        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[rgba(0,229,255,0.28)] bg-[rgba(0,0,0,0.18)] p-1">
+        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[rgba(160,210,255,0.12)] bg-[rgba(0,0,0,0.25)] p-1">
           <button
             type="button"
             onClick={() => setAuthView("login")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "login"
-                ? "bg-[rgba(0,229,255,0.2)] text-cyan-200"
-                : "text-[var(--muted)] hover:bg-[rgba(0,229,255,0.1)]"
+                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
+                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
             }`}
           >
             Iniciar sesión
@@ -248,8 +329,8 @@ export function LoginForm() {
             onClick={() => setAuthView("register")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "register"
-                ? "bg-[rgba(0,229,255,0.2)] text-cyan-200"
-                : "text-[var(--muted)] hover:bg-[rgba(0,229,255,0.1)]"
+                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
+                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
             }`}
           >
             Registrarse
@@ -259,15 +340,15 @@ export function LoginForm() {
             onClick={() => setAuthView("recover")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "recover"
-                ? "bg-[rgba(0,229,255,0.2)] text-cyan-200"
-                : "text-[var(--muted)] hover:bg-[rgba(0,229,255,0.1)]"
+                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
+                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
             }`}
           >
             Recuperar
           </button>
         </div>
       ) : (
-        <p className="rounded-lg border border-[rgba(0,229,255,0.35)] bg-[rgba(0,229,255,0.1)] px-3 py-2 text-sm text-cyan-200">
+        <p className="rounded-lg border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm text-[#D4E9FF]">
           Define tu nueva contraseña para completar la recuperación.
         </p>
       )}
@@ -283,7 +364,7 @@ export function LoginForm() {
               value={registerFullName}
               onChange={(event) => setRegisterFullName(event.target.value)}
               placeholder="Tu nombre visible"
-              className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+              className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
             />
           </label>
 
@@ -296,7 +377,7 @@ export function LoginForm() {
               value={registerEmail}
               onChange={(event) => setRegisterEmail(event.target.value)}
               placeholder="correo@dominio.com"
-              className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+              className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
             />
           </label>
         </>
@@ -312,7 +393,7 @@ export function LoginForm() {
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             placeholder="tuusuario o correo@dominio.com"
-            className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
           />
         </label>
       ) : null}
@@ -327,7 +408,7 @@ export function LoginForm() {
             value={recoverEmail}
             onChange={(event) => setRecoverEmail(event.target.value)}
             placeholder="correo@dominio.com"
-            className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
           />
         </label>
       ) : null}
@@ -344,7 +425,7 @@ export function LoginForm() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
           />
         </label>
       ) : null}
@@ -359,7 +440,7 @@ export function LoginForm() {
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-[rgba(173,190,200,0.34)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(0,229,255,0.88)] focus:ring-2 focus:ring-[rgba(0,229,255,0.28)] focus:shadow-[inset_0_0_0_1px_rgba(0,229,255,0.55),0_0_20px_rgba(0,229,255,0.2)]"
+            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
           />
         </label>
       ) : null}
@@ -379,10 +460,10 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className={`relative inline-flex w-full items-center justify-center overflow-hidden border border-[rgba(0,229,255,0.55)] text-foreground transition duration-300 disabled:cursor-not-allowed disabled:opacity-60 ${
+        className={`relative inline-flex w-full items-center justify-center overflow-hidden text-foreground transition duration-300 disabled:cursor-not-allowed disabled:opacity-60 ${
           isSubmitting
-            ? "h-2 rounded-full bg-[rgba(0,229,255,0.12)] px-0 py-0"
-            : "rounded-xl bg-[rgba(0,229,255,0.16)] px-4 py-3.5 text-[18px] font-medium transition-all duration-[400ms] ease-in-out hover:-translate-y-[2px] hover:bg-[rgba(0,229,255,0.24)] hover:shadow-[0_14px_30px_rgba(0,229,255,0.2)]"
+            ? "h-2 rounded-full bg-[rgba(157,80,187,0.15)] px-0 py-0"
+            : "rounded-xl border border-[rgba(157,80,187,0.4)] bg-gradient-to-r from-[rgba(160,210,255,0.08)] to-[rgba(157,80,187,0.12)] px-4 py-3.5 text-[18px] font-medium transition-all duration-[400ms] ease-in-out hover:-translate-y-[2px] hover:from-[rgba(160,210,255,0.14)] hover:to-[rgba(157,80,187,0.2)] hover:shadow-[0_14px_30px_rgba(157,80,187,0.2)]"
         }`}
       >
         {isSubmitting ? (

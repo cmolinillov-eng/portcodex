@@ -189,11 +189,11 @@ export function AdminCreateUserForm({
                 onClick={() => setRole("autonomo")}
                 className={`rounded-xl border px-3 py-2 text-left transition ${
                   role === "autonomo"
-                    ? "border-[rgba(74,222,128,0.55)] bg-[rgba(74,222,128,0.14)]"
+                    ? "border-[rgba(157,80,187,0.55)] bg-[rgba(157,80,187,0.14)]"
                     : "border-[var(--line)] bg-black/20"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(74,222,128,0.45)] bg-[rgba(74,222,128,0.12)] px-2 py-0.5 text-xs text-emerald-300">
+                <span className="inline-flex rounded-full border border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] px-2 py-0.5 text-xs text-[#C090E8]">
                   Autónomo
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona su propio portfolio.</p>
@@ -204,11 +204,11 @@ export function AdminCreateUserForm({
                 onClick={() => setRole("admin")}
                 className={`rounded-xl border px-3 py-2 text-left transition ${
                   role === "admin"
-                    ? "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)]"
+                    ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)]"
                     : "border-[var(--line)] bg-black/20"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] px-2 py-0.5 text-xs text-cyan-300">
+                <span className="inline-flex rounded-full border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-2 py-0.5 text-xs text-[#A0D2FF]">
                   Gestor
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona portfolios de clientes.</p>
@@ -228,7 +228,7 @@ export function AdminCreateUserForm({
                   }}
                   className={`rounded-lg border px-3 py-2 text-left text-sm ${
                     clientAssignMode === "later"
-                      ? "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300"
+                      ? "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]"
                       : "border-[var(--line)] bg-black/20 text-[var(--muted)]"
                   }`}
                 >
@@ -239,7 +239,7 @@ export function AdminCreateUserForm({
                   onClick={() => setClientAssignMode("now")}
                   className={`rounded-lg border px-3 py-2 text-left text-sm ${
                     clientAssignMode === "now"
-                      ? "border-[rgba(0,229,255,0.5)] bg-[rgba(0,229,255,0.12)] text-cyan-300"
+                      ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]"
                       : "border-[var(--line)] bg-black/20 text-[var(--muted)]"
                   }`}
                 >

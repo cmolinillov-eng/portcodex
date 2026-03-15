@@ -1,13 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
-import { ACCESS_TOKEN_COOKIE_NAME } from "@/lib/auth/session";
+import { ACCESS_TOKEN_COOKIE_NAME, PROFILE_ID_COOKIE_NAME } from "@/lib/auth/session";
 
 export type ViewerRole = "autonomo" | "admin" | "cliente";
 
 export type ViewerAccess = {
   isAuthenticated: boolean;
-  userId: string | null;
+  userId: string | null;       // auth user id (auth.users.id)
+  profileId: string | null;    // selected profile id (profiles.id)
   role: ViewerRole;
   isSuperAdmin: boolean;
   allowedPortfolioIds: string[];
@@ -19,6 +20,7 @@ export type ViewerAccess = {
 };
 
 type ProfileRow = {
+  id: string | null;
   role: ViewerRole | null;
   email?: string | null;
 };
@@ -53,13 +55,16 @@ type CurrentViewer = {
 
 type SessionCookies = {
   accessToken: string | null;
+  profileId: string | null;
 };
 
 async function readSessionCookies(): Promise<SessionCookies> {
   const cookieStore = await cookies();
   const accessToken = sanitizeText(cookieStore.get(ACCESS_TOKEN_COOKIE_NAME)?.value);
+  const profileId = sanitizeText(cookieStore.get(PROFILE_ID_COOKIE_NAME)?.value);
   return {
     accessToken: accessToken || null,
+    profileId: profileId || null,
   };
 }
 
@@ -96,26 +101,56 @@ async function getCurrentViewer(): Promise<CurrentViewer> {
   };
 }
 
-async function getViewerProfile(client: SupabaseClient, userId: string | null): Promise<ProfileRow | null> {
+/**
+ * Devuelve el perfil activo para el auth user.
+ * Si hay varios perfiles (multi-rol), usa el profile_id de la cookie.
+ * Si no hay cookie o el profile_id no pertenece al auth user, usa el primero por orden de creación.
+ */
+async function getViewerProfile(
+  client: SupabaseClient,
+  userId: string | null,
+  selectedProfileId: string | null,
+): Promise<ProfileRow | null> {
   if (!userId) return null;
 
+  // Buscar todos los perfiles de este auth user
   const profileQuery = await client
     .from("profiles")
-    .select("role, email")
-    .eq("id", userId)
-    .maybeSingle();
+    .select("id, role, email")
+    .eq("auth_user_id", userId)
+    .order("created_at", { ascending: true });
 
-  if (profileQuery.error) return null;
-  return (profileQuery.data ?? null) as ProfileRow | null;
+  if (profileQuery.error) {
+    // Fallback: intentar por id = userId (datos legacy sin auth_user_id migrado aún)
+    const legacyQuery = await client
+      .from("profiles")
+      .select("id, role, email")
+      .eq("id", userId)
+      .maybeSingle();
+    if (legacyQuery.error) return null;
+    return (legacyQuery.data ?? null) as ProfileRow | null;
+  }
+
+  const profiles = (profileQuery.data ?? []) as ProfileRow[];
+  if (profiles.length === 0) return null;
+
+  // Si hay un profile_id en cookie y pertenece a este auth user → usarlo
+  if (selectedProfileId) {
+    const match = profiles.find((p) => p.id === selectedProfileId);
+    if (match) return match;
+  }
+
+  // Por defecto: primer perfil (orden de creación)
+  return profiles[0] ?? null;
 }
 
 async function getAllowedPortfolioIds(
   client: SupabaseClient,
-  userId: string | null,
+  profileId: string | null,
   role: ViewerRole,
   isSuperAdmin: boolean,
 ): Promise<string[]> {
-  if (!userId) return [];
+  if (!profileId) return [];
 
   if (isSuperAdmin) {
     const allPortfolios = await client.from("portfolios").select("id");
@@ -127,8 +162,8 @@ async function getAllowedPortfolioIds(
 
   if (role === "admin") {
     const [owned, managed] = await Promise.all([
-      client.from("portfolios").select("id").eq("owner_id", userId),
-      client.from("portfolios").select("id").eq("manager_id", userId),
+      client.from("portfolios").select("id").eq("owner_id", profileId),
+      client.from("portfolios").select("id").eq("manager_id", profileId),
     ]);
 
     const ids = new Set<string>();
@@ -144,7 +179,7 @@ async function getAllowedPortfolioIds(
   }
 
   // cliente y autonomo: solo portfolios propios.
-  const own = await client.from("portfolios").select("id").eq("owner_id", userId);
+  const own = await client.from("portfolios").select("id").eq("owner_id", profileId);
   if (own.error) return [];
   return ((own.data ?? []) as PortfolioRow[])
     .map((row) => sanitizeText(row.id))
@@ -156,7 +191,11 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
   const viewer = await getCurrentViewer();
   const userId = viewer.userId;
   const isAuthenticated = Boolean(userId);
-  const profile = await getViewerProfile(client, userId);
+
+  const sessionCookies = await readSessionCookies();
+  const profile = await getViewerProfile(client, userId, sessionCookies.profileId);
+  const profileId = sanitizeText(profile?.id ?? "").length > 0 ? sanitizeText(profile?.id ?? "") : null;
+
   const role = normalizeRole(profile?.role ?? "autonomo");
   const superAdminUserId = sanitizeText(process.env.SUPERADMIN_USER_ID);
   const superAdminEmail = sanitizeText(process.env.SUPERADMIN_EMAIL).toLowerCase();
@@ -168,7 +207,7 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
       (profileEmail === superAdminEmail || authEmail === superAdminEmail),
   );
   const isSuperAdmin = isSuperAdminById || isSuperAdminByEmail;
-  const allowedPortfolioIds = await getAllowedPortfolioIds(client, userId, role, isSuperAdmin);
+  const allowedPortfolioIds = await getAllowedPortfolioIds(client, profileId, role, isSuperAdmin);
 
   const canRead = isAuthenticated && (isSuperAdmin || allowedPortfolioIds.length > 0);
   const canOperate = isAuthenticated && (isSuperAdmin || role !== "cliente");
@@ -176,6 +215,7 @@ export async function getViewerAccess(): Promise<ViewerAccess> {
   return {
     isAuthenticated,
     userId,
+    profileId,
     role,
     isSuperAdmin,
     allowedPortfolioIds,

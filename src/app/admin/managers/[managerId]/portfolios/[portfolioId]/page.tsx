@@ -57,7 +57,7 @@ export default async function AdminManagerPortfolioPage({ params }: PageProps) {
 
   return (
     <>
-      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(0,229,255,0.55)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
+      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(160,210,255,0.45)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm">
           <Link href={`/admin/managers/${selectedManagerId}`} className="btn-secondary btn-secondary-compact">
             Volver al gestor
@@ -76,7 +76,7 @@ export default async function AdminManagerPortfolioPage({ params }: PageProps) {
                     href={`/admin/managers/${selectedManagerId}/portfolios/${id}`}
                     className={`inline-flex rounded-md border px-2 py-1 ${
                       isActive
-                        ? "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] text-cyan-300"
+                        ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.14)] text-[#A0D2FF]"
                         : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:text-foreground"
                     }`}
                   >

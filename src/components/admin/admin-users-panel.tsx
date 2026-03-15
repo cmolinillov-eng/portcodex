@@ -41,9 +41,9 @@ function roleBadgeClasses(role: Role): string {
     return "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300";
   }
   if (role === "admin") {
-    return "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] text-cyan-300";
+    return "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]";
   }
-  return "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300";
+  return "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]";
 }
 
 
@@ -158,7 +158,7 @@ export function AdminUsersPanel({
 
           <div className="page-table-shell">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
+              <thead className="text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">USUARIO</th>
                   <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">EMAIL</th>
@@ -198,16 +198,16 @@ export function AdminUsersPanel({
                         {userPortfolios.length === 0 ? (
                           <span className="text-[var(--muted)]">Sin portfolio</span>
                         ) : user.role === "admin" ? (
-                          <Link href={`/admin/managers/${user.id}`} className="text-cyan-300 underline underline-offset-2">
+                          <Link href={`/admin/managers/${user.id}`} className="text-[#A0D2FF] underline underline-offset-2">
                             {userPortfolios.length} portfolio(s)
                           </Link>
                         ) : userPortfolios.length === 1 ? (
-                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-cyan-300 underline underline-offset-2">
+                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-[#A0D2FF] underline underline-offset-2">
                             {userPortfolios[0].name}
                           </Link>
                         ) : (
                           <details>
-                            <summary className="cursor-pointer list-none text-cyan-300">
+                            <summary className="cursor-pointer list-none text-[#A0D2FF]">
                               {userPortfolios.length} portfolio(s)
                             </summary>
                             <div className="mt-1 space-y-1 text-xs text-[var(--muted)]">

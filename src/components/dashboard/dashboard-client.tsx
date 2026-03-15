@@ -286,6 +286,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [editPosition, setEditPosition] = useState<DefiPosition | null>(null);
+  const [editModalTab, setEditModalTab] = useState<"edit" | "lending_adjust">("edit");
+  const [editLendingAdjustType, setEditLendingAdjustType] = useState<"add_collateral" | "remove_collateral" | "add_debt" | "repay_debt">("add_collateral");
+  const [editLendingToken, setEditLendingToken] = useState("");
+  const [editLendingAmount, setEditLendingAmount] = useState("");
+  const [isSavingLendingFromEdit, setIsSavingLendingFromEdit] = useState(false);
   const [editForm, setEditForm] = useState({
     tokenSymbol: "",
     amount: "",
@@ -317,14 +322,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     realizedPnl: number;
     destToken?: string;
   }>>([]);
-  // Lending adjust modal state
-  const [isLendingAdjustOpen, setIsLendingAdjustOpen] = useState(false);
-  const [lendingAdjustPosition, setLendingAdjustPosition] = useState<DefiPosition | null>(null);
-  const [lendingAdjustType, setLendingAdjustType] = useState<"add_collateral" | "remove_collateral" | "add_debt" | "repay_debt">("add_collateral");
-  const [lendingAdjustToken, setLendingAdjustToken] = useState("");
-  const [lendingAdjustAmount, setLendingAdjustAmount] = useState("");
-  const [isSavingLendingAdjust, setIsSavingLendingAdjust] = useState(false);
-
   // Quick harvest modal state
   const [isQuickHarvestOpen, setIsQuickHarvestOpen] = useState(false);
   const [quickHarvestPosition, setQuickHarvestPosition] = useState<DefiPosition | null>(null);
@@ -561,11 +558,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   ]);
 
   const compositionStyles = useMemo(() => {
-    const palette = ["#00E5FF", "#35F3FF", "#6AF5FF", "#00B7FF", "#96FBFF"];
+    // Paleta: wallet=azul perla, lending=púrpura, liquidity=teal, staking=ámbar
+    const palette = ["#A0D2FF", "#B87EF5", "#4ECDC4", "#FFB347", "#D4E9FF"];
     const total = sectionTotals.reduce((sum, item) => sum + item.value, 0);
     if (total <= 0) {
       return {
-        donutBackground: "conic-gradient(#1E293B 0deg 360deg)",
+        donutBackground: "conic-gradient(#0e1e32 0deg 360deg)",
         entries: sectionTotals.map((item, index) => ({
           ...item,
           percent: 0,
@@ -743,51 +741,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     }
   }
 
-  function openLendingAdjust(position: DefiPosition, adjustType: "add_collateral" | "remove_collateral" | "add_debt" | "repay_debt") {
-    if (!viewer.canOperate) return;
-    setLendingAdjustPosition(position);
-    setLendingAdjustType(adjustType);
-    setLendingAdjustToken("");
-    setLendingAdjustAmount("");
-    setErrorMessage("");
-    setIsLendingAdjustOpen(true);
-  }
-
-  async function saveLendingAdjust() {
-    if (!lendingAdjustPosition) return;
-    const token = lendingAdjustToken.trim().toUpperCase();
-    const amount = Number(lendingAdjustAmount.replace(",", "."));
-    if (!token) { setErrorMessage("Indica el token."); return; }
-    if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage("Indica una cantidad válida."); return; }
-
-    try {
-      setErrorMessage("");
-      setIsSavingLendingAdjust(true);
-      const response = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operationType: "lending_adjust",
-          portfolioId: lendingAdjustPosition.portfolioId,
-          positionId: lendingAdjustPosition.positionId,
-          protocol: lendingAdjustPosition.protocol,
-          lendingAdjustType,
-          lendingAdjustToken: token,
-          lendingAdjustAmount: amount,
-        }),
-      });
-      const body = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Error al ajustar posición lending.");
-      setIsLendingAdjustOpen(false);
-      setLendingAdjustPosition(null);
-      router.refresh();
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
-    } finally {
-      setIsSavingLendingAdjust(false);
-    }
-  }
-
   function openQuickHarvest(position: DefiPosition) {
     if (!viewer.canOperate) return;
     const firstToken = position.tokenSymbol.split("/")[0]?.trim().toUpperCase() ?? "";
@@ -862,7 +815,46 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       isCorrelated: position.lpRangeStatus === "correlated",
     });
     setErrorMessage("");
+    setEditModalTab("edit");
+    setEditLendingAdjustType("add_collateral");
+    setEditLendingToken("");
+    setEditLendingAmount("");
     setIsEditModalOpen(true);
+  }
+
+  async function saveLendingAdjustFromEdit() {
+    if (!editPosition) return;
+    const token = editLendingToken.trim().toUpperCase();
+    const amount = Number(editLendingAmount.replace(",", "."));
+    if (!token) { setErrorMessage("Indica el token."); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage("Indica una cantidad válida."); return; }
+
+    try {
+      setErrorMessage("");
+      setIsSavingLendingFromEdit(true);
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operationType: "lending_adjust",
+          portfolioId: editPosition.portfolioId,
+          positionId: editPosition.positionId,
+          protocol: editPosition.protocol,
+          lendingAdjustType: editLendingAdjustType,
+          lendingAdjustToken: token,
+          lendingAdjustAmount: amount,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Error al ajustar posición lending.");
+      setIsEditModalOpen(false);
+      setEditPosition(null);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
+    } finally {
+      setIsSavingLendingFromEdit(false);
+    }
   }
 
   async function saveEditPosition() {
@@ -950,7 +942,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         percent: summary.totalValueUsd > 0 ? (value / summary.totalValueUsd) * 100 : 0,
       }));
 
-    const tokenPalette = ["#00E5FF", "#35F3FF", "#6AF5FF", "#00B7FF", "#96FBFF", "#4FD4FF", "#8CD7FF"];
+    const tokenPalette = ["#A0D2FF", "#B87EF5", "#4ECDC4", "#FFB347", "#D4E9FF", "#C084FC", "#60C8A8", "#FFA07A"];
     let angleStart = 0;
     const tokenSlices = tokenRows.map((row, index) => {
       const angleSize = (row.percent / 100) * 360;
@@ -1629,7 +1621,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <div className="page-table-shell">
           <table className="w-full min-w-[1180px] border-collapse">
-            <thead className="bg-[rgba(0,229,255,0.12)] text-left">
+            <thead className="bg-[rgba(160,210,255,0.12)] text-left">
               <tr>
                 <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACTIVO</th>
                 <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">SALDO</th>
@@ -1705,14 +1697,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <span className="text-sm">{plainPercent(allocationPercent)}</span>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="inline-flex items-center rounded-full border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.12)] px-2.5 py-1 text-xs">
+                    <span className="inline-flex items-center rounded-full border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)] px-2.5 py-1 text-xs">
                       {position.protocol}
                     </span>
                   </td>
                   {showYieldColumn ? (
                     <td className="px-4 py-4">
                       {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(0,229,255,0.35)] bg-[rgba(0,229,255,0.1)] px-2.5 py-1 text-xs">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(160,210,255,0.35)] bg-[rgba(160,210,255,0.1)] px-2.5 py-1 text-xs">
                           <BadgeDollarSign className="h-3.5 w-3.5" />
                           {currency(position.totalHarvested)}
                         </span>
@@ -1816,16 +1808,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             </button>
                           ) : null}
                         </div>
-                        {section.key === "lending" ? (
-                          <div className="flex flex-wrap gap-1">
-                            <button type="button" onClick={() => openLendingAdjust(position, "add_collateral")} className="inline-flex items-center rounded border border-[rgba(16,185,129,0.4)] bg-[rgba(16,185,129,0.1)] px-2 py-0.5 text-[10px] text-emerald-300 transition hover:bg-[rgba(16,185,129,0.2)]">+Colateral</button>
-                            <button type="button" onClick={() => openLendingAdjust(position, "remove_collateral")} className="inline-flex items-center rounded border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.1)] px-2 py-0.5 text-[10px] text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)]">−Colateral</button>
-                            <button type="button" onClick={() => openLendingAdjust(position, "add_debt")} className="inline-flex items-center rounded border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.1)] px-2 py-0.5 text-[10px] text-amber-300 transition hover:bg-[rgba(245,158,11,0.2)]">+Préstamo</button>
-                            <button type="button" onClick={() => openLendingAdjust(position, "repay_debt")} className="inline-flex items-center rounded border border-[rgba(99,102,241,0.4)] bg-[rgba(99,102,241,0.1)] px-2 py-0.5 text-[10px] text-indigo-300 transition hover:bg-[rgba(99,102,241,0.2)]">−Préstamo</button>
-                          </div>
-                        ) : null}
+                        {/* Lending adjust actions moved inside Edit modal */}
                         {(section.key === "staking" || section.key === "liquidity_pools") ? (
-                          <button type="button" onClick={() => openQuickHarvest(position)} className="inline-flex items-center gap-1 self-start rounded border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.1)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition hover:bg-[rgba(0,229,255,0.2)]">
+                          <button type="button" onClick={() => openQuickHarvest(position)} className="inline-flex items-center gap-1 self-start rounded border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.1)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition hover:bg-[rgba(160,210,255,0.2)]">
                             <BadgeDollarSign className="h-3 w-3" />
                             Harvest
                           </button>
@@ -1884,8 +1869,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       : viewer.role === "cliente"
                         ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300"
                         : viewer.role === "admin"
-                          ? "border-[rgba(0,229,255,0.5)] bg-[rgba(0,229,255,0.14)] text-cyan-300"
-                          : "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300"
+                          ? "border-[rgba(160,210,255,0.5)] bg-[rgba(160,210,255,0.14)] text-[#A0D2FF]"
+                          : "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]"
                   }`}
                 >
                   {viewer.isSuperAdmin
@@ -1945,7 +1930,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <svg
                       viewBox="0 0 220 220"
                       className="h-56 w-56"
-                      style={{ filter: "drop-shadow(0 0 14px rgba(0,229,255,0.28))" }}
+                      style={{ filter: "drop-shadow(0 0 14px rgba(160,210,255,0.28))" }}
                     >
                       <circle
                         cx="110"
@@ -1977,7 +1962,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             transform="rotate(-90 110 110)"
                             className="cursor-pointer transition-all duration-200"
                             style={{
-                              filter: isActive ? "drop-shadow(0 0 10px rgba(0,229,255,0.45))" : "none",
+                              filter: isActive ? "drop-shadow(0 0 10px rgba(160,210,255,0.45))" : "none",
                               opacity: hasHovered && !isActive ? 0.28 : 1,
                             }}
                             onMouseEnter={() => setHoveredCompositionKey(entry.key)}
@@ -2008,7 +1993,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                         onMouseLeave={() => setHoveredCompositionKey(null)}
                         className={`rounded-xl border px-3.5 py-3 transition-all duration-200 ${
                           hoveredCompositionKey === entry.key
-                            ? "border-[rgba(0,229,255,0.72)] bg-[rgba(0,229,255,0.18)] shadow-[0_0_0_1px_rgba(0,229,255,0.36),0_0_14px_rgba(0,229,255,0.24)]"
+                            ? "border-[rgba(160,210,255,0.72)] bg-[rgba(160,210,255,0.18)] shadow-[0_0_0_1px_rgba(160,210,255,0.36),0_0_14px_rgba(160,210,255,0.24)]"
                             : "border-[var(--line)] bg-black/25"
                         }`}
                       >
@@ -2115,7 +2100,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             <button
               type="button"
               onClick={() => setIsCsvModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-[rgba(0,229,255,0.4)] bg-[rgba(0,229,255,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(0,229,255,0.22)]"
+              className="inline-flex items-center gap-2 rounded-xl border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(160,210,255,0.22)]"
             >
               <FileSpreadsheet className="h-4 w-4" />
               Exportar Operaciones (CSV)
@@ -2123,7 +2108,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
           <div className="page-table-shell">
             <table className="w-full min-w-[980px] border-collapse">
-              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
+              <thead className="bg-[rgba(160,210,255,0.12)] text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">FECHA</th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TIPO</th>
@@ -2182,7 +2167,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               <button
                 type="button"
                 onClick={() => setVisibleRecentActivityCount((current) => current + 10)}
-                className="rounded-xl border border-[rgba(0,229,255,0.45)] bg-[rgba(0,229,255,0.14)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(0,229,255,0.24)]"
+                className="rounded-xl border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.14)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(160,210,255,0.24)]"
               >
                 Ver movimientos anteriores
               </button>
@@ -2938,7 +2923,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     if (!srcPos) return null;
                     const availableUsd = srcPos.currentValue;
                     return (
-                      <div className="col-span-full rounded-lg border border-[rgba(0,229,255,0.25)] bg-[rgba(0,229,255,0.06)] px-3 py-2 text-sm">
+                      <div className="col-span-full rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm">
                         <span className="text-[var(--muted)]">Capital disponible: </span>
                         <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
                         {srcPos.balanceLabel ? (
@@ -3248,7 +3233,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "liquidity_pool" ? (
-                <div className="grid gap-3 rounded-xl border border-[rgba(0,229,255,0.25)] bg-[rgba(0,229,255,0.06)] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] p-3 sm:grid-cols-2">
                   <p className="col-span-full text-xs text-[var(--muted)]">
                     Liquidity Pool V3: dos tokens + rango. Con esto se habilita el cálculo de IL automáticamente.
                   </p>
@@ -3360,7 +3345,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 type="button"
                 onClick={submitOperation}
                 disabled={isSaving}
-                className="rounded-lg border border-[rgba(0,229,255,0.5)] bg-[rgba(0,229,255,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(0,229,255,0.3)] disabled:opacity-60"
+                className="rounded-lg border border-[rgba(160,210,255,0.5)] bg-[rgba(160,210,255,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(160,210,255,0.3)] disabled:opacity-60"
               >
                 {isSaving ? "Guardando..." : "Guardar operación"}
               </button>
@@ -3494,7 +3479,16 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       ) : null}
 
-      {isEditModalOpen && editPosition ? (
+      {isEditModalOpen && editPosition ? (() => {
+        const isLending = editPosition.positionType.toLowerCase().includes("lending");
+        const isLp = editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool");
+        const adjustLabels: Record<string, { label: string; color: string; bg: string; border: string }> = {
+          add_collateral: { label: "+Colateral", color: "text-[#A0D2FF]", bg: "bg-[rgba(160,210,255,0.1)]", border: "border-[rgba(160,210,255,0.3)]" },
+          remove_collateral: { label: "−Colateral", color: "text-rose-300", bg: "bg-rose-500/10", border: "border-rose-500/30" },
+          add_debt: { label: "+Préstamo", color: "text-amber-300", bg: "bg-amber-500/10", border: "border-amber-500/30" },
+          repay_debt: { label: "−Préstamo", color: "text-indigo-300", bg: "bg-indigo-500/10", border: "border-indigo-500/30" },
+        };
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div className="w-full max-w-lg rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
@@ -3506,142 +3500,242 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </button>
             </div>
 
+            {isLending ? (
+              <div className="mb-4 flex gap-1 rounded-lg border border-[var(--line)] bg-black/20 p-1">
+                <button
+                  type="button"
+                  onClick={() => { setEditModalTab("edit"); setErrorMessage(""); }}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${editModalTab === "edit" ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)] hover:text-white"}`}
+                >
+                  Editar posición
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setEditModalTab("lending_adjust"); setErrorMessage(""); }}
+                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${editModalTab === "lending_adjust" ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)] hover:text-white"}`}
+                >
+                  Ajustar colateral / deuda
+                </button>
+              </div>
+            ) : null}
+
             {errorMessage ? (
               <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{errorMessage}</p>
             ) : null}
 
-            <div className="space-y-4">
-              <div>
-                <span className="mb-1 block text-sm text-[var(--muted)]">Token</span>
-                <input
-                  type="text"
-                  className="input-base w-full"
-                  value={editForm.tokenSymbol}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, tokenSymbol: e.target.value }))}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <span className="mb-1 block text-sm text-[var(--muted)]">Saldo (cantidad)</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="input-base w-full"
-                    value={editForm.amount}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada (USD)</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    className="input-base w-full"
-                    value={editForm.entryPrice}
-                    onChange={(e) => setEditForm((prev) => ({ ...prev, entryPrice: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              {(editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool")) ? (
-                <>
-                  <hr className="border-[var(--line)]" />
-                  <div className="flex items-center gap-2">
+            {editModalTab === "edit" ? (
+              <>
+                <div className="space-y-4">
+                  <div>
+                    <span className="mb-1 block text-sm text-[var(--muted)]">Token</span>
                     <input
-                      type="checkbox"
-                      id="isCorrelated"
-                      checked={editForm.isCorrelated}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
-                      className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
+                      type="text"
+                      className="input-base w-full"
+                      value={editForm.tokenSymbol}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, tokenSymbol: e.target.value }))}
                     />
-                    <label htmlFor="isCorrelated" className="text-sm text-[var(--muted)]">
-                      Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)
-                    </label>
                   </div>
-                  <p className="text-xs text-[var(--muted)]">Datos del par LP</p>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Token B</span>
-                      <input
-                        type="text"
-                        className="input-base w-full"
-                        value={editForm.lpTokenSymbolB}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpTokenSymbolB: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Saldo Token B</span>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Saldo (cantidad)</span>
                       <input
                         type="text"
                         inputMode="decimal"
                         className="input-base w-full"
-                        value={editForm.lpAmountB}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpAmountB: e.target.value }))}
+                        value={editForm.amount}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada (USD)</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        className="input-base w-full"
+                        value={editForm.entryPrice}
+                        onChange={(e) => setEditForm((prev) => ({ ...prev, entryPrice: e.target.value }))}
                       />
                     </div>
                   </div>
+
+                  {isLp ? (
+                    <>
+                      <hr className="border-[var(--line)]" />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="isCorrelated"
+                          checked={editForm.isCorrelated}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
+                          className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
+                        />
+                        <label htmlFor="isCorrelated" className="text-sm text-[var(--muted)]">
+                          Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)
+                        </label>
+                      </div>
+                      <p className="text-xs text-[var(--muted)]">Datos del par LP</p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="mb-1 block text-sm text-[var(--muted)]">Token B</span>
+                          <input
+                            type="text"
+                            className="input-base w-full"
+                            value={editForm.lpTokenSymbolB}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpTokenSymbolB: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <span className="mb-1 block text-sm text-[var(--muted)]">Saldo Token B</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="input-base w-full"
+                            value={editForm.lpAmountB}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpAmountB: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada Token B (USD)</span>
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          className="input-base w-full"
+                          value={editForm.lpEntryPriceB}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
+                        />
+                      </div>
+                      <p className="rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
+                        <strong className="text-amber-400">Rango:</strong> precio caro ÷ precio barato → siempre &gt; 1. Ej: BTC/ETH → 15–25.
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <span className="mb-1 block text-sm text-[var(--muted)]">Rango mín (caro/barato)</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="input-base w-full"
+                            placeholder="ej: 15.0"
+                            value={editForm.lpRangeLower}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeLower: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <span className="mb-1 block text-sm text-[var(--muted)]">Rango máx (caro/barato)</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            className="input-base w-full"
+                            placeholder="ej: 25.0"
+                            value={editForm.lpRangeUpper}
+                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeUpper: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={saveEditPosition}
+                    disabled={isSavingEdit}
+                    className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
+                    style={{ background: "var(--brand)" }}
+                  >
+                    {isSavingEdit ? "Guardando..." : "Guardar cambios"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
+                    className="btn-secondary flex-1 py-2 text-sm font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  <p className="text-xs text-[var(--muted)]">
+                    {editPosition.tokenSymbol} · {editPosition.protocol} · {editPosition.positionId}
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["add_collateral", "remove_collateral", "add_debt", "repay_debt"] as const).map((type) => {
+                      const info = adjustLabels[type];
+                      const isActive = editLendingAdjustType === type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => { setEditLendingAdjustType(type); setErrorMessage(""); }}
+                          className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
+                            isActive
+                              ? `${info.border} ${info.bg} ${info.color} ring-1 ring-current`
+                              : "border-[var(--line)] text-[var(--muted)] hover:border-white/20 hover:text-white"
+                          }`}
+                        >
+                          {info.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
                   <div>
-                    <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada Token B (USD)</span>
+                    <label className="mb-1 block text-xs text-[var(--muted)]">Token</label>
+                    <input
+                      type="text"
+                      value={editLendingToken}
+                      onChange={(e) => setEditLendingToken(e.target.value)}
+                      placeholder="ej. USDC, ETH..."
+                      className="input-base w-full"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad</label>
                     <input
                       type="text"
                       inputMode="decimal"
+                      value={editLendingAmount}
+                      onChange={(e) => setEditLendingAmount(e.target.value)}
+                      placeholder="0.00"
                       className="input-base w-full"
-                      value={editForm.lpEntryPriceB}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
                     />
+                    {editLendingToken.trim() && Number(editLendingAmount.replace(",", ".")) > 0 ? (
+                      <p className="mt-1 text-[11px] text-[var(--muted)]">
+                        ≈ {currency(Number(editLendingAmount.replace(",", ".")) * (tokenPriceMap.get(editLendingToken.trim().toUpperCase()) ?? 0))}
+                      </p>
+                    ) : null}
                   </div>
-                  <p className="rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
-                    <strong className="text-amber-400">Rango:</strong> precio caro ÷ precio barato → siempre &gt; 1. Ej: BTC/ETH → 15–25.
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango mín (caro/barato)</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="input-base w-full"
-                        placeholder="ej: 15.0"
-                        value={editForm.lpRangeLower}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeLower: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Rango máx (caro/barato)</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="input-base w-full"
-                        placeholder="ej: 25.0"
-                        value={editForm.lpRangeUpper}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeUpper: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </>
-              ) : null}
-            </div>
+                </div>
 
-            <div className="mt-6 flex gap-3">
-              <button
-                type="button"
-                onClick={saveEditPosition}
-                disabled={isSavingEdit}
-                className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
-                style={{ background: "var(--brand)" }}
-              >
-                {isSavingEdit ? "Guardando..." : "Guardar cambios"}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
-                className="btn-secondary flex-1 py-2 text-sm font-semibold"
-              >
-                Cancelar
-              </button>
-            </div>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={saveLendingAdjustFromEdit}
+                    disabled={isSavingLendingFromEdit}
+                    className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
+                    style={{ background: "var(--brand)" }}
+                  >
+                    {isSavingLendingFromEdit ? "Guardando..." : `Aplicar ${adjustLabels[editLendingAdjustType].label}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
+                    className="btn-secondary flex-1 py-2 text-sm font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
-      ) : null}
+        );
+      })() : null}
 
       {/* History Modal */}
       {isHistoryModalOpen ? (
@@ -3763,81 +3857,6 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       ) : null}
 
-      {/* Lending Adjust Modal */}
-      {isLendingAdjustOpen && lendingAdjustPosition ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative mx-4 flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4">
-              <h2 className="text-lg font-semibold">
-                {lendingAdjustType === "add_collateral" ? "Añadir Colateral" :
-                 lendingAdjustType === "remove_collateral" ? "Retirar Colateral" :
-                 lendingAdjustType === "add_debt" ? "Pedir Préstamo" :
-                 "Devolver Préstamo"}
-              </h2>
-              <button type="button" onClick={() => { setIsLendingAdjustOpen(false); setErrorMessage(""); }} className="text-[var(--muted)] hover:text-white">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              <p className="text-xs text-[var(--muted)]">
-                {lendingAdjustPosition.tokenSymbol} · {lendingAdjustPosition.protocol} · {lendingAdjustPosition.positionId}
-              </p>
-
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted)]">Token</label>
-                <input
-                  type="text"
-                  value={lendingAdjustToken}
-                  onChange={(e) => setLendingAdjustToken(e.target.value)}
-                  placeholder="ej. USDC, ETH..."
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={lendingAdjustAmount}
-                  onChange={(e) => setLendingAdjustAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                />
-                {lendingAdjustToken.trim() && Number(lendingAdjustAmount.replace(",", ".")) > 0 ? (
-                  <p className="mt-1 text-[11px] text-[var(--muted)]">
-                    ≈ {currency(Number(lendingAdjustAmount.replace(",", ".")) * (tokenPriceMap.get(lendingAdjustToken.trim().toUpperCase()) ?? 0))}
-                  </p>
-                ) : null}
-              </div>
-
-              {errorMessage ? (
-                <p className="text-xs text-rose-400">{errorMessage}</p>
-              ) : null}
-            </div>
-
-            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4 flex gap-3">
-              <button
-                type="button"
-                onClick={() => { setIsLendingAdjustOpen(false); setErrorMessage(""); }}
-                className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={saveLendingAdjust}
-                disabled={isSavingLendingAdjust}
-                className="flex-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-black transition hover:opacity-90 disabled:opacity-50"
-              >
-                {isSavingLendingAdjust ? "Guardando..." : "Confirmar"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
       {/* Quick Harvest Modal */}
       {isQuickHarvestOpen && quickHarvestPosition ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -3911,7 +3930,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               </div>
 
               {quickHarvestReinvest ? (
-                <div className="space-y-3 rounded-lg border border-[rgba(0,229,255,0.2)] bg-[rgba(0,229,255,0.05)] p-3">
+                <div className="space-y-3 rounded-lg border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.05)] p-3">
                   <div>
                     <label className="mb-1 block text-xs text-[var(--muted)]">Posición destino</label>
                     <select

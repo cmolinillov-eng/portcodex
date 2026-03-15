@@ -226,6 +226,11 @@ export async function POST(request: NextRequest) {
     }
 
     const serviceClient = getServiceClientOrThrow();
+
+    // Intentar crear usuario auth. Si el email ya existe, reutilizar el auth user existente.
+    let authUserId: string;
+    let isNewAuthUser = false;
+
     const authCreate = await serviceClient.auth.admin.createUser({
       email,
       password,
@@ -234,30 +239,68 @@ export async function POST(request: NextRequest) {
     });
 
     if (authCreate.error || !authCreate.data.user?.id) {
-      return NextResponse.json(
-        { error: normalizeCreateAuthError(authCreate.error?.message ?? "No se pudo crear el usuario en autenticación.") },
-        { status: 400 },
-      );
+      const errorMsg = authCreate.error?.message ?? "";
+      const isEmailExists = errorMsg.toLowerCase().includes("already") ||
+        errorMsg.toLowerCase().includes("registered") ||
+        errorMsg.toLowerCase().includes("exists");
+
+      if (!isEmailExists) {
+        return NextResponse.json(
+          { error: normalizeCreateAuthError(errorMsg || "No se pudo crear el usuario en autenticación.") },
+          { status: 400 },
+        );
+      }
+
+      // El email ya existe en auth → buscar el auth user existente por email
+      const listResult = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
+      if (listResult.error) {
+        return NextResponse.json({ error: "No se pudo verificar el usuario existente." }, { status: 500 });
+      }
+      const existingAuthUser = listResult.data.users.find((u) => u.email?.toLowerCase() === email);
+      if (!existingAuthUser) {
+        return NextResponse.json({ error: "El correo ya existe pero no se pudo localizar el usuario." }, { status: 500 });
+      }
+      authUserId = existingAuthUser.id;
+
+      // Verificar que ese auth user no tenga ya ese rol
+      const existingRoleQuery = await client
+        .from("profiles")
+        .select("id")
+        .eq("auth_user_id", authUserId)
+        .eq("role", role)
+        .maybeSingle();
+
+      if (existingRoleQuery.data?.id) {
+        return NextResponse.json(
+          { error: `Este correo ya tiene un perfil con rol "${role}".` },
+          { status: 400 },
+        );
+      }
+    } else {
+      authUserId = authCreate.data.user.id;
+      isNewAuthUser = true;
     }
 
-    const userId = authCreate.data.user.id;
-
-    const profileUpsert = await client
+    // Crear nuevo perfil (nuevo UUID independiente del auth user id)
+    const { data: newProfileData, error: profileInsertError } = await client
       .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          full_name: fullName,
-          email,
-          role,
-        },
-        { onConflict: "id" },
-      );
+      .insert({
+        auth_user_id: authUserId,
+        full_name: fullName,
+        email,
+        role,
+      })
+      .select("id")
+      .maybeSingle();
 
-    if (profileUpsert.error) {
-      await serviceClient.auth.admin.deleteUser(userId);
-      throw new Error(`Usuario auth creado, pero no se pudo crear perfil: ${profileUpsert.error.message}`);
+    if (profileInsertError || !newProfileData?.id) {
+      if (isNewAuthUser) {
+        await serviceClient.auth.admin.deleteUser(authUserId);
+      }
+      throw new Error(`No se pudo crear perfil: ${profileInsertError?.message ?? "respuesta vacía"}`);
     }
+
+    const profileId: string = newProfileData.id;
 
     const createdPortfolioIds: string[] = [];
 
@@ -266,7 +309,7 @@ export async function POST(request: NextRequest) {
         .from("portfolios")
         .insert({
           name: portfolioName || buildDefaultPortfolioName(fullName, email),
-          owner_id: userId,
+          owner_id: profileId,
           manager_id: role === "cliente" ? managerId : null,
         })
         .select("id")
@@ -274,8 +317,10 @@ export async function POST(request: NextRequest) {
 
       if (createPortfolio.error) {
         if (process.env.NODE_ENV !== "production") console.error("Create portfolio error:", createPortfolio.error.message);
-        await client.from("profiles").delete().eq("id", userId);
-        await serviceClient.auth.admin.deleteUser(userId);
+        await client.from("profiles").delete().eq("id", profileId);
+        if (isNewAuthUser) {
+          await serviceClient.auth.admin.deleteUser(authUserId);
+        }
         return NextResponse.json(
           { error: "No se pudo crear el portfolio del usuario." },
           { status: 400 },
@@ -290,7 +335,7 @@ export async function POST(request: NextRequest) {
     if (role === "admin" && assignPortfolioIds.length > 0) {
       const assignQuery = await client
         .from("portfolios")
-        .update({ manager_id: userId })
+        .update({ manager_id: profileId })
         .in("id", assignPortfolioIds);
       if (assignQuery.error) {
         throw new Error(`Usuario creado, pero no se pudieron asignar portfolios: ${assignQuery.error.message}`);
@@ -301,12 +346,13 @@ export async function POST(request: NextRequest) {
       actorId: access.userId,
       action: "create_user",
       targetTable: "profiles",
-      targetId: userId,
+      targetId: profileId,
       beforeData: null,
       afterData: {
         email,
         fullName,
         role,
+        isNewAuthUser,
         managerId: role === "cliente" ? managerId : null,
         createdPortfolioIds,
         assignedPortfolioIds: role === "admin" ? assignPortfolioIds : [],
@@ -316,7 +362,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       row: {
-        id: userId,
+        id: profileId,
         email,
         fullName,
         role,

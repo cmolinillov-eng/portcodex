@@ -34,6 +34,8 @@ const connectSources = (() => {
     "https://api.coingecko.com",
     "https://*.supabase.co",
     "wss://*.supabase.co",
+    "https://prod.spline.design",
+    "https://*.spline.design",
   ]);
 
   if (supabaseOrigin) {

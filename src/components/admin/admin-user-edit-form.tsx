@@ -36,8 +36,8 @@ type ManagedClientPortfolio = {
 
 function roleBadgeClasses(role: Role): string {
   if (role === "cliente") return "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300";
-  if (role === "admin") return "border-[rgba(0,229,255,0.55)] bg-[rgba(0,229,255,0.16)] text-cyan-300";
-  return "border-[rgba(74,222,128,0.5)] bg-[rgba(74,222,128,0.12)] text-emerald-300";
+  if (role === "admin") return "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]";
+  return "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]";
 }
 
 function uniqueByOwner(portfolios: ManagedClientPortfolio[]): ManagedClientPortfolio[] {

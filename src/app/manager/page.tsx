@@ -158,8 +158,8 @@ export default async function ManagerPage() {
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(0,229,255,0.22)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(0,229,255,0.16)]" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.22)]" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(160,210,255,0.16)]" />
 
       <section className="page-content">
         <header className="card-premium page-header-card self-start">
@@ -186,7 +186,7 @@ export default async function ManagerPage() {
 
           <div className="page-table-shell">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(0,229,255,0.12)] text-left">
+              <thead className="text-left">
                 <tr>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">CLIENTE</th>
                   <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
