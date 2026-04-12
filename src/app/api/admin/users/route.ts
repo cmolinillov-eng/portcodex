@@ -10,6 +10,7 @@ type AppRole = "autonomo" | "admin" | "cliente";
 
 type ProfileUserRow = {
   id: string | null;
+  auth_user_id: string | null;
   email: string | null;
   full_name: string | null;
   role: AppRole | null;
@@ -18,6 +19,7 @@ type ProfileUserRow = {
 
 type ProfileRoleRow = {
   id: string | null;
+  auth_user_id: string | null;
   role: AppRole | null;
 };
 
@@ -261,21 +263,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "El correo ya existe pero no se pudo localizar el usuario." }, { status: 500 });
       }
       authUserId = existingAuthUser.id;
-
-      // Verificar que ese auth user no tenga ya ese rol
-      const existingRoleQuery = await client
-        .from("profiles")
-        .select("id")
-        .eq("auth_user_id", authUserId)
-        .eq("role", role)
-        .maybeSingle();
-
-      if (existingRoleQuery.data?.id) {
-        return NextResponse.json(
-          { error: `Este correo ya tiene un perfil con rol "${role}".` },
-          { status: 400 },
-        );
-      }
     } else {
       authUserId = authCreate.data.user.id;
       isNewAuthUser = true;
@@ -441,7 +428,7 @@ export async function PATCH(request: NextRequest) {
     const client = getClient();
     const currentUserQuery = await client
       .from("profiles")
-      .select("id, role, full_name, email")
+      .select("id, auth_user_id, role, full_name, email")
       .eq("id", userId)
       .maybeSingle();
 
@@ -496,8 +483,9 @@ export async function PATCH(request: NextRequest) {
 
     const updatedUser = updateQuery.data as ProfileUserRow;
     if (nextEmail && nextEmail !== (currentUser.email ?? "")) {
+      const authUserIdForUpdate = cleanText(currentUser.auth_user_id ?? userId);
       const serviceClient = getServiceClientOrThrow();
-      const authUpdate = await serviceClient.auth.admin.updateUserById(userId, {
+      const authUpdate = await serviceClient.auth.admin.updateUserById(authUserIdForUpdate, {
         email: nextEmail,
         email_confirm: true,
       });
@@ -589,7 +577,7 @@ export async function DELETE(request: NextRequest) {
     const client = getClient();
     const profileQuery = await client
       .from("profiles")
-      .select("id, role")
+      .select("id, auth_user_id, role")
       .eq("id", userId)
       .maybeSingle();
 
@@ -660,10 +648,19 @@ export async function DELETE(request: NextRequest) {
       throw new Error(profileDelete.error.message);
     }
 
-    const serviceClient = getServiceClientOrThrow();
-    const authDelete = await serviceClient.auth.admin.deleteUser(userId);
-    if (authDelete.error) {
-      throw new Error(`Perfil eliminado, pero falló eliminar auth user: ${authDelete.error.message}`);
+    const authUserIdForDelete = cleanText(target.auth_user_id ?? userId);
+    const remainingProfilesQuery = await client
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("auth_user_id", authUserIdForDelete);
+
+    const remainingCount = remainingProfilesQuery.count ?? 0;
+    if (remainingCount === 0) {
+      const serviceClient = getServiceClientOrThrow();
+      const authDelete = await serviceClient.auth.admin.deleteUser(authUserIdForDelete);
+      if (authDelete.error) {
+        throw new Error(`Perfil eliminado, pero falló eliminar auth user: ${authDelete.error.message}`);
+      }
     }
 
     await recordAdminAudit({

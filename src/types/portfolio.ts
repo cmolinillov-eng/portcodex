@@ -38,6 +38,8 @@ export type DefiPosition = {
     tokenSymbol: string;
     valueUsd: number;
   }>;
+  collateralBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
+  debtBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
 };
 
 export type PositionSection = {

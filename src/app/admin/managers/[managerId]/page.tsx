@@ -180,80 +180,84 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.22)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(160,210,255,0.16)]" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.22)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(160,210,255,0.16)]" aria-hidden="true" />
 
       <section className="page-content">
-        <header className="card-premium page-header-card self-start">
+        <header className="card-premium page-header-card self-start animate-fade-up">
           <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/admin" className="btn-secondary">
-                Volver a Admin
+              <Link href="/admin" className="btn-secondary btn-secondary-compact" aria-label="Volver al panel de administrador">
+                ← Admin
               </Link>
               <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Gestor</h1>
-              <span className="text-sm text-[var(--muted)]">{managerLabel}</span>
+              <span className="rounded-full border border-[rgba(160,210,255,0.3)] bg-[rgba(160,210,255,0.08)] px-3 py-0.5 text-sm text-[#A0D2FF]">{managerLabel}</span>
             </div>
             <div className="flex items-center gap-2">
-              <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact">
+              <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact" aria-label="Cerrar sesión">
                 Cerrar sesión
               </a>
             </div>
           </div>
         </header>
 
-        <section className="card-premium page-section-card">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--line)] bg-black/20 px-4 py-3">
-            <div>
-              <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Rentabilidad media del gestor</p>
-              <p className={`text-lg font-semibold ${pnlTone(averagePnlPercent)}`}>{percent(averagePnlPercent)}</p>
+        <section className="card-premium page-section-card animate-fade-up stagger-2">
+          <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-2">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.05)] px-4 py-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Rentabilidad media</p>
+              <p className={`mt-1 text-xl font-semibold tabular-nums ${pnlTone(averagePnlPercent)}`}>{percent(averagePnlPercent)}</p>
             </div>
-            <span className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">
-              Total portfolios gestionados: {rows.length}
-            </span>
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.05)] px-4 py-3">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Portfolios gestionados</p>
+              <p className="mt-1 text-xl font-semibold text-[#A0D2FF]">{rows.length}</p>
+            </div>
           </div>
 
-          <div className="section-header-row flex flex-wrap items-center justify-between gap-3">
+          <div className="section-header-row mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">Clientes Asignados</h2>
           </div>
 
-          <div className="page-table-shell">
+          <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="text-left">
+              <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
                 <tr>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">CLIENTE</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PORTFOLIO</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ALTA CLIENTE</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">RENTABILIDAD</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PORTFOLIOS</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">CLIENTE</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PORTFOLIO</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ALTA CLIENTE</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">RENTABILIDAD</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACCIÓN</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr className="border-t border-[var(--line)]">
-                    <td className="px-4 py-4 text-sm text-[var(--muted)]" colSpan={6}>
+                    <td className="px-4 py-8 text-center text-sm text-[var(--muted)]" colSpan={6}>
                       Este gestor no tiene portfolios asignados.
                     </td>
                   </tr>
                 ) : (
                   rows.map((row) => (
                     <tr key={row.id} className="border-t border-[var(--line)]">
-                      <td className="px-4 py-4 text-sm">{row.ownerName}</td>
-                      <td className="px-4 py-4 text-sm">{row.ownerEmail}</td>
+                      <td className="px-4 py-4 text-sm font-medium">{row.ownerName}</td>
+                      <td className="px-4 py-4 text-sm text-[var(--muted)]">{row.ownerEmail}</td>
                       <td className="px-4 py-4 text-sm">
                         <div className="font-medium">{row.name}</div>
-                        <div className="text-xs text-[var(--muted)]">{row.id}</div>
+                        <div className="font-mono text-xs text-[var(--muted)] opacity-50">{row.id.slice(0, 8)}…</div>
                       </td>
                       <td className="px-4 py-4 text-sm text-[var(--muted)]">
-                        {row.ownerCreatedAt ? new Date(row.ownerCreatedAt).toLocaleString("es-ES") : "-"}
+                        {row.ownerCreatedAt ? new Date(row.ownerCreatedAt).toLocaleString("es-ES", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "-"}
                       </td>
                       <td className="px-4 py-4 text-sm">
-                        <div className={`font-medium ${pnlTone(row.pnlUsd)}`}>
-                          {percent(row.pnlPercent)} · {signedCurrency(row.pnlUsd)}
+                        <div className={`font-medium tabular-nums ${pnlTone(row.pnlUsd)}`}>
+                          {percent(row.pnlPercent)}
+                        </div>
+                        <div className={`text-xs tabular-nums ${pnlTone(row.pnlUsd)} opacity-75`}>
+                          {signedCurrency(row.pnlUsd)}
                         </div>
                       </td>
                       <td className="px-4 py-4">
-                        <Link href={`/admin/managers/${selectedManagerId}/portfolios/${row.id}`} className="btn-secondary">
+                        <Link href={`/admin/managers/${selectedManagerId}/portfolios/${row.id}`} className="btn-secondary btn-secondary-compact" aria-label={`Ver portfolio de ${row.ownerName}`}>
                           Ver portfolio
                         </Link>
                       </td>

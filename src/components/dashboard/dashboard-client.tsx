@@ -16,6 +16,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 import type { DefiPosition, PositionSection } from "@/types/portfolio";
+import { HistoryModal } from "./modals/history-modal";
+import { QuickHarvestModal } from "./modals/quick-harvest-modal";
+import { ReinvestHarvestModal } from "./modals/reinvest-harvest-modal";
+import { EditModal } from "./modals/edit-modal";
+import { CsvModal } from "./modals/csv-modal";
+import { ManualPriceModal } from "./modals/manual-price-modal";
+import { DashboardHeader } from "./sections/DashboardHeader";
+import { PositionSectionCard } from "./sections/PositionSectionCard";
+import { RecentActivity } from "./sections/RecentActivity";
 
 type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
 type BaseDepositLendingMode = "collateral" | "debt" | "both";
@@ -331,6 +340,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   const [quickHarvestTargetKey, setQuickHarvestTargetKey] = useState("");
   const [quickHarvestTargetToken, setQuickHarvestTargetToken] = useState("");
   const [isSavingQuickHarvest, setIsSavingQuickHarvest] = useState(false);
+
+  // Reinvest Harvest modal state
+  const [isReinvestHarvestOpen, setIsReinvestHarvestOpen] = useState(false);
+  const [reinvestHarvestSourcePosition, setReinvestHarvestSourcePosition] = useState<DefiPosition | null>(null);
+  const [reinvestHarvestToken, setReinvestHarvestToken] = useState("");
+  const [reinvestHarvestAmount, setReinvestHarvestAmount] = useState("");
+  const [reinvestHarvestTargetKey, setReinvestHarvestTargetKey] = useState("");
+  const [reinvestHarvestTargetToken, setReinvestHarvestTargetToken] = useState("");
+  const [isSavingReinvestHarvest, setIsSavingReinvestHarvest] = useState(false);
 
   const [hoveredCompositionKey, setHoveredCompositionKey] = useState<string | null>(null);
   const [isCompactDonut, setIsCompactDonut] = useState(false);
@@ -752,6 +770,66 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     setQuickHarvestTargetToken(firstToken);
     setErrorMessage("");
     setIsQuickHarvestOpen(true);
+  }
+
+  function openReinvestHarvest(position: DefiPosition) {
+    if (!viewer.canOperate) return;
+    const posKey = `${position.portfolioId}::${position.protocol}::${position.positionId}`;
+    const harvestInfo = harvestByPosition.find((h) => h.key === posKey);
+    const pendingTokens = harvestInfo?.pendingByToken ?? [];
+    const firstPendingToken = pendingTokens[0]?.tokenSymbol ?? position.tokenSymbol.split("/")[0]?.trim().toUpperCase() ?? "";
+    const firstPendingUsd = harvestInfo?.pendingUsd ?? 0;
+    setReinvestHarvestSourcePosition(position);
+    setReinvestHarvestToken(firstPendingToken);
+    setReinvestHarvestAmount(firstPendingUsd > 0 ? firstPendingUsd.toFixed(2) : "");
+    setReinvestHarvestTargetKey(posKey);
+    setReinvestHarvestTargetToken(firstPendingToken);
+    setErrorMessage("");
+    setIsReinvestHarvestOpen(true);
+  }
+
+  async function saveReinvestHarvest() {
+    if (!reinvestHarvestSourcePosition) return;
+    const token = reinvestHarvestToken.trim().toUpperCase();
+    const amount = Number(reinvestHarvestAmount.replace(",", "."));
+    if (!token) { setErrorMessage("Indica el token a reinvertir."); return; }
+    if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage("Indica la cantidad en USD a reinvertir."); return; }
+
+    const targetInfo = baseDepositTargets.find((t) => t.key === reinvestHarvestTargetKey);
+    if (!targetInfo) { setErrorMessage("Selecciona una posición destino."); return; }
+
+    try {
+      setErrorMessage("");
+      setIsSavingReinvestHarvest(true);
+      const response = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operationType: "reinvest_harvest",
+          portfolioId: reinvestHarvestSourcePosition.portfolioId,
+          positionId: reinvestHarvestSourcePosition.positionId,
+          protocol: reinvestHarvestSourcePosition.protocol,
+          positionContextType: reinvestHarvestSourcePosition.positionType,
+          tokenSymbol: token,
+          amount,
+          harvestSourcePositionId: reinvestHarvestSourcePosition.positionId,
+          harvestSourceProtocol: reinvestHarvestSourcePosition.protocol,
+          harvestTargetPositionId: targetInfo.positionId,
+          harvestTargetProtocol: targetInfo.protocol,
+          harvestTargetPositionType: targetInfo.positionType,
+          harvestTargetTokenSymbol: reinvestHarvestTargetToken.trim().toUpperCase() || token,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(body.error ?? "Error al reinvertir harvest.");
+      setIsReinvestHarvestOpen(false);
+      setReinvestHarvestSourcePosition(null);
+      router.refresh();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
+    } finally {
+      setIsSavingReinvestHarvest(false);
+    }
   }
 
   async function saveQuickHarvest() {
@@ -1602,466 +1680,26 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     }
   }
 
-  function renderSection(section: PositionSection) {
-    const showIlColumn = section.key === "liquidity_pools";
-    const showHealthFactor = section.key === "lending";
-    const showEntryPriceColumn = section.key !== "liquidity_pools";
-    const showYieldColumn = section.key !== "wallet";
-    const sectionToneClass = `card-section-${section.key}`;
 
-    return (
-      <section key={section.key} className={`card-premium page-section-card ${sectionToneClass}`}>
-        <div className="section-header-row flex items-center justify-between">
-          <h2 className="text-2xl font-semibold tracking-tight">{section.title}</h2>
-          <span className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-black/20 px-3 py-1 text-xs text-[var(--muted)]">
-            <Layers className="h-3.5 w-3.5" />
-            {section.positions.length} posiciones activas
-          </span>
-        </div>
-
-        <div className="page-table-shell">
-          <table className="w-full min-w-[1180px] border-collapse">
-            <thead className="bg-[rgba(160,210,255,0.12)] text-left">
-              <tr>
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACTIVO</th>
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">SALDO</th>
-                {showEntryPriceColumn ? (
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PRECIO ENTRADA</th>
-                ) : null}
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TOTAL DEPOSITADO</th>
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">VALOR ACTUAL</th>
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ASIGNACIÓN</th>
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PROTOCOLO</th>
-                {showYieldColumn ? (
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">YIELD GANADO</th>
-                ) : null}
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">P&L / ROI</th>
-                {showHealthFactor ? (
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">HEALTH FACTOR</th>
-                ) : null}
-                {showIlColumn ? (
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">IL ESTIMADA</th>
-                ) : null}
-                <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">OPERAR</th>
-              </tr>
-            </thead>
-            <tbody>
-              {section.positions.map((position) => (
-                <tr key={`${position.positionId}-${position.tokenSymbol}`} className="border-t border-[var(--line)]">
-                  {(() => {
-                    const depositedValue =
-                      position.costBasisUsd !== null && Number.isFinite(position.costBasisUsd)
-                        ? position.costBasisUsd
-                        : position.averageEntryPrice * position.currentBalance;
-                    const pnlValue = position.currentValue - depositedValue;
-                    const allocationPercent =
-                      summary.totalValueUsd > 0 ? (position.currentValue / summary.totalValueUsd) * 100 : 0;
-                    return (
-                      <>
-                  <td className="px-4 py-4">
-                    <p className="token-emphasis">{position.tokenSymbol}</p>
-                  </td>
-                  <td className="px-4 py-4 font-mono text-sm">
-                    {position.balanceLabel ?? position.currentBalance.toLocaleString("en-US")}
-                  </td>
-                  {showEntryPriceColumn ? (
-                    <td className="px-4 py-4">
-                      {section.key === "lending" ? (
-                        position.currentPriceLabel ? (
-                          <div className="space-y-1">
-                            {position.currentPriceLabel.split("|").map((line, idx) => (
-                              <p
-                                key={`${position.positionId}-entry-${idx}`}
-                                className="whitespace-nowrap text-sm font-medium text-foreground"
-                              >
-                                {line.trim()}
-                              </p>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[var(--muted)]">-</span>
-                        )
-                      ) : position.isAggregatePosition ? (
-                        <span className="text-xs text-[var(--muted)]">N/A (posición agregada)</span>
-                      ) : (
-                        currency(position.averageEntryPrice)
-                      )}
-                      {position.dataQualityIssue ? (
-                        <p className="mt-1 text-[11px] text-amber-300">Revisar coste histórico</p>
-                      ) : null}
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-4 value-emphasis">{currency(depositedValue)}</td>
-                  <td className="px-4 py-4 value-emphasis">{currency(position.currentValue)}</td>
-                  <td className="px-4 py-4">
-                    <span className="text-sm">{plainPercent(allocationPercent)}</span>
-                  </td>
-                  <td className="px-4 py-4">
-                    <span className="inline-flex items-center rounded-full border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)] px-2.5 py-1 text-xs">
-                      {position.protocol}
-                    </span>
-                  </td>
-                  {showYieldColumn ? (
-                    <td className="px-4 py-4">
-                      {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(160,210,255,0.35)] bg-[rgba(160,210,255,0.1)] px-2.5 py-1 text-xs">
-                          <BadgeDollarSign className="h-3.5 w-3.5" />
-                          {currency(position.totalHarvested)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-[var(--muted)]">-</span>
-                      )}
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-4">
-                    {position.dataQualityIssue ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-2.5 py-1 text-xs text-amber-300">
-                        Revisar precio medio
-                      </span>
-                    ) : position.roiPercent >= 0 ? (
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.12)] px-2.5 py-1 text-xs text-emerald-400">
-                          <TrendingUp className="h-3.5 w-3.5" />
-                          {percent(position.roiPercent)}
-                        </span>
-                        <p className="text-[11px] text-emerald-300">{signedCurrency(pnlValue)}</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.12)] px-2.5 py-1 text-xs text-rose-400">
-                          <TrendingDown className="h-3.5 w-3.5" />
-                          {percent(position.roiPercent)}
-                        </span>
-                        <p className="text-[11px] text-rose-300">{signedCurrency(pnlValue)}</p>
-                      </div>
-                    )}
-                  </td>
-                  {showHealthFactor ? (
-                    <td className="px-4 py-4">
-                      {position.healthFactor === null ? (
-                        <span className="text-xs text-[var(--muted)]">N/A</span>
-                      ) : position.healthStatus === "critical" ? (
-                        <span className="inline-flex rounded-full border border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.12)] px-2.5 py-1 text-xs text-red-400">
-                          {position.healthFactor.toFixed(2)}
-                        </span>
-                      ) : position.healthStatus === "warning" ? (
-                        <span className="inline-flex rounded-full border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-2.5 py-1 text-xs text-amber-300">
-                          {position.healthFactor.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full border border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.12)] px-2.5 py-1 text-xs text-emerald-400">
-                          {position.healthFactor.toFixed(2)}
-                        </span>
-                      )}
-                    </td>
-                  ) : null}
-                  {showIlColumn ? (
-                    <td className="px-4 py-4">
-                      <div className="space-y-1">
-                        {position.lpRangeStatus === "correlated" ? (
-                          <span className="inline-flex rounded-full border border-[rgba(147,130,255,0.45)] bg-[rgba(147,130,255,0.12)] px-2.5 py-1 text-[11px] text-violet-300">
-                            Pool correlacionado
-                          </span>
-                        ) : position.lpRangeStatus !== "na" ? (
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] ${
-                              position.lpRangeStatus === "out_of_range"
-                                ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.12)] text-red-300"
-                                : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.12)] text-emerald-300"
-                            }`}
-                          >
-                            {position.lpRangeStatus === "out_of_range" ? "Fuera de rango" : "Dentro de rango"}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-[var(--muted)]">-</span>
-                        )}
-                        {position.lpRangeLabel ? (
-                          <p className="text-[11px] text-[var(--muted)]">{position.lpRangeLabel}</p>
-                        ) : null}
-                        {position.currentPriceLabel ? (
-                          <p className="text-[11px] text-[var(--muted)]">{position.currentPriceLabel}</p>
-                        ) : null}
-                      </div>
-                    </td>
-                  ) : null}
-                  <td className="px-4 py-4">
-                    {viewer.canOperate ? (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => openEditModal(position)}
-                            className="btn-secondary"
-                          >
-                            <Pencil className="mr-1 inline h-3.5 w-3.5" />
-                            Modificar
-                          </button>
-                          {viewer.canDeletePosition ? (
-                            <button
-                              type="button"
-                              onClick={() => deletePosition(position)}
-                              disabled={isDeletingPositionKey === positionCompositeUiKey(position)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.12)] px-3 py-1.5 text-xs text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                              {isDeletingPositionKey === positionCompositeUiKey(position) ? "Eliminando..." : "Eliminar"}
-                            </button>
-                          ) : null}
-                        </div>
-                        {/* Lending adjust actions moved inside Edit modal */}
-                        {(section.key === "staking" || section.key === "liquidity_pools") ? (
-                          <button type="button" onClick={() => openQuickHarvest(position)} className="inline-flex items-center gap-1 self-start rounded border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.1)] px-2 py-0.5 text-[10px] text-[var(--accent)] transition hover:bg-[rgba(160,210,255,0.2)]">
-                            <BadgeDollarSign className="h-3 w-3" />
-                            Harvest
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-[var(--muted)]">Solo lectura</span>
-                    )}
-                  </td>
-                      </>
-                    );
-                  })()}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    );
-  }
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(41,234,217,0.07)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(102,255,241,0.05)]" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(41,234,217,0.07)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(102,255,241,0.05)]" aria-hidden="true" />
 
       <section className="page-content">
-        <header className="card-premium card-header relative overflow-hidden rounded-3xl px-4 pt-3.5 pb-2.5 md:px-5 md:pt-4 md:pb-3">
-          <div className="grid items-start gap-2 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.08fr)_minmax(340px,0.54fr)] xl:items-center">
-            <div className="flex flex-col gap-3">
-              <div className="min-w-[260px]">
-                <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Saldo Total del Portfolio</p>
-                <h1 className="mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-                  {currency(summary.totalValueUsd)}
-                </h1>
-                {portfolioContext ? (
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Usuario:{" "}
-                    <span className="text-foreground">
-                      {portfolioContext.ownerName || portfolioContext.ownerEmail || "Sin nombre"}
-                    </span>
-                    {portfolioContext.managerName || portfolioContext.managerEmail ? (
-                      <>
-                        {" · "}Gestor:{" "}
-                        <span className="text-foreground">
-                          {portfolioContext.managerName || portfolioContext.managerEmail}
-                        </span>
-                      </>
-                    ) : null}
-                  </p>
-                ) : null}
-                <span
-                  className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-[11px] ${
-                    viewer.isSuperAdmin
-                      ? "border-[rgba(99,102,241,0.5)] bg-[rgba(99,102,241,0.14)] text-indigo-300"
-                      : viewer.role === "cliente"
-                        ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300"
-                        : viewer.role === "admin"
-                          ? "border-[rgba(160,210,255,0.5)] bg-[rgba(160,210,255,0.14)] text-[#A0D2FF]"
-                          : "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]"
-                  }`}
-                >
-                  {viewer.isSuperAdmin
-                    ? "Administrador Principal"
-                    : viewer.role === "cliente"
-                      ? "Cliente (solo lectura)"
-                      : viewer.role === "admin"
-                        ? "Gestor"
-                        : "Usuario Autónomo"}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {viewer.canRefreshPrices ? (
-                  <button
-                    type="button"
-                    onClick={() => refreshPricesNow()}
-                    disabled={isRefreshingPrices}
-                    className="btn-secondary px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {isRefreshingPrices ? "Actualizando precios..." : "Actualizar precios"}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={exportCurrentReportPdf}
-                  className="btn-secondary px-5 py-2.5 text-sm font-semibold"
-                >
-                  <FileDown className="h-3.5 w-3.5" />
-                  Descargar Reporte (PDF)
-                </button>
-                <button
-                  type="button"
-                  onClick={openHistoryModal}
-                  className="btn-secondary px-5 py-2.5 text-sm font-semibold"
-                >
-                  <History className="h-3.5 w-3.5" />
-                  Historial
-                </button>
-                <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary px-5 py-2.5 text-sm font-semibold">
-                  Cerrar sesión
-                </a>
-              </div>
-              <p className="text-xs text-[var(--muted)]">
-                Última actualización de precios:{" "}
-                {pricesLastUpdatedAt ? new Date(pricesLastUpdatedAt).toLocaleString("es-ES") : "sin datos"}
-              </p>
-            </div>
-
-            <aside className="self-start rounded-2xl p-0.5 xl:-ml-4 xl:justify-self-start">
-              <div className="mb-1 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold tracking-tight">Composición de la Cartera</h2>
-              </div>
-              <div className="grid gap-2 lg:grid-cols-[224px_minmax(0,1fr)] lg:items-center">
-                <div className="flex items-center justify-center">
-                  <div className="relative h-56 w-56">
-                    <svg
-                      viewBox="0 0 220 220"
-                      className="h-56 w-56"
-                      style={{ filter: "drop-shadow(0 0 14px rgba(160,210,255,0.28))" }}
-                    >
-                      <circle
-                        cx="110"
-                        cy="110"
-                        r="78"
-                        fill="none"
-                        stroke="rgba(43,29,20,0.92)"
-                        strokeWidth={donutOuterStroke}
-                      />
-                      {compositionStyles.entries.map((entry) => {
-                        const ratio = Math.max(0, Math.min(1, entry.percent / 100));
-                        const circumference = 2 * Math.PI * 78;
-                        const segmentLength = circumference * ratio;
-                        const segmentGap = Math.max(0, circumference - segmentLength);
-                        const isActive = hoveredCompositionKey === entry.key;
-                        const hasHovered = hoveredCompositionKey !== null;
-                        return (
-                          <circle
-                            key={entry.key}
-                            cx="110"
-                            cy="110"
-                            r="78"
-                            fill="none"
-                            stroke={entry.color}
-                            strokeWidth={isActive ? donutActiveStroke : donutOuterStroke}
-                            strokeLinecap="butt"
-                            strokeDasharray={`${segmentLength} ${segmentGap}`}
-                            strokeDashoffset={-(entry.start / 360) * circumference}
-                            transform="rotate(-90 110 110)"
-                            className="cursor-pointer transition-all duration-200"
-                            style={{
-                              filter: isActive ? "drop-shadow(0 0 10px rgba(160,210,255,0.45))" : "none",
-                              opacity: hasHovered && !isActive ? 0.28 : 1,
-                            }}
-                            onMouseEnter={() => setHoveredCompositionKey(entry.key)}
-                            onMouseLeave={() => setHoveredCompositionKey(null)}
-                          />
-                        );
-                      })}
-                    </svg>
-                    <div
-                      className="pointer-events-none absolute rounded-full bg-[rgba(5,5,6,0.95)]"
-                      style={{ inset: `${donutInnerInset}px` }}
-                    />
-                    <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-center">
-                      <div className="px-3">
-                        <p className="text-xs uppercase tracking-[0.16em] text-[var(--muted)]">Valor Total</p>
-                        <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalValueUsd)}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <div className="grid grid-cols-2 gap-2 auto-rows-fr">
-                    {compositionStyles.entries.map((entry) => (
-                      <div
-                        key={entry.key}
-                        onMouseEnter={() => setHoveredCompositionKey(entry.key)}
-                        onMouseLeave={() => setHoveredCompositionKey(null)}
-                        className={`rounded-xl border px-3.5 py-3 transition-all duration-200 ${
-                          hoveredCompositionKey === entry.key
-                            ? "border-[rgba(160,210,255,0.72)] bg-[rgba(160,210,255,0.18)] shadow-[0_0_0_1px_rgba(160,210,255,0.36),0_0_14px_rgba(160,210,255,0.24)]"
-                            : "border-[var(--line)] bg-black/25"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                          <span className="text-xs text-[var(--muted)]">{plainPercent(entry.percent)}</span>
-                        </div>
-                        <p className="mt-1 text-sm font-medium leading-tight">{entry.title}</p>
-                        <p className="mt-1 text-base font-semibold">{currency(entry.value)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </aside>
-
-            <div className="self-center xl:justify-self-end">
-              <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-2.5">
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
-                    <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Total Depositado</div>
-                    <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalDepositedUsd)}</p>
-                  </div>
-                  <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
-                    <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Harvest Total</div>
-                    <p className="mt-1 text-xl leading-tight font-semibold">{currency(summary.totalHarvestUsd)}</p>
-                  </div>
-                </div>
-                {summary.totalRealizedPnl !== 0 ? (
-                  <div className="mt-2 rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
-                    <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L Realizado (historial)</div>
-                    <p className={`mt-1 text-lg leading-tight font-semibold ${summary.totalRealizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                      {signedCurrency(summary.totalRealizedPnl)}
-                    </p>
-                  </div>
-                ) : null}
-                <div className="glow-divider my-1.5" />
-                <div className="rounded-xl border border-[var(--line)] bg-black/25 px-4 py-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L %</div>
-                      <p className={`mt-1 text-xl leading-tight font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                        {percent(summary.pnlPercent)}
-                      </p>
-                    </div>
-                    <div>
-                      <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L (US$)</div>
-                      <p className={`mt-1 text-xl leading-tight font-semibold ${summary.pnlUsd >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                        {signedCurrency(summary.pnlUsd)}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              {viewer.canOperate ? (
-                <div className="mt-3">
-                  <button
-                    type="button"
-                    onClick={() => openModal()}
-                    className="btn-secondary w-full px-5 py-2.5 text-sm font-semibold"
-                  >
-                    Nueva Operación
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </header>
+        <DashboardHeader
+          summary={summary}
+          portfolioContext={portfolioContext}
+          viewer={viewer}
+          pricesLastUpdatedAt={pricesLastUpdatedAt}
+          isRefreshingPrices={isRefreshingPrices}
+          refreshPricesNow={refreshPricesNow}
+          exportCurrentReportPdf={exportCurrentReportPdf}
+          openHistoryModal={openHistoryModal}
+          compositionStyles={compositionStyles}
+          openModal={openModal}
+        />
 
         {lastDeletedPosition ? (
           <section className="rounded-2xl border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-4 py-3 text-sm">
@@ -2091,89 +1729,30 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             </p>
           </section>
         ) : (
-          sections.map(renderSection)
+          sections.map((section) => (
+            <PositionSectionCard
+              key={section.key}
+              section={section}
+              summary={summary}
+              viewer={viewer}
+              harvestByPosition={harvestByPosition}
+              isDeletingPositionKey={isDeletingPositionKey}
+              positionCompositeUiKey={positionCompositeUiKey}
+              openEditModal={openEditModal}
+              deletePosition={deletePosition}
+              openQuickHarvest={openQuickHarvest}
+              openReinvestHarvest={openReinvestHarvest}
+            />
+          ))
         )}
 
-        <section className="card-premium card-activity page-section-card">
-          <div className="section-header-row flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold tracking-tight">Actividad Reciente</h2>
-            <button
-              type="button"
-              onClick={() => setIsCsvModalOpen(true)}
-              className="inline-flex items-center gap-2 rounded-xl border border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(160,210,255,0.22)]"
-            >
-              <FileSpreadsheet className="h-4 w-4" />
-              Exportar Operaciones (CSV)
-            </button>
-          </div>
-          <div className="page-table-shell">
-            <table className="w-full min-w-[980px] border-collapse">
-              <thead className="bg-[rgba(160,210,255,0.12)] text-left">
-                <tr>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">FECHA</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TIPO</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">POSICIÓN</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TOKENS</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">DETALLE</th>
-                  <th className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PRECIO</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentActivity.length === 0 ? (
-                  <tr className="border-t border-[var(--line)]">
-                    <td className="px-4 py-4 text-sm text-[var(--muted)]" colSpan={6}>
-                      Todavía no hay movimientos en este portfolio.
-                    </td>
-                  </tr>
-                ) : (
-                  visibleRecentActivity.map((item, index) => (
-                    <tr key={`${item.transactionDate}-${item.positionId}-${item.type}-${item.tokenInSymbol}-${item.tokenOutSymbol}-${index}`} className="border-t border-[var(--line)]">
-                      <td className="px-4 py-4 text-sm">
-                        {item.transactionDate ? new Date(item.transactionDate).toLocaleString("es-ES") : "-"}
-                      </td>
-                      <td className="px-4 py-4 text-sm">
-                        <div>{item.type || "-"}</div>
-                        {item.movementOrigin === "harvest_reinvest" ? (
-                          <span className="mt-1 inline-flex rounded-full border border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.12)] px-2 py-0.5 text-[10px] text-emerald-300">
-                            Reinversión de harvest
-                          </span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4 text-sm">
-                        <div>{item.positionId || "-"}</div>
-                        <div className="text-xs text-[var(--muted)]">{item.protocol}</div>
-                        {item.operationGroupId ? (
-                          <div className="text-[10px] text-[var(--muted)]">Op: {item.operationGroupId.slice(0, 8)}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4 text-sm">
-                        {[item.tokenInSymbol, item.tokenOutSymbol].filter((token) => token.length > 0).join("/") || "-"}
-                      </td>
-                      <td className="px-4 py-4 text-sm">
-                        {item.tokenInSymbol ? `IN ${item.tokenInAmount.toLocaleString("en-US")} ${item.tokenInSymbol}` : ""}
-                        {item.tokenInSymbol && item.tokenOutSymbol ? " · " : ""}
-                        {item.tokenOutSymbol ? `OUT ${item.tokenOutAmount.toLocaleString("en-US")} ${item.tokenOutSymbol}` : ""}
-                        {!item.tokenInSymbol && !item.tokenOutSymbol ? "-" : ""}
-                      </td>
-                      <td className="px-4 py-4 text-sm">{item.spotPrice > 0 ? currency(item.spotPrice) : "-"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-          {recentActivity.length > visibleRecentActivityCount ? (
-            <div className="mt-4 flex justify-center">
-              <button
-                type="button"
-                onClick={() => setVisibleRecentActivityCount((current) => current + 10)}
-                className="rounded-xl border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.14)] px-4 py-2 text-sm font-medium transition hover:bg-[rgba(160,210,255,0.24)]"
-              >
-                Ver movimientos anteriores
-              </button>
-            </div>
-          ) : null}
-        </section>
+        <RecentActivity
+          recentActivity={recentActivity}
+          visibleRecentActivity={visibleRecentActivity}
+          visibleRecentActivityCount={visibleRecentActivityCount}
+          setIsCsvModalOpen={setIsCsvModalOpen}
+          setVisibleRecentActivityCount={setVisibleRecentActivityCount}
+        />
       </section>
 
       {isModalOpen ? (
@@ -3355,636 +2934,17 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       ) : null}
 
-      {isCsvModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="card-premium w-full max-w-lg rounded-2xl p-6">
-            <div className="mb-5 flex items-start justify-between">
-              <div>
-                <h3 className="text-xl font-semibold">Exportar Operaciones (CSV)</h3>
-                <p className="mt-1 text-sm text-[var(--muted)]">
-                  Selecciona un rango de fechas para descargar el historial de movimientos.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeCsvModal}
-                className="rounded-lg p-1 text-[var(--muted)] hover:bg-white/10"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <CsvModal isOpen={isCsvModalOpen} onClose={closeCsvModal} activePortfolioId={activePortfolioId} />
+      <ManualPriceModal isOpen={isManualPriceModalOpen} onClose={() => setIsManualPriceModalOpen(false)} unmappedTokens={unmappedTokens} isRefreshingPrices={isRefreshingPrices} onSubmit={refreshPricesNow} />
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                <span className="mb-1 block text-[var(--muted)]">Fecha inicio</span>
-                <input
-                  type="date"
-                  value={csvStartDate}
-                  onChange={(event) => setCsvStartDate(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                />
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block text-[var(--muted)]">Fecha fin</span>
-                <input
-                  type="date"
-                  value={csvEndDate}
-                  onChange={(event) => setCsvEndDate(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                />
-              </label>
-            </div>
-
-            {csvErrorMessage ? (
-              <p className="mt-3 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {csvErrorMessage}
-              </p>
-            ) : null}
-
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={closeCsvModal}
-                className="rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={exportTransactionsCsv}
-                disabled={isExportingCsv}
-                className="rounded-lg border border-[rgba(16,185,129,0.5)] bg-[rgba(16,185,129,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(16,185,129,0.3)] disabled:opacity-60"
-              >
-                {isExportingCsv ? "Exportando..." : "Descargar CSV"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {isManualPriceModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="card-premium w-full max-w-md rounded-2xl p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-[var(--foreground)]">Precios no disponibles</h3>
-              <button
-                type="button"
-                onClick={() => setIsManualPriceModalOpen(false)}
-                className="text-[var(--muted)] hover:text-[var(--foreground)]"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <p className="mb-4 text-sm text-[var(--muted)]">
-              Los siguientes tokens no tienen precio en CoinGecko. Introduce el precio actual en USD para actualizar los cálculos.
-            </p>
-            <div className="grid gap-3">
-              {unmappedTokens.map((symbol) => (
-                <label key={symbol} className="text-sm">
-                  <span className="mb-1 block font-medium text-[var(--foreground)]">{symbol} (USD)</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="Ej: 25.50"
-                    value={manualPriceInputs[symbol] ?? ""}
-                    onChange={(e) =>
-                      setManualPriceInputs((prev) => ({ ...prev, [symbol]: e.target.value }))
-                    }
-                    className="input-field w-full"
-                  />
-                </label>
-              ))}
-            </div>
-            {errorMessage ? (
-              <p className="mt-3 text-xs text-rose-400">{errorMessage}</p>
-            ) : null}
-            <div className="mt-4 flex gap-2">
-              <button
-                type="button"
-                onClick={submitManualPrices}
-                disabled={isRefreshingPrices}
-                className="btn-primary flex-1 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isRefreshingPrices ? "Guardando..." : "Guardar precios"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsManualPriceModalOpen(false)}
-                className="btn-secondary flex-1 py-2 text-sm font-semibold"
-              >
-                Omitir
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {isEditModalOpen && editPosition ? (() => {
-        const isLending = editPosition.positionType.toLowerCase().includes("lending");
-        const isLp = editPosition.positionType.toLowerCase().includes("liquidity") || editPosition.positionType.toLowerCase().includes("pool");
-        const adjustLabels: Record<string, { label: string; color: string; bg: string; border: string }> = {
-          add_collateral: { label: "+Colateral", color: "text-[#A0D2FF]", bg: "bg-[rgba(160,210,255,0.1)]", border: "border-[rgba(160,210,255,0.3)]" },
-          remove_collateral: { label: "−Colateral", color: "text-rose-300", bg: "bg-rose-500/10", border: "border-rose-500/30" },
-          add_debt: { label: "+Préstamo", color: "text-amber-300", bg: "bg-amber-500/10", border: "border-amber-500/30" },
-          repay_debt: { label: "−Préstamo", color: "text-indigo-300", bg: "bg-indigo-500/10", border: "border-indigo-500/30" },
-        };
-        return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
-          <div className="w-full max-w-lg rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 shadow-2xl">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 className="text-lg font-semibold">
-                Modificar posición · {editPosition.tokenSymbol}
-              </h3>
-              <button type="button" onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}>
-                <X className="h-5 w-5 text-[var(--muted)]" />
-              </button>
-            </div>
-
-            {isLending ? (
-              <div className="mb-4 flex gap-1 rounded-lg border border-[var(--line)] bg-black/20 p-1">
-                <button
-                  type="button"
-                  onClick={() => { setEditModalTab("edit"); setErrorMessage(""); }}
-                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${editModalTab === "edit" ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)] hover:text-white"}`}
-                >
-                  Editar posición
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setEditModalTab("lending_adjust"); setErrorMessage(""); }}
-                  className={`flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition ${editModalTab === "lending_adjust" ? "bg-[var(--accent)]/15 text-[var(--accent)]" : "text-[var(--muted)] hover:text-white"}`}
-                >
-                  Ajustar colateral / deuda
-                </button>
-              </div>
-            ) : null}
-
-            {errorMessage ? (
-              <p className="mb-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-300">{errorMessage}</p>
-            ) : null}
-
-            {editModalTab === "edit" ? (
-              <>
-                <div className="space-y-4">
-                  <div>
-                    <span className="mb-1 block text-sm text-[var(--muted)]">Token</span>
-                    <input
-                      type="text"
-                      className="input-base w-full"
-                      value={editForm.tokenSymbol}
-                      onChange={(e) => setEditForm((prev) => ({ ...prev, tokenSymbol: e.target.value }))}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Saldo (cantidad)</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="input-base w-full"
-                        value={editForm.amount}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, amount: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada (USD)</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        className="input-base w-full"
-                        value={editForm.entryPrice}
-                        onChange={(e) => setEditForm((prev) => ({ ...prev, entryPrice: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-
-                  {isLp ? (
-                    <>
-                      <hr className="border-[var(--line)]" />
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="isCorrelated"
-                          checked={editForm.isCorrelated}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, isCorrelated: e.target.checked }))}
-                          className="h-4 w-4 rounded border-[var(--line)] accent-[var(--brand)]"
-                        />
-                        <label htmlFor="isCorrelated" className="text-sm text-[var(--muted)]">
-                          Pool correlacionado (ej: USDC/USDS, SOL/jitoSOL)
-                        </label>
-                      </div>
-                      <p className="text-xs text-[var(--muted)]">Datos del par LP</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <span className="mb-1 block text-sm text-[var(--muted)]">Token B</span>
-                          <input
-                            type="text"
-                            className="input-base w-full"
-                            value={editForm.lpTokenSymbolB}
-                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpTokenSymbolB: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <span className="mb-1 block text-sm text-[var(--muted)]">Saldo Token B</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            className="input-base w-full"
-                            value={editForm.lpAmountB}
-                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpAmountB: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                      <div>
-                        <span className="mb-1 block text-sm text-[var(--muted)]">Precio de entrada Token B (USD)</span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          className="input-base w-full"
-                          value={editForm.lpEntryPriceB}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
-                        />
-                      </div>
-                      <p className="rounded-lg border border-[rgba(251,191,36,0.3)] bg-[rgba(251,191,36,0.06)] px-3 py-2 text-xs text-[var(--muted)]">
-                        <strong className="text-amber-400">Rango:</strong> precio caro ÷ precio barato → siempre &gt; 1. Ej: BTC/ETH → 15–25.
-                      </p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <span className="mb-1 block text-sm text-[var(--muted)]">Rango mín (caro/barato)</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            className="input-base w-full"
-                            placeholder="ej: 15.0"
-                            value={editForm.lpRangeLower}
-                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeLower: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <span className="mb-1 block text-sm text-[var(--muted)]">Rango máx (caro/barato)</span>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            className="input-base w-full"
-                            placeholder="ej: 25.0"
-                            value={editForm.lpRangeUpper}
-                            onChange={(e) => setEditForm((prev) => ({ ...prev, lpRangeUpper: e.target.value }))}
-                          />
-                        </div>
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={saveEditPosition}
-                    disabled={isSavingEdit}
-                    className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
-                    style={{ background: "var(--brand)" }}
-                  >
-                    {isSavingEdit ? "Guardando..." : "Guardar cambios"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
-                    className="btn-secondary flex-1 py-2 text-sm font-semibold"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="space-y-4">
-                  <p className="text-xs text-[var(--muted)]">
-                    {editPosition.tokenSymbol} · {editPosition.protocol} · {editPosition.positionId}
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {(["add_collateral", "remove_collateral", "add_debt", "repay_debt"] as const).map((type) => {
-                      const info = adjustLabels[type];
-                      const isActive = editLendingAdjustType === type;
-                      return (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => { setEditLendingAdjustType(type); setErrorMessage(""); }}
-                          className={`rounded-lg border px-3 py-2 text-xs font-medium transition ${
-                            isActive
-                              ? `${info.border} ${info.bg} ${info.color} ring-1 ring-current`
-                              : "border-[var(--line)] text-[var(--muted)] hover:border-white/20 hover:text-white"
-                          }`}
-                        >
-                          {info.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--muted)]">Token</label>
-                    <input
-                      type="text"
-                      value={editLendingToken}
-                      onChange={(e) => setEditLendingToken(e.target.value)}
-                      placeholder="ej. USDC, ETH..."
-                      className="input-base w-full"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad</label>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={editLendingAmount}
-                      onChange={(e) => setEditLendingAmount(e.target.value)}
-                      placeholder="0.00"
-                      className="input-base w-full"
-                    />
-                    {editLendingToken.trim() && Number(editLendingAmount.replace(",", ".")) > 0 ? (
-                      <p className="mt-1 text-[11px] text-[var(--muted)]">
-                        ≈ {currency(Number(editLendingAmount.replace(",", ".")) * (tokenPriceMap.get(editLendingToken.trim().toUpperCase()) ?? 0))}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                <div className="mt-6 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={saveLendingAdjustFromEdit}
-                    disabled={isSavingLendingFromEdit}
-                    className="flex-1 rounded-lg py-2 text-sm font-semibold text-[var(--background)] transition"
-                    style={{ background: "var(--brand)" }}
-                  >
-                    {isSavingLendingFromEdit ? "Guardando..." : `Aplicar ${adjustLabels[editLendingAdjustType].label}`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }}
-                    className="btn-secondary flex-1 py-2 text-sm font-semibold"
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-        );
-      })() : null}
+      {isEditModalOpen && editPosition && <EditModal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditPosition(null); setErrorMessage(""); }} position={editPosition} tokenPriceMap={tokenPriceMap} onSuccess={() => { router.refresh(); }} />}
 
       {/* History Modal */}
-      {isHistoryModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="card-premium flex w-full max-w-3xl flex-col rounded-2xl" style={{ maxHeight: "90vh" }}>
-            <div className="flex flex-shrink-0 items-center justify-between border-b border-[var(--line)] px-6 py-4">
-              <div>
-                <h3 className="text-xl font-semibold">Historial de posiciones cerradas</h3>
-                <p className="mt-0.5 text-xs text-[var(--muted)]">
-                  Registro de posiciones eliminadas y rebalanceadas con su P&L realizado.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsHistoryModalOpen(false)}
-                className="rounded-lg p-1 text-[var(--muted)] hover:bg-white/10"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              {isLoadingHistory ? (
-                <p className="py-8 text-center text-sm text-[var(--muted)]">Cargando historial...</p>
-              ) : historyRows.length === 0 ? (
-                <p className="py-8 text-center text-sm text-[var(--muted)]">
-                  No hay posiciones cerradas en el historial.
-                </p>
-              ) : (
-                <div className="space-y-3">
-                  {/* Summary */}
-                  <div className="rounded-xl border border-[var(--line)] bg-black/20 px-4 py-3">
-                    <div className="grid grid-cols-3 gap-4 text-center">
-                      <div>
-                        <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Posiciones cerradas</div>
-                        <p className="mt-1 text-lg font-semibold">{historyRows.length}</p>
-                      </div>
-                      <div>
-                        <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">Total depositado</div>
-                        <p className="mt-1 text-lg font-semibold">
-                          {currency(historyRows.reduce((a, r) => a + r.totalDeposited, 0))}
-                        </p>
-                      </div>
-                      <div>
-                        <div className="text-[9px] uppercase tracking-[0.15em] text-[var(--muted)]">P&L realizado total</div>
-                        {(() => {
-                          const total = historyRows.reduce((a, r) => a + r.realizedPnl, 0);
-                          return (
-                            <p className={`mt-1 text-lg font-semibold ${total >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                              {signedCurrency(total)}
-                            </p>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Individual rows */}
-                  {historyRows.map((row, index) => (
-                    <div
-                      key={`${row.positionId}-${row.closedAt}-${index}`}
-                      className="rounded-xl border border-[var(--line)] bg-black/20 px-4 py-3"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold">{row.tokenSymbol}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                              row.reason === "rebalanced"
-                                ? "bg-blue-500/20 text-blue-300"
-                                : "bg-red-500/20 text-red-300"
-                            }`}>
-                              {row.reason === "rebalanced" ? "Rebalanceado" : "Eliminado"}
-                            </span>
-                          </div>
-                          <p className="mt-0.5 text-xs text-[var(--muted)]">
-                            {row.protocol} · {row.positionType}
-                            {row.reason === "rebalanced" && row.destToken ? ` → ${row.destToken}` : ""}
-                          </p>
-                          <p className="mt-0.5 text-[10px] text-[var(--muted)]">
-                            {row.closedAt ? new Date(row.closedAt).toLocaleString("es-ES") : "—"}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <div className="text-[9px] uppercase text-[var(--muted)]">Depositado</div>
-                              <p className="font-medium">{currency(row.totalDeposited)}</p>
-                            </div>
-                            <div>
-                              <div className="text-[9px] uppercase text-[var(--muted)]">Valor cierre</div>
-                              <p className="font-medium">{currency(row.valueAtClose)}</p>
-                            </div>
-                          </div>
-                          <div className="mt-1">
-                            <div className="text-[9px] uppercase text-[var(--muted)]">P&L realizado</div>
-                            <p className={`text-sm font-semibold ${row.realizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
-                              {signedCurrency(row.realizedPnl)}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setIsHistoryModalOpen(false)}
-                className="w-full rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <HistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} />
 
       {/* Quick Harvest Modal */}
-      {isQuickHarvestOpen && quickHarvestPosition ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative mx-4 flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border border-[var(--line)] bg-[var(--card)] shadow-2xl">
-            <div className="flex items-center justify-between border-b border-[var(--line)] px-6 py-4">
-              <h2 className="text-lg font-semibold">Registrar Harvest</h2>
-              <button type="button" onClick={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }} className="text-[var(--muted)] hover:text-white">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      {isQuickHarvestOpen && quickHarvestPosition && <QuickHarvestModal isOpen={isQuickHarvestOpen} onClose={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }} position={quickHarvestPosition} harvestByPosition={harvestByPosition} baseDepositTargets={baseDepositTargets} onSuccess={() => { setIsQuickHarvestOpen(false); setQuickHarvestPosition(null); router.refresh(); }} />}
 
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              <p className="text-xs text-[var(--muted)]">
-                {quickHarvestPosition.tokenSymbol} · {quickHarvestPosition.protocol} · {quickHarvestPosition.positionId}
-              </p>
-
-              {(() => {
-                const posKey = `${quickHarvestPosition.portfolioId}::${quickHarvestPosition.protocol}::${quickHarvestPosition.positionId}`;
-                const harvestInfo = harvestByPosition.find((h) => h.key === posKey);
-                return harvestInfo ? (
-                  <div className="rounded-lg border border-[var(--line)] bg-black/20 px-3 py-2 text-xs">
-                    <span className="text-[var(--muted)]">Histórico harvest: </span>
-                    <span className="font-medium">{currency(harvestInfo.harvestedUsd)}</span>
-                    {harvestInfo.pendingByToken.length > 0 ? (
-                      <>
-                        <span className="text-[var(--muted)]"> · Pendiente: </span>
-                        <span className="font-medium text-amber-300">{currency(harvestInfo.pendingUsd)}</span>
-                        <span className="text-[var(--muted)]"> ({harvestInfo.pendingByToken.map((t) => `${t.amount.toFixed(4)} ${t.tokenSymbol}`).join(", ")})</span>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null;
-              })()}
-
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted)]">Token del harvest</label>
-                <input
-                  type="text"
-                  value={quickHarvestToken}
-                  onChange={(e) => setQuickHarvestToken(e.target.value)}
-                  placeholder="ej. ETH, USDC..."
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs text-[var(--muted)]">Cantidad ganada (USD)</label>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={quickHarvestAmount}
-                  onChange={(e) => setQuickHarvestAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 rounded-lg border border-[var(--line)] bg-black/20 px-3 py-3">
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={quickHarvestReinvest}
-                    onChange={(e) => setQuickHarvestReinvest(e.target.checked)}
-                    className="accent-[var(--accent)]"
-                  />
-                  Reinvertir ahora
-                </label>
-                {!quickHarvestReinvest ? (
-                  <span className="text-[10px] text-[var(--muted)]">Se acumulará como harvest pendiente</span>
-                ) : null}
-              </div>
-
-              {quickHarvestReinvest ? (
-                <div className="space-y-3 rounded-lg border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.05)] p-3">
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--muted)]">Posición destino</label>
-                    <select
-                      value={quickHarvestTargetKey}
-                      onChange={(e) => {
-                        setQuickHarvestTargetKey(e.target.value);
-                        const target = baseDepositTargets.find((t) => t.key === e.target.value);
-                        if (target?.availableTokens[0]) setQuickHarvestTargetToken(target.availableTokens[0]);
-                      }}
-                      className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                    >
-                      {baseDepositTargets.map((target) => (
-                        <option key={target.key} value={target.key}>{target.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs text-[var(--muted)]">Token destino</label>
-                    <input
-                      type="text"
-                      value={quickHarvestTargetToken}
-                      onChange={(e) => setQuickHarvestTargetToken(e.target.value)}
-                      placeholder="ej. ETH"
-                      className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-                    />
-                  </div>
-                </div>
-              ) : null}
-
-              {errorMessage ? (
-                <p className="text-xs text-rose-400">{errorMessage}</p>
-              ) : null}
-            </div>
-
-            <div className="flex-shrink-0 border-t border-[var(--line)] px-6 py-4 flex gap-3">
-              <button
-                type="button"
-                onClick={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }}
-                className="flex-1 rounded-lg border border-[var(--line)] px-4 py-2 text-sm hover:bg-white/5"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={saveQuickHarvest}
-                disabled={isSavingQuickHarvest}
-                className="flex-1 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-black transition hover:opacity-90 disabled:opacity-50"
-              >
-                {isSavingQuickHarvest ? "Guardando..." : (quickHarvestReinvest ? "Registrar y reinvertir" : "Solo acumular")}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </main>
   );
   }

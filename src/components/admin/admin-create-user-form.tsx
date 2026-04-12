@@ -119,20 +119,20 @@ export function AdminCreateUserForm({
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(46,168,255,0.07)]" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(25,215,255,0.05)]" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(46,168,255,0.07)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(25,215,255,0.05)]" aria-hidden="true" />
 
       <section className="page-content">
-        <header className="card-premium page-header-card">
+        <header className="card-premium page-header-card animate-fade-up">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Crear usuario</h1>
-            <Link href="/admin" className="btn-secondary btn-secondary-compact">
+            <Link href="/admin" className="btn-secondary btn-secondary-compact" aria-label="Volver al panel de administrador">
               Volver al panel
             </Link>
           </div>
         </header>
 
-        <section className="card-premium page-section-card">
+        <section className="card-premium page-section-card animate-fade-up stagger-2">
           <div className="grid gap-4 md:grid-cols-2">
             <label className="text-sm">
               <span className="mb-1 block text-[var(--muted)]">Nombre de usuario</span>
@@ -140,7 +140,7 @@ export function AdminCreateUserForm({
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
                 placeholder="Nombre y apellidos"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
               />
             </label>
 
@@ -150,7 +150,8 @@ export function AdminCreateUserForm({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="correo@dominio.com"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                type="email"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
               />
             </label>
 
@@ -161,7 +162,7 @@ export function AdminCreateUserForm({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Mínimo 8 caracteres"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
               />
             </label>
           </div>
@@ -172,10 +173,11 @@ export function AdminCreateUserForm({
               <button
                 type="button"
                 onClick={() => setRole("cliente")}
-                className={`rounded-xl border px-3 py-2 text-left transition ${
+                aria-pressed={role === "cliente"}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.01] ${
                   role === "cliente"
-                    ? "border-[rgba(245,158,11,0.55)] bg-[rgba(245,158,11,0.16)]"
-                    : "border-[var(--line)] bg-black/20"
+                    ? "border-[rgba(245,158,11,0.55)] bg-[rgba(245,158,11,0.16)] shadow-[0_0_12px_rgba(245,158,11,0.12)]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(245,158,11,0.3)]"
                 }`}
               >
                 <span className="inline-flex rounded-full border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-xs text-amber-300">
@@ -187,10 +189,11 @@ export function AdminCreateUserForm({
               <button
                 type="button"
                 onClick={() => setRole("autonomo")}
-                className={`rounded-xl border px-3 py-2 text-left transition ${
+                aria-pressed={role === "autonomo"}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.01] ${
                   role === "autonomo"
-                    ? "border-[rgba(157,80,187,0.55)] bg-[rgba(157,80,187,0.14)]"
-                    : "border-[var(--line)] bg-black/20"
+                    ? "border-[rgba(157,80,187,0.55)] bg-[rgba(157,80,187,0.14)] shadow-[0_0_12px_rgba(157,80,187,0.15)]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(157,80,187,0.3)]"
                 }`}
               >
                 <span className="inline-flex rounded-full border border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] px-2 py-0.5 text-xs text-[#C090E8]">
@@ -202,10 +205,11 @@ export function AdminCreateUserForm({
               <button
                 type="button"
                 onClick={() => setRole("admin")}
-                className={`rounded-xl border px-3 py-2 text-left transition ${
+                aria-pressed={role === "admin"}
+                className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.01] ${
                   role === "admin"
-                    ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)]"
-                    : "border-[var(--line)] bg-black/20"
+                    ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] shadow-[0_0_12px_rgba(160,210,255,0.10)]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(160,210,255,0.25)]"
                 }`}
               >
                 <span className="inline-flex rounded-full border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-2 py-0.5 text-xs text-[#A0D2FF]">
@@ -217,30 +221,32 @@ export function AdminCreateUserForm({
           </div>
 
           {role === "cliente" ? (
-            <div className="mt-5 rounded-xl border border-[var(--line)] bg-black/20 p-3">
-              <p className="text-sm font-medium">Asignación de gestor</p>
+            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.04)] p-4">
+              <p className="text-sm font-medium text-[var(--foreground)]">Asignación de gestor</p>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 <button
                   type="button"
+                  aria-pressed={clientAssignMode === "later"}
                   onClick={() => {
                     setClientAssignMode("later");
                     setClientManagerId("");
                   }}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm ${
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-all ${
                     clientAssignMode === "later"
                       ? "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]"
-                      : "border-[var(--line)] bg-black/20 text-[var(--muted)]"
+                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(157,80,187,0.25)]"
                   }`}
                 >
                   Crear cliente ahora y asignar gestor después
                 </button>
                 <button
                   type="button"
+                  aria-pressed={clientAssignMode === "now"}
                   onClick={() => setClientAssignMode("now")}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm ${
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-all ${
                     clientAssignMode === "now"
                       ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]"
-                      : "border-[var(--line)] bg-black/20 text-[var(--muted)]"
+                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(160,210,255,0.25)]"
                   }`}
                 >
                   Crear cliente y asignar gestor ahora
@@ -253,7 +259,7 @@ export function AdminCreateUserForm({
                   <select
                     value={clientManagerId}
                     onChange={(event) => setClientManagerId(event.target.value)}
-                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
                   >
                     <option value="">Seleccionar gestor</option>
                     {managerOptions.map((manager) => (
@@ -268,13 +274,13 @@ export function AdminCreateUserForm({
           ) : null}
 
           {role === "admin" ? (
-            <div className="mt-5 rounded-xl border border-[var(--line)] bg-black/20 p-3">
+            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.04)] p-4">
               <label className="text-sm">
                 <span className="mb-1 block text-[var(--muted)]">Portfolio a gestionar (opcional)</span>
                 <select
                   value={managerPortfolioId}
                   onChange={(event) => setManagerPortfolioId(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
                 >
                   <option value="">Sin portfolio asignado</option>
                   {availablePortfolios.map((portfolio) => (
@@ -306,7 +312,8 @@ export function AdminCreateUserForm({
                 void handleCreateUser();
               }}
               disabled={isSubmitting}
-              className="btn-secondary disabled:opacity-60"
+              aria-label="Crear nuevo usuario"
+              className="btn-primary disabled:opacity-60"
             >
               {isSubmitting ? "Creando..." : "Crear usuario"}
             </button>

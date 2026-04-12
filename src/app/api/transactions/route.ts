@@ -6,7 +6,15 @@ import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 
-type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance" | "lending_adjust";
+type OperationType =
+  | "base_deposit"
+  | "harvest"
+  | "reinvest_harvest"
+  | "staking"
+  | "lending_borrow"
+  | "liquidity_pool"
+  | "rebalance"
+  | "lending_adjust";
 
 type TransactionType =
   | "deposit"
@@ -632,24 +640,10 @@ async function buildRows(
     const targetPositionType = sanitizeText(payload.harvestTargetPositionType, sourceType);
     const targetMapping = mapBaseDepositByPosition(targetPositionType);
 
-    const withdrawalRows: TransactionInsert[] = [];
+    // Nota: ya NO creamos una withdrawal row con reason=harvest_reinvest.
+    // El pending del harvest se descuenta al registrar el deposit de reinversión
+    // (ver dashboard/get-dashboard-data.ts, rama capitalInTypes con source=harvest_reinvest).
     const reinvestRows: TransactionInsert[] = [];
-    withdrawalRows.push(
-      makeRow({
-        portfolio_id: portfolioId,
-        type: "withdrawal",
-        token_in_symbol: null,
-        token_in_amount: null,
-        token_out_symbol: tokenSymbol,
-        token_out_amount: harvestTokenAmount,
-        spot_price: spotPriceFor(tokenSymbol),
-        protocol: sourceProtocol,
-        position_id: sourcePositionId,
-        position_type: sourceType,
-        metadata: { reason: "harvest_reinvest", targetPositionId, targetProtocol },
-        timestamp,
-      }),
-    );
 
     if (targetMapping.normalizedPositionType === "Liquidity Pool") {
       const tokenA = sanitizeUppercase(payload.harvestTargetTokenSymbol ?? tokenSymbol);
@@ -813,9 +807,193 @@ async function buildRows(
       );
     }
 
-    rows.push(...withdrawalRows, ...reinvestRows);
+    rows.push(...reinvestRows);
 
     return rows;
+  }
+
+  if (payload.operationType === "reinvest_harvest") {
+    // Reinvierte un harvest previamente registrado en cualquier posición destino.
+    // No crea una nueva fila de tipo "harvest" (eso duplicaría el rendimiento).
+    // Sólo emite las filas de depósito con metadata.source = "harvest_reinvest".
+    if (!tokenSymbol || amount <= 0) {
+      throw new Error("Reinvertir harvest requiere token y cantidad válidos.");
+    }
+    const sourcePositionId = sanitizeText(payload.harvestSourcePositionId, positionId);
+    const sourceProtocol = sanitizeText(payload.harvestSourceProtocol, protocol);
+    if (!sourcePositionId) {
+      throw new Error("Reinvertir harvest requiere posición de origen.");
+    }
+
+    const harvestUsdAmount = amount;
+    const targetPositionId = sanitizeText(payload.harvestTargetPositionId, sourcePositionId);
+    const targetProtocol = sanitizeText(payload.harvestTargetProtocol, sourceProtocol);
+    const targetPositionType = sanitizeText(payload.harvestTargetPositionType, sourceType);
+    const targetMapping = mapBaseDepositByPosition(targetPositionType);
+
+    const reinvestRows: TransactionInsert[] = [];
+
+    if (targetMapping.normalizedPositionType === "Liquidity Pool") {
+      const tokenA = sanitizeUppercase(payload.harvestTargetTokenSymbol ?? tokenSymbol);
+      const tokenB = sanitizeUppercase(payload.harvestTargetLpTokenSymbolB);
+      if (!tokenA || !tokenB) {
+        throw new Error("Reinversión LP requiere dos tokens.");
+      }
+      const ratioWeightA = sanitizePositive(payload.harvestTargetAmount);
+      const ratioWeightB = sanitizePositive(payload.harvestTargetLpAmountB);
+      const weightA = ratioWeightA > 0 ? ratioWeightA : 1;
+      const weightB = ratioWeightB > 0 ? ratioWeightB : 1;
+      const totalWeight = weightA + weightB;
+      if (totalWeight <= 0) {
+        throw new Error("No se pudo calcular la distribución del harvest para LP.");
+      }
+      const priceA = spotPriceFor(tokenA);
+      const priceB = spotPriceFor(tokenB);
+      const usdA = harvestUsdAmount * (weightA / totalWeight);
+      const usdB = harvestUsdAmount - usdA;
+      const amountA = usdA / priceA;
+      const amountB = usdB / priceB;
+      if (!Number.isFinite(amountA) || amountA <= 0 || !Number.isFinite(amountB) || amountB <= 0) {
+        throw new Error("No se pudo calcular cantidad reinvertida para LP.");
+      }
+
+      const existingMetadata = await getLatestLpMetadata(client, portfolioId, targetProtocol, targetPositionId);
+      const metadata = existingMetadata ?? {
+        lp: {
+          tokenA,
+          tokenB,
+          rangeLower: sanitizePositive(payload.lpRangeLower),
+          rangeUpper: sanitizePositive(payload.lpRangeUpper),
+          entryPriceRatio: amountB / amountA,
+        },
+      };
+
+      reinvestRows.push(
+        makeRow({
+          portfolio_id: portfolioId,
+          type: "lp_deposit",
+          token_in_symbol: tokenA,
+          token_in_amount: amountA,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: spotPriceFor(tokenA),
+          protocol: targetProtocol,
+          position_id: targetPositionId,
+          position_type: "Liquidity Pool",
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          notes: JSON.stringify(metadata),
+          timestamp,
+        }),
+        makeRow({
+          portfolio_id: portfolioId,
+          type: "lp_deposit",
+          token_in_symbol: tokenB,
+          token_in_amount: amountB,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: spotPriceFor(tokenB),
+          protocol: targetProtocol,
+          position_id: targetPositionId,
+          position_type: "Liquidity Pool",
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          notes: JSON.stringify(metadata),
+          timestamp,
+        }),
+      );
+    } else if (targetMapping.normalizedPositionType === "Lending") {
+      const mode = payload.harvestTargetLendingMode ?? "collateral";
+      const collateralToken = sanitizeUppercase(payload.harvestTargetCollateralToken ?? tokenSymbol);
+      const debtToken = sanitizeUppercase(payload.harvestTargetDebtToken);
+      const collateralWeightRaw = sanitizePositive(payload.harvestTargetCollateralAmount);
+      const debtWeightRaw = sanitizePositive(payload.harvestTargetDebtAmount);
+      const useCollateral = mode !== "debt";
+      const useDebt = mode !== "collateral";
+      if (useCollateral && !collateralToken) {
+        throw new Error("Reinversión lending requiere token de colateral.");
+      }
+      if (useDebt && !debtToken) {
+        throw new Error("Reinversión lending requiere token de deuda.");
+      }
+      const collateralWeight = useCollateral ? (collateralWeightRaw > 0 ? collateralWeightRaw : 1) : 0;
+      const debtWeight = useDebt ? (debtWeightRaw > 0 ? debtWeightRaw : 1) : 0;
+      const totalWeight = collateralWeight + debtWeight;
+      if (totalWeight <= 0) {
+        throw new Error("No se pudo calcular la distribución del harvest para lending.");
+      }
+      if (useCollateral) {
+        const collateralUsd = harvestUsdAmount * (collateralWeight / totalWeight);
+        const collateralAmount = collateralUsd / spotPriceFor(collateralToken);
+        if (!Number.isFinite(collateralAmount) || collateralAmount <= 0) {
+          throw new Error("No se pudo calcular la cantidad de colateral a reinvertir.");
+        }
+        reinvestRows.push(
+          makeRow({
+            portfolio_id: portfolioId,
+            type: "lending_supply",
+            token_in_symbol: collateralToken,
+            token_in_amount: collateralAmount,
+            token_out_symbol: null,
+            token_out_amount: null,
+            spot_price: spotPriceFor(collateralToken),
+            protocol: targetProtocol,
+            position_id: targetPositionId,
+            position_type: "Lending",
+            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+            timestamp,
+          }),
+        );
+      }
+      if (useDebt) {
+        const debtUsd = harvestUsdAmount * (debtWeight / totalWeight);
+        const debtAmount = debtUsd / spotPriceFor(debtToken);
+        if (!Number.isFinite(debtAmount) || debtAmount <= 0) {
+          throw new Error("No se pudo calcular la cantidad de deuda a reinvertir.");
+        }
+        reinvestRows.push(
+          makeRow({
+            portfolio_id: portfolioId,
+            type: "lending_borrow",
+            token_in_symbol: debtToken,
+            token_in_amount: debtAmount,
+            token_out_symbol: null,
+            token_out_amount: null,
+            spot_price: spotPriceFor(debtToken),
+            protocol: targetProtocol,
+            position_id: targetPositionId,
+            position_type: "Lending",
+            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+            timestamp,
+          }),
+        );
+      }
+    } else {
+      const reinvestToken = sanitizeUppercase(payload.harvestTargetTokenSymbol ?? tokenSymbol);
+      if (!reinvestToken) {
+        throw new Error("Indica token a reinvertir.");
+      }
+      const reinvestAmount = harvestUsdAmount / spotPriceFor(reinvestToken);
+      if (!Number.isFinite(reinvestAmount) || reinvestAmount <= 0) {
+        throw new Error("No se pudo calcular cantidad a reinvertir.");
+      }
+      reinvestRows.push(
+        makeRow({
+          portfolio_id: portfolioId,
+          type: targetMapping.type,
+          token_in_symbol: reinvestToken,
+          token_in_amount: reinvestAmount,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: spotPriceFor(reinvestToken),
+          protocol: targetProtocol,
+          position_id: targetPositionId,
+          position_type: targetMapping.normalizedPositionType,
+          metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          timestamp,
+        }),
+      );
+    }
+
+    return reinvestRows;
   }
 
   if (payload.operationType === "rebalance") {

@@ -297,7 +297,7 @@ function parseJsonObject(value: unknown): Record<string, unknown> | null {
 function getMetadataFlag(
   metadata: unknown,
   notes: string | null,
-  key: "reason" | "source",
+  key: "reason" | "source" | "sourcePositionId" | "sourceProtocol",
 ): string | null {
   const fromMetadata = parseJsonObject(metadata);
   if (fromMetadata && typeof fromMetadata[key] === "string") {
@@ -933,6 +933,8 @@ export async function getDashboardData(options?: {
         totalHarvested: toNumber(row.total_harvested),
         isActive: row.is_active === true,
         valueBreakdown: [{ tokenSymbol, valueUsd: currentValue }],
+        collateralBreakdown: [],
+        debtBreakdown: [],
       };
     })
     .filter((position) => position.tokenSymbol && position.currentBalance > 0);
@@ -1027,20 +1029,22 @@ export async function getDashboardData(options?: {
       (sum, item) => sum + (item.impermanentLossValue ?? 0),
       0,
     );
-    const balanceLabel = group
-      .map((item) => `${item.currentBalance.toLocaleString("en-US")} ${item.tokenSymbol}`)
-      .join(" + ");
-    const valueByToken = group.reduce((acc, item) => {
-      acc[item.tokenSymbol] = (acc[item.tokenSymbol] ?? 0) + item.currentValue;
-      return acc;
-    }, {} as Record<string, number>);
-    const valueBreakdown = Object.entries(valueByToken).map(([tokenSymbol, valueUsd]) => ({
-      tokenSymbol,
-      valueUsd,
-    }));
+
+    // Balance por token a partir de los datos actuales (stored balance × price)
+    const balanceByToken: Record<string, number> = {};
+    const valueByTokenRaw: Record<string, number> = {};
+    for (const item of group) {
+      balanceByToken[item.tokenSymbol] = (balanceByToken[item.tokenSymbol] ?? 0) + item.currentBalance;
+      valueByTokenRaw[item.tokenSymbol] = (valueByTokenRaw[item.tokenSymbol] ?? 0) + item.currentValue;
+    }
+
     let currentPriceLabel: string | null = null;
     let lpRangeLabel: string | null = null;
     let lpRangeStatus: DefiPosition["lpRangeStatus"] = sample.lpRangeStatus;
+
+    // Por defecto: usar balances almacenados
+    let finalBalanceByToken: Record<string, number> = { ...balanceByToken };
+    let finalValueByToken: Record<string, number> = { ...valueByTokenRaw };
 
     if (lpEntry) {
       const meta = lpEntry.metadata;
@@ -1051,14 +1055,48 @@ export async function getDashboardData(options?: {
       } else {
         const priceA = cachedPrices.pricesBySymbol.get(meta.tokenA) ?? 0;
         const priceB = cachedPrices.pricesBySymbol.get(meta.tokenB) ?? 0;
-        lpRangeLabel = `Rango ${meta.rangeLower.toLocaleString("en-US")} - ${meta.rangeUpper.toLocaleString("en-US")}`;
         if (priceA > 0 && priceB > 0) {
-          const ratio = priceA / priceB;
-          currentPriceLabel = `${meta.tokenA}/${meta.tokenB}: ${ratio.toLocaleString("en-US", {
+          // Convención caro/barato: rango > 1, siempre precio caro ÷ precio barato
+          const expensiveToken = priceA >= priceB ? meta.tokenA : meta.tokenB;
+          const cheapToken = priceA >= priceB ? meta.tokenB : meta.tokenA;
+          const expensivePrice = Math.max(priceA, priceB);
+          const cheapPrice = Math.min(priceA, priceB);
+          const ratio = expensivePrice / cheapPrice;
+
+          lpRangeLabel = `Rango ${expensiveToken}/${cheapToken}: ${meta.rangeLower.toLocaleString("en-US", {
+            maximumFractionDigits: 4,
+          })} - ${meta.rangeUpper.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+          currentPriceLabel = `Actual ${expensiveToken}/${cheapToken}: ${ratio.toLocaleString("en-US", {
             maximumFractionDigits: 4,
           })}`;
-          lpRangeStatus = ratio < meta.rangeLower || ratio > meta.rangeUpper ? "out_of_range" : "in_range";
+
+          if (ratio > meta.rangeUpper) {
+            // Precio caro subió por encima del rango → 100% en el token barato
+            lpRangeStatus = "out_of_range";
+            finalBalanceByToken = {
+              [expensiveToken]: 0,
+              [cheapToken]: currentValue / cheapPrice,
+            };
+            finalValueByToken = {
+              [expensiveToken]: 0,
+              [cheapToken]: currentValue,
+            };
+          } else if (ratio < meta.rangeLower) {
+            // Precio caro cayó por debajo del rango → 100% en el token caro
+            lpRangeStatus = "out_of_range";
+            finalBalanceByToken = {
+              [expensiveToken]: currentValue / expensivePrice,
+              [cheapToken]: 0,
+            };
+            finalValueByToken = {
+              [expensiveToken]: currentValue,
+              [cheapToken]: 0,
+            };
+          } else {
+            lpRangeStatus = "in_range";
+          }
         } else {
+          lpRangeLabel = `Rango ${meta.rangeLower.toLocaleString("en-US")} - ${meta.rangeUpper.toLocaleString("en-US")}`;
           lpRangeStatus = "na";
         }
       }
@@ -1066,6 +1104,14 @@ export async function getDashboardData(options?: {
       lpRangeLabel = "Rango no disponible (falta metadata LP)";
       lpRangeStatus = "na";
     }
+
+    const balanceLabel = Object.entries(finalBalanceByToken)
+      .map(([tokenSymbol, amount]) => `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${tokenSymbol}`)
+      .join(" + ");
+    const valueBreakdown = Object.entries(finalValueByToken).map(([tokenSymbol, valueUsd]) => ({
+      tokenSymbol,
+      valueUsd,
+    }));
 
     return {
       ...sample,
@@ -1086,6 +1132,8 @@ export async function getDashboardData(options?: {
       costBasisUsd: costBasisUsd > 0 ? costBasisUsd : null,
       totalHarvested,
       valueBreakdown,
+      collateralBreakdown: [],
+      debtBreakdown: [],
     };
   });
 
@@ -1109,28 +1157,54 @@ export async function getDashboardData(options?: {
     {} as Record<string, DefiPosition[]>,
   );
 
-  const aggregatedLendingPositions: DefiPosition[] = Object.values(lendingGroup).map((group) => {
-    if (group.length === 1) return group[0];
+  const buildLendingBreakdowns = (
+    collateralByToken: Record<string, number>,
+    debtByToken: Record<string, number>,
+  ) => {
+    const collateralBreakdown = Object.entries(collateralByToken)
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([symbol, amount]) => ({
+        tokenSymbol: symbol,
+        amount,
+        valueUsd: amount * (cachedPrices.pricesBySymbol.get(symbol) ?? 0),
+      }));
+    const debtBreakdown = Object.entries(debtByToken)
+      .filter(([, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([symbol, amount]) => ({
+        tokenSymbol: symbol,
+        amount,
+        valueUsd: amount * (cachedPrices.pricesBySymbol.get(symbol) ?? 0),
+      }));
+    return { collateralBreakdown, debtBreakdown };
+  };
 
+  const aggregatedLendingPositions: DefiPosition[] = Object.values(lendingGroup).map((group) => {
     const sample = group[0];
     const lendingKey = positionCompositeKey(sample.portfolioId, sample.protocol, sample.positionId);
     const lending = lendingMetrics[lendingKey];
 
     const collateralByToken = lending?.collateralByToken ?? {};
     const debtByToken = lending?.debtByToken ?? {};
-    const collateralTokens = Object.entries(collateralByToken)
-      .filter(([, amount]) => amount > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([symbol]) => symbol);
-    const debtTokens = Object.entries(debtByToken)
-      .filter(([, amount]) => amount > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([symbol]) => symbol);
+    const { collateralBreakdown, debtBreakdown } = buildLendingBreakdowns(collateralByToken, debtByToken);
+
+    // Single-token lending position (no aggregation needed beyond breakdowns)
+    if (group.length === 1) {
+      return {
+        ...group[0],
+        collateralBreakdown,
+        debtBreakdown,
+      };
+    }
+
+    const collateralTokens = collateralBreakdown.map((item) => item.tokenSymbol);
+    const debtTokens = debtBreakdown.map((item) => item.tokenSymbol);
 
     const primaryCollateralToken = collateralTokens[0] ?? group[0].tokenSymbol;
     const collateralPosition = group.find((item) => item.tokenSymbol === primaryCollateralToken) ?? group[0];
-    const collateralUsd = lending?.collateralUsd ?? group.reduce((sum, item) => sum + item.currentValue, 0);
-    const debtUsd = lending?.debtUsd ?? 0;
+    const collateralUsd = collateralBreakdown.reduce((sum, item) => sum + item.valueUsd, 0) || (lending?.collateralUsd ?? group.reduce((sum, item) => sum + item.currentValue, 0));
+    const debtUsd = debtBreakdown.reduce((sum, item) => sum + item.valueUsd, 0) || (lending?.debtUsd ?? 0);
     const currentValue = collateralUsd - debtUsd;
     const costBasisUsd = group.reduce((sum, item) => {
       const token = item.tokenSymbol.toUpperCase();
@@ -1168,25 +1242,6 @@ export async function getDashboardData(options?: {
             ? debtTokens.join("/")
             : sample.tokenSymbol;
 
-    const collateralEntryLabel = collateralTokens
-      .map((token) => {
-        const tokenPosition = group.find((item) => item.tokenSymbol.toUpperCase() === token);
-        return tokenPosition ? `${token}: ${formatUsdLabel(tokenPosition.averageEntryPrice)}` : null;
-      })
-      .filter((item): item is string => Boolean(item))
-      .join(" · ");
-    const debtEntryLabel = debtTokens
-      .map((token) => {
-        const tokenPosition = group.find((item) => item.tokenSymbol.toUpperCase() === token);
-        return tokenPosition ? `${token}: ${formatUsdLabel(tokenPosition.averageEntryPrice)}` : null;
-      })
-      .filter((item): item is string => Boolean(item))
-      .join(" · ");
-    const lendingEntryLabel =
-      collateralEntryLabel || debtEntryLabel
-        ? `${collateralEntryLabel ? `Colateral ${collateralEntryLabel}` : ""}${collateralEntryLabel && debtEntryLabel ? " | " : ""}${debtEntryLabel ? `Deuda ${debtEntryLabel}` : ""}`
-        : null;
-
     return {
       ...sample,
       tokenSymbol,
@@ -1197,11 +1252,13 @@ export async function getDashboardData(options?: {
       roiPercent,
       healthFactor,
       healthStatus,
-      currentPriceLabel: lendingEntryLabel,
+      currentPriceLabel: null,
       isAggregatePosition: false,
       balanceLabel,
       costBasisUsd: costBasisUsd > 0 ? costBasisUsd : null,
       valueBreakdown: [{ tokenSymbol: tokenSymbol || "LENDING", valueUsd: currentValue }],
+      collateralBreakdown,
+      debtBreakdown,
     };
   });
 
@@ -1252,7 +1309,6 @@ export async function getDashboardData(options?: {
     const inAmount = toNumber(tx.token_in_amount);
     const outAmount = toNumber(tx.token_out_amount);
     const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
-    const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
     const protocol = (tx.protocol ?? "Wallet").trim();
     const positionId = tx.position_id ?? "";
     const portfolioId = tx.portfolio_id ?? "";
@@ -1293,6 +1349,26 @@ export async function getDashboardData(options?: {
       if (!isHarvestReinvestInternal) {
         totalDepositedUsd += inAmount * spotPrice;
       }
+      // Reinversión de harvest: descuenta la cantidad reinvertida del pending
+      // de la posición de origen (no de la de destino).
+      if (isHarvestReinvestInternal && inSymbol && inAmount > 0) {
+        const srcPositionId = getMetadataFlag(tx.metadata, tx.notes, "sourcePositionId") ?? positionId;
+        const srcProtocol = getMetadataFlag(tx.metadata, tx.notes, "sourceProtocol") ?? protocol;
+        if (portfolioId && srcPositionId) {
+          const srcKey = positionCompositeKey(portfolioId, srcProtocol, srcPositionId);
+          if (!harvestByPositionAcc[srcKey]) {
+            harvestByPositionAcc[srcKey] = {
+              portfolioId,
+              protocol: srcProtocol,
+              positionId: srcPositionId,
+              harvestedUsd: 0,
+              pendingByToken: {},
+            };
+          }
+          harvestByPositionAcc[srcKey].pendingByToken[inSymbol] =
+            (harvestByPositionAcc[srcKey].pendingByToken[inSymbol] ?? 0) - inAmount;
+        }
+      }
       continue;
     }
 
@@ -1307,19 +1383,9 @@ export async function getDashboardData(options?: {
       if (!isHarvestReinvestInternal) {
         totalDepositedUsd -= outAmount * spotPrice;
       }
-      if (isHarvestReinvestInternal && portfolioId && positionId && outSymbol) {
-        if (!harvestByPositionAcc[positionKey]) {
-          harvestByPositionAcc[positionKey] = {
-            portfolioId,
-            protocol,
-            positionId,
-            harvestedUsd: 0,
-            pendingByToken: {},
-          };
-        }
-        harvestByPositionAcc[positionKey].pendingByToken[outSymbol] =
-          (harvestByPositionAcc[positionKey].pendingByToken[outSymbol] ?? 0) - outAmount;
-      }
+      // Nota: ya no usamos las withdrawals con reason=harvest_reinvest para descontar
+      // el pending (el descuento se hace al registrar el depósito de reinversión).
+      // Las filas legacy con ese reason serán eliminadas por migración SQL.
     }
   }
 
@@ -1366,24 +1432,17 @@ export async function getDashboardData(options?: {
     new Map<string, { harvestedUsd: number; pendingUsd: number }>(),
   );
 
-  // Harvest pendiente no suma al valor actual hasta que se reinvierte.
+  // El harvest pendiente SÍ debe incrementar el total del portfolio (es rendimiento ganado).
+  // No lo restamos del currentValue: se suma aparte en el total global para mantener
+  // coherencia entre la posición (capital invertido) y el rendimiento pendiente.
   const adjustedPositions = positions.map((position) => {
     const key = positionCompositeKey(position.portfolioId, position.protocol, position.positionId);
     const harvest = harvestSummaryByPosition.get(key);
     if (!harvest) return position;
 
-    const adjustedCurrentValue = Math.max(0, position.currentValue - harvest.pendingUsd);
-    const costBasisUsd = position.costBasisUsd;
-    const adjustedRoiPercent =
-      costBasisUsd !== null && costBasisUsd > 0
-        ? ((adjustedCurrentValue - costBasisUsd) / costBasisUsd) * 100
-        : position.roiPercent;
-
     return {
       ...position,
-      currentValue: adjustedCurrentValue,
       totalHarvested: harvest.harvestedUsd,
-      roiPercent: adjustedRoiPercent,
     };
   });
 
@@ -1409,7 +1468,12 @@ export async function getDashboardData(options?: {
     }))
     .filter((section) => section.positions.length > 0);
 
-  const adjustedTotalValueUsd = adjustedPositions.reduce((acc, position) => acc + position.currentValue, 0);
+  const totalPendingHarvestUsd = harvestByPosition.reduce(
+    (acc, entry) => acc + Math.max(0, entry.pendingUsd),
+    0,
+  );
+  const adjustedTotalValueUsd =
+    adjustedPositions.reduce((acc, position) => acc + position.currentValue, 0) + totalPendingHarvestUsd;
 
   // Compute realized P&L from position_closed snapshots
   let totalRealizedPnl = 0;

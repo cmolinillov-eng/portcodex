@@ -130,42 +130,45 @@ export function AdminUsersPanel({
 
   return (
     <main className="page-shell">
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.18)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(157,80,187,0.12)]" aria-hidden="true" />
+
       <section className="page-content">
-        <header className="card-premium page-header-card">
+        <header className="card-premium page-header-card animate-fade-up">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Administrador</h1>
-            <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact">
+            <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact" aria-label="Cerrar sesión">
               Cerrar sesión
             </a>
           </div>
           {feedbackMessage ? <p className="mt-2 text-xs text-[var(--muted)]">{feedbackMessage}</p> : null}
         </header>
 
-        <section className="card-premium page-section-card">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <section className="card-premium page-section-card animate-fade-up stagger-2">
+          <div className="section-header-row mb-3 flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-xl font-semibold">Usuarios</h2>
-            <Link href="/admin/create-user" className="btn-secondary btn-secondary-compact">
+            <Link href="/admin/create-user" className="btn-primary btn-secondary-compact" aria-label="Crear nuevo usuario">
               Crear usuario
             </Link>
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <button type="button" onClick={() => setFilter("all")} className="btn-secondary btn-secondary-compact">Todos ({counts.all})</button>
-            <button type="button" onClick={() => setFilter("admin")} className="btn-secondary btn-secondary-compact">Gestores ({counts.admin})</button>
-            <button type="button" onClick={() => setFilter("cliente")} className="btn-secondary btn-secondary-compact">Clientes ({counts.cliente})</button>
-            <button type="button" onClick={() => setFilter("autonomo")} className="btn-secondary btn-secondary-compact">Autónomos ({counts.autonomo})</button>
+            <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "all" ? "border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)]" : ""}`}>Todos ({counts.all})</button>
+            <button type="button" onClick={() => setFilter("admin")} aria-pressed={filter === "admin"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "admin" ? "border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)]" : ""}`}>Gestores ({counts.admin})</button>
+            <button type="button" onClick={() => setFilter("cliente")} aria-pressed={filter === "cliente"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "cliente" ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)]" : ""}`}>Clientes ({counts.cliente})</button>
+            <button type="button" onClick={() => setFilter("autonomo")} aria-pressed={filter === "autonomo"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "autonomo" ? "border-[rgba(157,80,187,0.4)] bg-[rgba(157,80,187,0.10)]" : ""}`}>Autónomos ({counts.autonomo})</button>
           </div>
 
-          <div className="page-table-shell">
+          <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="text-left">
+              <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
                 <tr>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">USUARIO</th>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">EMAIL</th>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">ROL</th>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">PORTFOLIOS</th>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">ALTA</th>
-                  <th className="px-4 py-3 text-xs tracking-[0.16em] text-[var(--muted)]">ACCIÓN</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">USUARIO</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ROL</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PORTFOLIOS</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ALTA</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACCIÓN</th>
                 </tr>
               </thead>
               <tbody>
@@ -187,7 +190,8 @@ export function AdminUsersPanel({
                             void updateUserRole(user.id, event.target.value as Role);
                           }}
                           disabled={isSavingUserId === user.id}
-                          className={`rounded-lg border px-2 py-1 text-xs ${roleBadgeClasses(user.role)}`}
+                          aria-label={`Cambiar rol de ${displayName(user.fullName, user.email)}`}
+                          className={`rounded-lg border px-2 py-1 text-xs transition-colors ${roleBadgeClasses(user.role)} disabled:opacity-60`}
                         >
                           <option value="cliente">Cliente</option>
                           <option value="autonomo">Autónomo</option>
