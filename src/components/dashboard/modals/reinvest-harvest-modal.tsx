@@ -20,7 +20,6 @@ export function ReinvestHarvestModal({
   baseDepositTargets,
   onSuccess,
 }: ReinvestHarvestModalProps) {
-  const [token, setToken] = useState("");
   const [amount, setAmount] = useState("");
   const [targetKey, setTargetKey] = useState("");
   const [targetToken, setTargetToken] = useState("");
@@ -31,10 +30,8 @@ export function ReinvestHarvestModal({
 
   async function handleSave() {
     if (!position) return;
-    const cleanToken = token.trim().toUpperCase();
     const parsedAmount = Number(amount.replace(",", "."));
-    
-    if (!cleanToken) { setErrorMessage("Indica el token que vas a reinvertir."); return; }
+
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) { setErrorMessage("Indica la cantidad en USD."); return; }
     if (!targetKey) { setErrorMessage("Selecciona una posición destino."); return; }
     const cleanTargetToken = targetToken.trim().toUpperCase();
@@ -49,7 +46,7 @@ export function ReinvestHarvestModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          operationType: "harvest_reinvest",
+          operationType: "reinvest_harvest",
           portfolioId: position.portfolioId,
           positionId: targetInfo?.positionId ?? position.positionId,
           protocol: targetInfo?.protocol ?? position.protocol,
@@ -58,18 +55,16 @@ export function ReinvestHarvestModal({
           amount: parsedAmount,
           harvestSourcePositionId: position.positionId,
           harvestSourceProtocol: position.protocol,
-          harvestTargetTokenSymbol: cleanToken,
         }),
       });
       const body = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(body.error ?? "Error al reinvertir harvest.");
-      
+
       // Reset state
-      setToken("");
       setAmount("");
       setTargetKey("");
       setTargetToken("");
-      
+
       onSuccess();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "Error desconocido.");
@@ -94,14 +89,14 @@ export function ReinvestHarvestModal({
           <p className="text-xs text-[var(--muted)]">
             Origen: {position.tokenSymbol} · {position.protocol} · {position.positionId}
           </p>
-          
+
           {(() => {
             if (!harvestInfo || harvestInfo.pendingUsd <= 0) {
               return <p className="text-xs text-rose-400">No hay harvest pendiente en esta posición.</p>;
             }
             return (
               <div className="rounded-lg border border-[rgba(157,80,187,0.35)] bg-[rgba(157,80,187,0.08)] px-3 py-2 text-xs text-[var(--muted)]">
-                <div>Harvest pendiente: <span className="text-white font-medium">${currency(harvestInfo.pendingUsd)}</span></div>
+                <div>Harvest pendiente: <span className="text-white font-medium">{currency(harvestInfo.pendingUsd)}</span></div>
                 {harvestInfo.pendingByToken.length > 0 ? (
                   <div className="mt-1 text-[11px] opacity-80">
                     {harvestInfo.pendingByToken.map((t) => `${t.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${t.tokenSymbol}`).join(" + ")}
@@ -112,20 +107,10 @@ export function ReinvestHarvestModal({
           })()}
 
           <div>
-            <label className="block text-xs text-[var(--muted)] mb-1">Token del harvest</label>
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="ej. ETH"
-              className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
-            />
-          </div>
-
-          <div>
             <label className="block text-xs text-[var(--muted)] mb-1">Cantidad a reinvertir (USD)</label>
             <input
               type="text"
+              inputMode="decimal"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
@@ -144,6 +129,7 @@ export function ReinvestHarvestModal({
               }}
               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm"
             >
+              <option value="">— Selecciona —</option>
               {baseDepositTargets.map((target) => (
                 <option key={target.key} value={target.key}>{target.label}</option>
               ))}
@@ -151,7 +137,7 @@ export function ReinvestHarvestModal({
           </div>
 
           <div>
-            <label className="block text-xs text-[var(--muted)] mb-1">Token a depositar en destino</label>
+            <label className="block text-xs text-[var(--muted)] mb-1">Token a depositar</label>
             <input
               type="text"
               value={targetToken}

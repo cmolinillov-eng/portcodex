@@ -826,8 +826,8 @@ async function buildRows(
     }
 
     const harvestUsdAmount = amount;
-    const targetPositionId = sanitizeText(payload.harvestTargetPositionId, sourcePositionId);
-    const targetProtocol = sanitizeText(payload.harvestTargetProtocol, sourceProtocol);
+    const targetPositionId = sanitizeText(payload.harvestTargetPositionId, positionId);
+    const targetProtocol = sanitizeText(payload.harvestTargetProtocol, protocol);
     const targetPositionType = sanitizeText(payload.harvestTargetPositionType, sourceType);
     const targetMapping = mapBaseDepositByPosition(targetPositionType);
 
@@ -1430,7 +1430,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Transaction error:", error);
     const message = error instanceof Error ? error.message : "Error inesperado al guardar la operación.";
-    const isSafeMessage = message.startsWith("Operación") || message.startsWith("Portfolio") || message.startsWith("No hay precio") || message.startsWith("Depósito") || message.startsWith("Staking") || message.startsWith("LP") || message.startsWith("Harvest") || message.startsWith("Rebalanceo") || message.startsWith("Falta") || message.startsWith("Debes") || message.startsWith("Para") || message.startsWith("Indica") || message.startsWith("Selecciona") || message.startsWith("Rango") || message.startsWith("El valor") || message.startsWith("Si el") || message.startsWith("No se pudo") || message.startsWith("Fecha") || message.startsWith("Cantidad") || message.startsWith("+") || message.startsWith("-") || message.startsWith("Tipo de ajuste");
+    const isSafeMessage = message.startsWith("Operación") || message.startsWith("Portfolio") || message.startsWith("No hay precio") || message.startsWith("Depósito") || message.startsWith("Staking") || message.startsWith("LP") || message.startsWith("Harvest") || message.startsWith("Rebalanceo") || message.startsWith("Falta") || message.startsWith("Debes") || message.startsWith("Para") || message.startsWith("Indica") || message.startsWith("Selecciona") || message.startsWith("Rango") || message.startsWith("El valor") || message.startsWith("Si el") || message.startsWith("No se pudo") || message.startsWith("Fecha") || message.startsWith("Cantidad") || message.startsWith("+") || message.startsWith("-") || message.startsWith("Tipo de ajuste") || message.startsWith("Reinvertir") || message.startsWith("Reinversión");
     return NextResponse.json({ error: isSafeMessage ? message : "Error inesperado al guardar la operación." }, { status: 400 });
   }
 }

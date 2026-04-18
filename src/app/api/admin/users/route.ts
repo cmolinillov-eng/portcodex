@@ -248,7 +248,8 @@ export async function POST(request: NextRequest) {
         lowerErr.includes("exists") ||
         lowerErr.includes("duplicate") ||
         lowerErr.includes("unique") ||
-        lowerErr.includes("email");
+        lowerErr.includes("email") ||
+        lowerErr.includes("database error");
 
       if (!isEmailExists) {
         return NextResponse.json(

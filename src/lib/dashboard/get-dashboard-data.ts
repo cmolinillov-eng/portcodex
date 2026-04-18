@@ -1189,10 +1189,14 @@ export async function getDashboardData(options?: {
     const debtByToken = lending?.debtByToken ?? {};
     const { collateralBreakdown, debtBreakdown } = buildLendingBreakdowns(collateralByToken, debtByToken);
 
-    // Single-token lending position (no aggregation needed beyond breakdowns)
+    // Single-position lending: recalculate currentValue with debt subtracted
     if (group.length === 1) {
+      const collateralUsdSingle = collateralBreakdown.reduce((sum, item) => sum + item.valueUsd, 0) || (lending?.collateralUsd ?? group[0].currentValue);
+      const debtUsdSingle = debtBreakdown.reduce((sum, item) => sum + item.valueUsd, 0) || (lending?.debtUsd ?? 0);
+      const currentValueSingle = collateralUsdSingle - debtUsdSingle;
       return {
         ...group[0],
+        currentValue: currentValueSingle,
         collateralBreakdown,
         debtBreakdown,
       };
