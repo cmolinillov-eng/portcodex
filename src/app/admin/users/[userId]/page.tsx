@@ -117,7 +117,9 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
           ) : null}
         </div>
       </div>
-      <DashboardClient data={data} />
+      <div className="pt-14">
+        <DashboardClient data={data} />
+      </div>
     </>
   );
 }

@@ -88,7 +88,9 @@ export default async function AdminManagerPortfolioPage({ params }: PageProps) {
           ) : null}
         </div>
       </div>
-      <DashboardClient data={data} />
+      <div className="pt-14">
+        <DashboardClient data={data} />
+      </div>
     </>
   );
 }

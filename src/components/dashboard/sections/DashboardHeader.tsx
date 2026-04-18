@@ -111,7 +111,7 @@ export function DashboardHeader({
             {viewer.canRefreshPrices ? (
               <button
                 type="button"
-                onClick={refreshPricesNow}
+                onClick={() => refreshPricesNow()}
                 disabled={isRefreshingPrices}
                 className="btn-secondary px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Actualizar precios de mercado"
@@ -343,7 +343,7 @@ export function DashboardHeader({
             <div className="mt-3">
               <button
                 type="button"
-                onClick={openModal}
+                onClick={() => openModal()}
                 className="btn-primary w-full"
                 aria-label="Registrar nueva operación"
               >

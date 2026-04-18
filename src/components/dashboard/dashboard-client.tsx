@@ -204,7 +204,7 @@ function positionCompositeUiKey(position: DefiPosition): string {
 }
 
 function inferOperationType(positionType: string): OperationType {
-  const normalized = positionType.toLowerCase();
+  const normalized = (positionType ?? "").toLowerCase();
   if (normalized.includes("lending")) return "lending_borrow";
   if (normalized.includes("staking")) return "staking";
   if (normalized.includes("lp") || normalized.includes("liquidity")) return "harvest";
@@ -2944,6 +2944,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
       {/* Quick Harvest Modal */}
       {isQuickHarvestOpen && quickHarvestPosition && <QuickHarvestModal isOpen={isQuickHarvestOpen} onClose={() => { setIsQuickHarvestOpen(false); setErrorMessage(""); }} position={quickHarvestPosition} harvestByPosition={harvestByPosition} baseDepositTargets={baseDepositTargets} onSuccess={() => { setIsQuickHarvestOpen(false); setQuickHarvestPosition(null); router.refresh(); }} />}
+
+      {/* Reinvest Harvest Modal */}
+      {isReinvestHarvestOpen && reinvestHarvestSourcePosition && <ReinvestHarvestModal isOpen={isReinvestHarvestOpen} onClose={() => { setIsReinvestHarvestOpen(false); setReinvestHarvestSourcePosition(null); setErrorMessage(""); }} position={reinvestHarvestSourcePosition} harvestByPosition={harvestByPosition} baseDepositTargets={baseDepositTargets} onSuccess={() => { setIsReinvestHarvestOpen(false); setReinvestHarvestSourcePosition(null); router.refresh(); }} />}
 
     </main>
   );

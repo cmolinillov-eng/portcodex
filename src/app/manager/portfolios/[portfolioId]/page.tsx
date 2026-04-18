@@ -91,7 +91,9 @@ export default async function ManagerPortfolioPage({ params }: PageProps) {
           ) : null}
         </div>
       </div>
-      <DashboardClient data={data} />
+      <div className="pt-14">
+        <DashboardClient data={data} />
+      </div>
     </>
   );
 }
