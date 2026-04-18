@@ -105,13 +105,13 @@ function parsePortfolioIds(value: unknown): string[] {
 
 function normalizeCreateAuthError(message: string): string {
   const lower = message.toLowerCase();
-  if (lower.includes("already") || lower.includes("registered") || lower.includes("exists")) {
+  if (lower.includes("already") || lower.includes("registered") || lower.includes("exists") || lower.includes("duplicate") || lower.includes("unique")) {
     return "Ese correo ya está registrado.";
   }
   if (lower.includes("password")) {
     return "La contraseña no cumple las reglas mínimas.";
   }
-  return "No se pudo completar la operación de autenticación.";
+  return `No se pudo completar la operación de autenticación: ${message}`;
 }
 
 async function assertManagerCanBeAssigned(
@@ -242,9 +242,13 @@ export async function POST(request: NextRequest) {
 
     if (authCreate.error || !authCreate.data.user?.id) {
       const errorMsg = authCreate.error?.message ?? "";
-      const isEmailExists = errorMsg.toLowerCase().includes("already") ||
-        errorMsg.toLowerCase().includes("registered") ||
-        errorMsg.toLowerCase().includes("exists");
+      const lowerErr = errorMsg.toLowerCase();
+      const isEmailExists = lowerErr.includes("already") ||
+        lowerErr.includes("registered") ||
+        lowerErr.includes("exists") ||
+        lowerErr.includes("duplicate") ||
+        lowerErr.includes("unique") ||
+        lowerErr.includes("email");
 
       if (!isEmailExists) {
         return NextResponse.json(

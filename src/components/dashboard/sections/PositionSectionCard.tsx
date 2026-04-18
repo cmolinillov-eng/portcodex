@@ -340,7 +340,7 @@ export function PositionSectionCard({
                         </div>
 
                         {/* Harvest actions */}
-                        {(section.key === "staking" || section.key === "liquidity_pools") ? (
+                        {(section.key === "staking" || section.key === "liquidity_pools" || section.key === "lending") ? (
                           <div className="flex gap-1.5 flex-wrap">
                             <button
                               type="button"
