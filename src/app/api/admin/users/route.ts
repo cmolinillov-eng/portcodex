@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -254,6 +255,7 @@ export async function POST(request: NextRequest) {
     const { data: newProfileData, error: profileInsertError } = await client
       .from("profiles")
       .insert({
+        id: randomUUID(),
         auth_user_id: authUserId,
         full_name: fullName,
         email,
