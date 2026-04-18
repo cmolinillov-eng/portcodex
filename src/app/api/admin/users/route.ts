@@ -264,7 +264,11 @@ export async function POST(request: NextRequest) {
 
     if (profileInsertError || !newProfileData?.id) {
       await serviceClient.auth.admin.deleteUser(authUserId);
-      throw new Error(`No se pudo crear perfil: ${profileInsertError?.message ?? "respuesta vacía"}`);
+      const profileErrMsg = profileInsertError?.message ?? "respuesta vacía";
+      return NextResponse.json(
+        { error: `No se pudo crear perfil: ${profileErrMsg}` },
+        { status: 400 },
+      );
     }
 
     const profileId: string = newProfileData.id;
@@ -335,8 +339,9 @@ export async function POST(request: NextRequest) {
       assignedPortfolioIds: role === "admin" ? assignPortfolioIds : [],
     });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") console.error("Create user error:", error);
-    return NextResponse.json({ error: "Error inesperado creando usuario." }, { status: 500 });
+    console.error("Create user error:", error);
+    const msg = error instanceof Error ? error.message : "Error inesperado creando usuario.";
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
 
