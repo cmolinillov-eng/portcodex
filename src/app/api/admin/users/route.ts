@@ -111,6 +111,9 @@ function normalizeCreateAuthError(message: string): string {
   if (lower.includes("password")) {
     return "La contraseña no cumple las reglas mínimas.";
   }
+  if (lower.includes("database error")) {
+    return "Error de base de datos al crear usuario. Es probable que exista un trigger 'on_auth_user_created' que necesita ser eliminado. Ejecuta phase18_fix_auth_trigger.sql en el SQL Editor de Supabase.";
+  }
   return `No se pudo completar la operación de autenticación: ${message}`;
 }
 
@@ -229,10 +232,7 @@ export async function POST(request: NextRequest) {
 
     const serviceClient = getServiceClientOrThrow();
 
-    // Intentar crear usuario auth. Si el email ya existe, reutilizar el auth user existente.
-    let authUserId: string;
-    let isNewAuthUser = false;
-
+    // Crear usuario en auth
     const authCreate = await serviceClient.auth.admin.createUser({
       email,
       password,
@@ -242,36 +242,13 @@ export async function POST(request: NextRequest) {
 
     if (authCreate.error || !authCreate.data.user?.id) {
       const errorMsg = authCreate.error?.message ?? "";
-      const lowerErr = errorMsg.toLowerCase();
-      const isEmailExists = lowerErr.includes("already") ||
-        lowerErr.includes("registered") ||
-        lowerErr.includes("exists") ||
-        lowerErr.includes("duplicate") ||
-        lowerErr.includes("unique") ||
-        lowerErr.includes("email") ||
-        lowerErr.includes("database error");
-
-      if (!isEmailExists) {
-        return NextResponse.json(
-          { error: normalizeCreateAuthError(errorMsg || "No se pudo crear el usuario en autenticación.") },
-          { status: 400 },
-        );
-      }
-
-      // El email ya existe en auth → buscar el auth user existente por email
-      const listResult = await serviceClient.auth.admin.listUsers({ perPage: 1000 });
-      if (listResult.error) {
-        return NextResponse.json({ error: "No se pudo verificar el usuario existente." }, { status: 500 });
-      }
-      const existingAuthUser = listResult.data.users.find((u) => u.email?.toLowerCase() === email);
-      if (!existingAuthUser) {
-        return NextResponse.json({ error: "El correo ya existe pero no se pudo localizar el usuario." }, { status: 500 });
-      }
-      authUserId = existingAuthUser.id;
-    } else {
-      authUserId = authCreate.data.user.id;
-      isNewAuthUser = true;
+      return NextResponse.json(
+        { error: normalizeCreateAuthError(errorMsg || "No se pudo crear el usuario en autenticación.") },
+        { status: 400 },
+      );
     }
+
+    const authUserId = authCreate.data.user.id;
 
     // Crear nuevo perfil (nuevo UUID independiente del auth user id)
     const { data: newProfileData, error: profileInsertError } = await client
@@ -286,9 +263,7 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (profileInsertError || !newProfileData?.id) {
-      if (isNewAuthUser) {
-        await serviceClient.auth.admin.deleteUser(authUserId);
-      }
+      await serviceClient.auth.admin.deleteUser(authUserId);
       throw new Error(`No se pudo crear perfil: ${profileInsertError?.message ?? "respuesta vacía"}`);
     }
 
@@ -310,9 +285,7 @@ export async function POST(request: NextRequest) {
       if (createPortfolio.error) {
         if (process.env.NODE_ENV !== "production") console.error("Create portfolio error:", createPortfolio.error.message);
         await client.from("profiles").delete().eq("id", profileId);
-        if (isNewAuthUser) {
-          await serviceClient.auth.admin.deleteUser(authUserId);
-        }
+        await serviceClient.auth.admin.deleteUser(authUserId);
         return NextResponse.json(
           { error: "No se pudo crear el portfolio del usuario." },
           { status: 400 },
@@ -344,7 +317,6 @@ export async function POST(request: NextRequest) {
         email,
         fullName,
         role,
-        isNewAuthUser,
         managerId: role === "cliente" ? managerId : null,
         createdPortfolioIds,
         assignedPortfolioIds: role === "admin" ? assignPortfolioIds : [],
