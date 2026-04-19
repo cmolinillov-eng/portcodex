@@ -36,7 +36,6 @@ export function DashboardHeader({
   const donutInnerInset = 34;
 
   const isPnlPositive = summary.pnlUsd >= 0;
-  const isReadOnly = !viewer.canOperate;
 
   return (
     <header className="glass-panel relative overflow-hidden rounded-[2rem] px-5 pt-6 pb-5 md:px-8 md:pt-7 md:pb-6 animate-fade-up">
@@ -55,7 +54,7 @@ export function DashboardHeader({
         }}
       />
 
-      <div className="relative z-10 grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.1fr)_minmax(320px,0.55fr)] xl:items-center">
+      <div className="relative z-10 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(320px,0.55fr)] xl:items-center">
 
         {/* ── Col 1: Balance + Identity + Actions ── */}
         <div className="flex flex-col gap-4">
@@ -151,7 +150,7 @@ export function DashboardHeader({
         </div>
 
         {/* ── Col 2: Composition Donut ── */}
-        <aside className="self-start animate-fade-up stagger-2">
+        <aside className="self-start animate-fade-up stagger-2 xl:-translate-x-4">
           <h2 className="mb-3 text-sm font-semibold tracking-[0.12em] uppercase text-[var(--muted)]">
             Composición de la Cartera
           </h2>
