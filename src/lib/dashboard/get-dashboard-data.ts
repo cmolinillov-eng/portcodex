@@ -1063,14 +1063,25 @@ export async function getDashboardData(options?: {
           const cheapPrice = Math.min(priceA, priceB);
           const ratio = expensivePrice / cheapPrice;
 
-          lpRangeLabel = `Rango ${expensiveToken}/${cheapToken}: ${meta.rangeLower.toLocaleString("en-US", {
+          // Normalizar rango a la misma dirección que el ratio (caro/barato).
+          // Si el rango está almacenado en dirección inversa (barato/caro),
+          // lo invertimos: [1/upper, 1/lower].
+          let rangeLow = meta.rangeLower;
+          let rangeHigh = meta.rangeUpper;
+          const rangeNeedsInvert = ratio > 1 && rangeHigh < 1 && ratio / rangeHigh > 5;
+          if (rangeNeedsInvert && rangeLow > 0 && rangeHigh > 0) {
+            rangeLow = 1 / meta.rangeUpper;
+            rangeHigh = 1 / meta.rangeLower;
+          }
+
+          lpRangeLabel = `Rango ${expensiveToken}/${cheapToken}: ${rangeLow.toLocaleString("en-US", {
             maximumFractionDigits: 4,
-          })} - ${meta.rangeUpper.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
+          })} - ${rangeHigh.toLocaleString("en-US", { maximumFractionDigits: 4 })}`;
           currentPriceLabel = `Actual ${expensiveToken}/${cheapToken}: ${ratio.toLocaleString("en-US", {
             maximumFractionDigits: 4,
           })}`;
 
-          if (ratio > meta.rangeUpper) {
+          if (ratio > rangeHigh) {
             // Precio caro subió por encima del rango → 100% en el token barato
             lpRangeStatus = "out_of_range";
             finalBalanceByToken = {
@@ -1081,7 +1092,7 @@ export async function getDashboardData(options?: {
               [expensiveToken]: 0,
               [cheapToken]: currentValue,
             };
-          } else if (ratio < meta.rangeLower) {
+          } else if (ratio < rangeLow) {
             // Precio caro cayó por debajo del rango → 100% en el token caro
             lpRangeStatus = "out_of_range";
             finalBalanceByToken = {
