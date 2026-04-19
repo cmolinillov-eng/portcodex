@@ -98,6 +98,7 @@ export function EditModal({
       if (isLp) {
         payload.lpTokenSymbolB = editForm.lpTokenSymbolB.trim().toUpperCase();
         payload.lpAmountB = Number(editForm.lpAmountB.replace(",", "."));
+        payload.lpEntryPriceB = editForm.lpEntryPriceB ? Number(editForm.lpEntryPriceB.replace(",", ".")) : 0;
         payload.lpRangeLower = editForm.lpRangeLower ? Number(editForm.lpRangeLower.replace(",", ".")) : null;
         payload.lpRangeUpper = editForm.lpRangeUpper ? Number(editForm.lpRangeUpper.replace(",", ".")) : null;
         payload.isCorrelated = editForm.isCorrelated;
@@ -244,7 +245,7 @@ export function EditModal({
               </div>
 
               <div>
-                <span className="mb-1 block text-sm text-[var(--muted)]">Precio de Entrada (USD)</span>
+                <span className="mb-1 block text-sm text-[var(--muted)]">{isLp ? "Precio Entrada Token A (USD)" : "Precio de Entrada (USD)"}</span>
                 <input
                   type="text"
                   inputMode="decimal"
@@ -282,6 +283,17 @@ export function EditModal({
                         onChange={(e) => setEditForm((prev) => ({ ...prev, lpAmountB: e.target.value }))}
                       />
                     </div>
+                  </div>
+                  <div>
+                    <span className="mb-1 block text-sm text-[var(--muted)]">Precio Entrada Token B (USD)</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      className="input-base w-full"
+                      placeholder="ej: 1.00"
+                      value={editForm.lpEntryPriceB}
+                      onChange={(e) => setEditForm((prev) => ({ ...prev, lpEntryPriceB: e.target.value }))}
+                    />
                   </div>
                   <div className="mt-3">
                     <label className="flex items-center gap-2 text-sm text-[var(--foreground)]">
