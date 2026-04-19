@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, FileDown, History, LogOut, RefreshCw } from "lucide-react";
+import { BadgeDollarSign, Clock, FileDown, History, LogOut, RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { currency, plainPercent, percent, signedCurrency } from "../utils/formatters";
 
@@ -36,6 +36,7 @@ export function DashboardHeader({
   const donutInnerInset = 34;
 
   const isPnlPositive = summary.pnlUsd >= 0;
+  const isReadOnly = !viewer.canOperate;
 
   return (
     <header className="glass-panel relative overflow-hidden rounded-[2rem] px-5 pt-6 pb-5 md:px-8 md:pt-7 md:pb-6 animate-fade-up">
@@ -57,7 +58,7 @@ export function DashboardHeader({
       <div className="relative z-10 grid items-start gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1.1fr)_minmax(320px,0.55fr)] xl:items-center">
 
         {/* ── Col 1: Balance + Identity + Actions ── */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           {/* Main balance block */}
           <div className="relative">
             <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--muted)]">
@@ -147,13 +148,6 @@ export function DashboardHeader({
               Salir
             </a>
           </div>
-
-          <p className="text-[11px] text-[var(--muted)] opacity-70">
-            Precios actualizados:{" "}
-            {pricesLastUpdatedAt
-              ? new Date(pricesLastUpdatedAt).toLocaleString("es-ES")
-              : "sin datos"}
-          </p>
         </div>
 
         {/* ── Col 2: Composition Donut ── */}
@@ -282,7 +276,7 @@ export function DashboardHeader({
           </div>
         </aside>
 
-        {/* ── Col 3: Stats + Nueva Operación ── */}
+        {/* ── Col 3: Stats + Actions ── */}
         <div className="self-center animate-fade-up stagger-3 xl:justify-self-end">
           <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-2.5 space-y-2">
             {/* Row: depositado + harvest */}
@@ -335,6 +329,17 @@ export function DashboardHeader({
                   </p>
                 </div>
               </div>
+            </div>
+
+            {/* Timestamp — inside stats panel */}
+            <div className="flex items-center gap-1.5 px-1 pt-0.5">
+              <Clock className="h-3 w-3 text-[var(--muted)] opacity-50" aria-hidden="true" />
+              <p className="text-[10px] text-[var(--muted)] opacity-70">
+                Precios:{" "}
+                {pricesLastUpdatedAt
+                  ? new Date(pricesLastUpdatedAt).toLocaleString("es-ES")
+                  : "sin datos"}
+              </p>
             </div>
           </div>
 
