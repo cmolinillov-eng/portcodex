@@ -146,6 +146,22 @@ export function signedCurrency(value: number): string {
   return base;
 }
 
+/** Currency without decimals — for compact stat displays */
+export function currencyCompact(value: number): string {
+  return new Intl.NumberFormat("es-ES", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
+  }).format(value);
+}
+
+export function signedCurrencyCompact(value: number): string {
+  const base = currencyCompact(Math.abs(value));
+  if (value > 0) return `+${base}`;
+  if (value < 0) return `-${base}`;
+  return base;
+}
+
 export function positionCompositeUiKey(position: DefiPosition): string {
   return `${position.portfolioId}::${position.protocol.toLowerCase()}::${position.positionId}`;
 }

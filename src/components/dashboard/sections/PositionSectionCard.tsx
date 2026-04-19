@@ -56,6 +56,141 @@ function BreakdownCell({ items, emptyLabel }: { items: DefiPosition["collateralB
   );
 }
 
+/** Parse numeric range from lpRangeLabel like "Rango BTC/ETH: 0.032 - 0.0357" */
+function parseRange(label: string | null): { lower: number; upper: number; pair: string } | null {
+  if (!label) return null;
+  const match = label.match(/Rango\s+(\S+):\s*([\d.,]+)\s*-\s*([\d.,]+)/);
+  if (!match) return null;
+  const lower = parseFloat(match[2].replace(",", "."));
+  const upper = parseFloat(match[3].replace(",", "."));
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || lower >= upper) return null;
+  return { lower, upper, pair: match[1] };
+}
+
+/** Parse current price from currentPriceLabel like "Actual BTC/ETH: 32.4459" */
+function parseCurrentPrice(label: string | null): number | null {
+  if (!label) return null;
+  const match = label.match(/Actual\s+\S+:\s*([\d.,]+)/);
+  if (!match) return null;
+  const val = parseFloat(match[1].replace(",", "."));
+  return Number.isFinite(val) ? val : null;
+}
+
+/** Orca-style LP range visualization */
+function LpRangeBar({ position }: { position: DefiPosition }) {
+  if (position.lpRangeStatus === "correlated") {
+    return (
+      <span className="inline-flex rounded-full border border-[rgba(147,130,255,0.45)] bg-[rgba(147,130,255,0.1)] px-2.5 py-1 text-[11px] text-violet-300">
+        Correlacionado
+      </span>
+    );
+  }
+
+  const range = parseRange(position.lpRangeLabel);
+  const currentPrice = parseCurrentPrice(position.currentPriceLabel);
+
+  if (!range || currentPrice === null) {
+    if (position.lpRangeStatus === "na") {
+      return <span className="text-xs text-[var(--muted)]">—</span>;
+    }
+    // Fallback: badge only
+    return (
+      <div className="space-y-1">
+        <span
+          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+            position.lpRangeStatus === "out_of_range"
+              ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.1)] text-red-300"
+              : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.1)] text-emerald-300"
+          }`}
+        >
+          {position.lpRangeStatus === "out_of_range" ? "Fuera de rango" : "En rango"}
+        </span>
+        {position.lpRangeLabel ? (
+          <p className="text-[11px] text-[var(--muted)] leading-relaxed">{position.lpRangeLabel}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  const { lower, upper, pair } = range;
+  const isInRange = position.lpRangeStatus === "in_range";
+
+  // Calculate visual position (with padding so marker doesn't clip at edges)
+  const totalSpan = upper - lower;
+  const padding = totalSpan * 0.15;
+  const visualMin = lower - padding;
+  const visualMax = upper + padding;
+  const visualSpan = visualMax - visualMin;
+
+  const clampedPrice = Math.max(visualMin, Math.min(visualMax, currentPrice));
+  const markerPercent = ((clampedPrice - visualMin) / visualSpan) * 100;
+  const lowerPercent = ((lower - visualMin) / visualSpan) * 100;
+  const upperPercent = ((upper - visualMin) / visualSpan) * 100;
+  const rangeWidth = upperPercent - lowerPercent;
+
+  const barColor = isInRange ? "rgb(16,185,129)" : "rgb(239,68,68)";
+  const barColorMuted = isInRange ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)";
+  const markerGlow = isInRange ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)";
+
+  const formatNum = (n: number) =>
+    n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 1 })
+    : n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 3 })
+    : n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+
+  return (
+    <div className="min-w-[160px] max-w-[220px]">
+      {/* Pair label + status */}
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] text-[var(--muted)] font-medium tracking-wide">{pair}</span>
+        <span
+          className={`text-[10px] font-semibold ${isInRange ? "text-emerald-400" : "text-red-400"}`}
+        >
+          {isInRange ? "En rango" : "Fuera"}
+        </span>
+      </div>
+
+      {/* Range bar */}
+      <div className="relative h-2 rounded-full bg-[rgba(255,255,255,0.06)]">
+        {/* Active range zone */}
+        <div
+          className="absolute top-0 h-full rounded-full"
+          style={{
+            left: `${lowerPercent}%`,
+            width: `${rangeWidth}%`,
+            background: `linear-gradient(90deg, ${barColorMuted}, ${barColor}80, ${barColorMuted})`,
+          }}
+        />
+
+        {/* Current price marker */}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+          style={{ left: `${markerPercent}%` }}
+        >
+          <div
+            className="h-3.5 w-3.5 rounded-full border-2"
+            style={{
+              borderColor: barColor,
+              background: "var(--void-deep)",
+              boxShadow: `0 0 8px ${markerGlow}`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Lower / Current / Upper labels */}
+      <div className="flex items-center justify-between mt-1.5">
+        <span className="text-[9px] tabular-nums text-[var(--muted)]">{formatNum(lower)}</span>
+        <span
+          className={`text-[10px] tabular-nums font-semibold ${isInRange ? "text-emerald-300" : "text-red-300"}`}
+        >
+          {formatNum(currentPrice)}
+        </span>
+        <span className="text-[9px] tabular-nums text-[var(--muted)]">{formatNum(upper)}</span>
+      </div>
+    </div>
+  );
+}
+
 export function PositionSectionCard({
   section,
   summary,
@@ -73,6 +208,7 @@ export function PositionSectionCard({
   const showHealthFactor = isLending;
   const showEntryPriceColumn = !isLending && section.key !== "liquidity_pools";
   const showYieldColumn = section.key !== "wallet";
+  const showActionsColumn = viewer.canOperate;
   const sectionToneClass = `card-section-${section.key}`;
   const meta = SECTION_META[section.key] ?? { label: section.title, color: "#A0D2FF", glowClass: "text-[#A0D2FF]" };
 
@@ -99,7 +235,7 @@ export function PositionSectionCard({
 
       {/* Table */}
       <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
-        <table className="w-full min-w-[1180px] border-collapse">
+        <table className="w-full min-w-[900px] border-collapse">
           <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
             <tr>
               {isLending ? (
@@ -130,7 +266,9 @@ export function PositionSectionCard({
               {showIlColumn ? (
                 <th scope="col" className={thClass}>RANGO</th>
               ) : null}
-              <th scope="col" className={thClass}>OPERAR</th>
+              {showActionsColumn ? (
+                <th scope="col" className={thClass}>OPERAR</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -280,40 +418,16 @@ export function PositionSectionCard({
                     </td>
                   ) : null}
 
-                  {/* LP Range */}
+                  {/* LP Range — Orca-style visual bar */}
                   {showIlColumn ? (
                     <td className="px-4 py-4">
-                      <div className="space-y-1">
-                        {position.lpRangeStatus === "correlated" ? (
-                          <span className="inline-flex rounded-full border border-[rgba(147,130,255,0.45)] bg-[rgba(147,130,255,0.1)] px-2.5 py-1 text-[11px] text-violet-300">
-                            Correlacionado
-                          </span>
-                        ) : position.lpRangeStatus !== "na" ? (
-                          <span
-                            className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-                              position.lpRangeStatus === "out_of_range"
-                                ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.1)] text-red-300"
-                                : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.1)] text-emerald-300"
-                            }`}
-                          >
-                            {position.lpRangeStatus === "out_of_range" ? "Fuera de rango" : "En rango"}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-[var(--muted)]">—</span>
-                        )}
-                        {position.lpRangeLabel ? (
-                          <p className="text-[11px] text-[var(--muted)] leading-relaxed">{position.lpRangeLabel}</p>
-                        ) : null}
-                        {position.currentPriceLabel ? (
-                          <p className="text-[11px] text-[var(--muted)]">{position.currentPriceLabel}</p>
-                        ) : null}
-                      </div>
+                      <LpRangeBar position={position} />
                     </td>
                   ) : null}
 
-                  {/* Actions */}
-                  <td className="px-4 py-4">
-                    {viewer.canOperate ? (
+                  {/* Actions — only shown when user can operate */}
+                  {showActionsColumn ? (
+                    <td className="px-4 py-4">
                       <div className="flex flex-col gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
@@ -373,10 +487,8 @@ export function PositionSectionCard({
                           </div>
                         ) : null}
                       </div>
-                    ) : (
-                      <span className="text-xs text-[var(--muted)]">Solo lectura</span>
-                    )}
-                  </td>
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}

@@ -2,7 +2,7 @@
 
 import { BadgeDollarSign, Clock, FileDown, History, LogOut, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 import { useState } from "react";
-import { currency, plainPercent, percent, signedCurrency } from "../utils/formatters";
+import { currency, currencyCompact, plainPercent, percent, signedCurrency, signedCurrencyCompact } from "../utils/formatters";
 
 interface DashboardHeaderProps {
   summary: any;
@@ -408,7 +408,7 @@ export function DashboardHeader({
             <div className="header-stat-row" style={{ "--stat-accent": "var(--accent-primary)" } as React.CSSProperties}>
               <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">Depositado</div>
               <p className="mt-0.5 text-xl font-semibold leading-tight tabular-nums">
-                {currency(summary.totalDepositedUsd)}
+                {currencyCompact(summary.totalDepositedUsd)}
               </p>
             </div>
 
@@ -419,7 +419,7 @@ export function DashboardHeader({
                 <BadgeDollarSign className="h-3 w-3 text-[#A0D2FF] opacity-50" aria-hidden="true" />
               </div>
               <p className="mt-0.5 text-xl font-semibold leading-tight text-[#A0D2FF] tabular-nums">
-                {currency(summary.totalHarvestUsd)}
+                {currencyCompact(summary.totalHarvestUsd)}
               </p>
             </div>
 
@@ -448,14 +448,14 @@ export function DashboardHeader({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">P&L %</div>
-                  <p className={`mt-1 text-2xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                  <p className={`mt-1 text-xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
                     {percent(summary.pnlPercent)}
                   </p>
                 </div>
                 <div>
                   <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">P&L USD</div>
-                  <p className={`mt-1 text-2xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
-                    {signedCurrency(summary.pnlUsd)}
+                  <p className={`mt-1 text-xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
+                    {signedCurrencyCompact(summary.pnlUsd)}
                   </p>
                 </div>
               </div>
