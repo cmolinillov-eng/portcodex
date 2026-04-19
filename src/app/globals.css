@@ -818,3 +818,86 @@ button, a {
   border-color: rgba(244, 63, 94, 0.2) !important;
 }
 
+/* =====================================================================
+   DASHBOARD HEADER — orbital rings, balance glow, stat accents
+   ===================================================================== */
+@keyframes header-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes header-orbit-reverse {
+  from { transform: rotate(360deg); }
+  to { transform: rotate(0deg); }
+}
+
+@keyframes header-balance-pulse {
+  0%, 100% { opacity: 0.08; transform: scale(1); }
+  50% { opacity: 0.18; transform: scale(1.06); }
+}
+
+@keyframes header-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.header-orbit-ring {
+  animation: header-orbit 50s linear infinite;
+  will-change: transform;
+}
+
+.header-orbit-ring-reverse {
+  animation: header-orbit-reverse 70s linear infinite;
+  will-change: transform;
+}
+
+.header-balance-glow {
+  animation: header-balance-pulse 4s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+.header-shimmer-line {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #A0D2FF 25%,
+    #9D50BB 50%,
+    #A0D2FF 75%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: header-shimmer 3s linear infinite;
+  will-change: background-position;
+}
+
+/* Stat row with left accent bar */
+.header-stat-row {
+  position: relative;
+  padding-left: 12px;
+}
+
+.header-stat-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--stat-accent, var(--accent-primary));
+  opacity: 0.6;
+  transition: opacity 0.3s var(--ease), height 0.3s var(--ease);
+}
+
+.header-stat-row:hover::before {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-orbit-ring,
+  .header-orbit-ring-reverse,
+  .header-balance-glow { animation: none; }
+  .header-shimmer-line { animation: none; }
+}
+
