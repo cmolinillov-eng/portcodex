@@ -1047,8 +1047,9 @@ async function buildRows(
       throw new Error("Rebalanceo requiere posición destino o crear una nueva.");
     }
 
+    // Calcular rebalanceUsd primero (sin emitir filas todavía) — lo necesitamos
+    // para derivar el "depositado heredado" antes de inyectarlo en las metadatas.
     let rebalanceUsd = 0;
-    const sourceRows: TransactionInsert[] = [];
     if (sourceMapping.normalizedPositionType === "Liquidity Pool") {
       if (!sourceToken || !sourceTokenB || sourceAmount <= 0 || sourceAmountB <= 0) {
         throw new Error("Si el origen es LP debes indicar dos tokens y dos cantidades.");
@@ -1056,6 +1057,77 @@ async function buildRows(
       const sourcePriceA = spotPriceFor(sourceToken);
       const sourcePriceB = spotPriceFor(sourceTokenB);
       rebalanceUsd = sourceAmount * sourcePriceA + sourceAmountB * sourcePriceB;
+    } else {
+      if (!sourceToken || sourceAmount <= 0) {
+        throw new Error("Rebalanceo requiere token y cantidad de origen.");
+      }
+      rebalanceUsd = sourceAmount * spotPriceFor(sourceToken);
+    }
+    if (rebalanceUsd <= 0) {
+      throw new Error("No se pudo calcular el valor USD del rebalanceo.");
+    }
+
+    // Cost basis pro-rata del origen: la fracción del "Total Depositado" del source
+    // que viaja con el rebalanceo. Se inyecta en las metadatas de source/target rows
+    // y el dashboard lo usa para que la posición destino arrastre su depositado heredado
+    // y la posición origen restante lo descuente. El total global queda intacto.
+    const sourceCostBasis = await (async () => {
+      try {
+        const { data: srcTxs } = await client
+          .from("transactions")
+          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
+          .eq("portfolio_id", portfolioId)
+          .eq("protocol", sourceProtocol)
+          .eq("position_id", sourcePositionId)
+          .is("deleted_at", null);
+
+        const inSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+        const outSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+        let totalDeposited = 0;
+        let totalValue = 0;
+        const balances: Record<string, number> = {};
+        for (const tx of srcTxs ?? []) {
+          const t = ((tx.type ?? "") as string).trim();
+          if (t === "position_closed") continue;
+          const inAmt = toNumber(tx.token_in_amount);
+          const outAmt = toNumber(tx.token_out_amount);
+          const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
+          const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
+          const sp = toNumber(tx.spot_price);
+          if (inSet.has(t)) {
+            totalDeposited += inAmt * sp;
+            if (inSym) balances[inSym] = (balances[inSym] ?? 0) + inAmt;
+          } else if (outSet.has(t)) {
+            totalDeposited -= outAmt * sp;
+            if (outSym) balances[outSym] = (balances[outSym] ?? 0) - outAmt;
+          }
+        }
+        for (const sym of Object.keys(balances)) {
+          const bal = Math.max(0, balances[sym] ?? 0);
+          totalValue += bal * spotPriceFor(sym);
+        }
+        return { totalDeposited, totalValue, balances };
+      } catch {
+        return { totalDeposited: 0, totalValue: 0, balances: {} as Record<string, number> };
+      }
+    })();
+
+    const transferFraction = sourceCostBasis.totalValue > 0
+      ? Math.min(1, rebalanceUsd / sourceCostBasis.totalValue)
+      : 1;
+    const proratedDeposited = sourceCostBasis.totalDeposited * transferFraction;
+
+    // Número de filas que vamos a emitir por lado, para dividir el depositedDelta
+    // de forma equitativa y evitar doble conteo cuando son LPs (2 rows).
+    const sourceRowCount = sourceMapping.normalizedPositionType === "Liquidity Pool" ? 2 : 1;
+    const targetRowCount = targetMapping.normalizedPositionType === "Liquidity Pool" ? 2 : 1;
+    const sourceDepositedDeltaPerRow = -proratedDeposited / sourceRowCount;
+    const targetDepositedDeltaPerRow = proratedDeposited / targetRowCount;
+
+    const sourceRows: TransactionInsert[] = [];
+    if (sourceMapping.normalizedPositionType === "Liquidity Pool") {
+      const sourcePriceA = spotPriceFor(sourceToken);
+      const sourcePriceB = spotPriceFor(sourceTokenB);
       sourceRows.push(
         makeRow({
           portfolio_id: portfolioId,
@@ -1068,7 +1140,7 @@ async function buildRows(
           protocol: sourceProtocol,
           position_id: sourcePositionId,
           position_type: sourcePositionType,
-          metadata: { reason: "rebalance_transfer" },
+          metadata: { reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
           timestamp,
         }),
       );
@@ -1084,16 +1156,12 @@ async function buildRows(
           protocol: sourceProtocol,
           position_id: sourcePositionId,
           position_type: sourcePositionType,
-          metadata: { reason: "rebalance_transfer" },
+          metadata: { reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
           timestamp,
         }),
       );
     } else {
-      if (!sourceToken || sourceAmount <= 0) {
-        throw new Error("Rebalanceo requiere token y cantidad de origen.");
-      }
       const sourcePrice = spotPriceFor(sourceToken);
-      rebalanceUsd = sourceAmount * sourcePrice;
       sourceRows.push(
         makeRow({
           portfolio_id: portfolioId,
@@ -1106,13 +1174,10 @@ async function buildRows(
           protocol: sourceProtocol,
           position_id: sourcePositionId,
           position_type: sourcePositionType,
-          metadata: { reason: "rebalance_transfer" },
+          metadata: { reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
           timestamp,
         }),
       );
-    }
-    if (rebalanceUsd <= 0) {
-      throw new Error("No se pudo calcular el valor USD del rebalanceo.");
     }
 
     const targetRows: TransactionInsert[] = [];
@@ -1180,7 +1245,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...targetMeta, source: "rebalance_transfer", usdValue: rebalanceUsd },
+          metadata: { ...targetMeta, source: "rebalance_transfer", usdValue: rebalanceUsd, depositedDelta: targetDepositedDeltaPerRow },
           notes: JSON.stringify(targetMeta),
           timestamp,
         }),
@@ -1197,7 +1262,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...targetMeta, source: "rebalance_transfer", usdValue: rebalanceUsd },
+          metadata: { ...targetMeta, source: "rebalance_transfer", usdValue: rebalanceUsd, depositedDelta: targetDepositedDeltaPerRow },
           notes: JSON.stringify(targetMeta),
           timestamp,
         }),
@@ -1226,6 +1291,7 @@ async function buildRows(
           metadata: {
             source: "rebalance_transfer",
             usdValue: rebalanceUsd,
+            depositedDelta: targetDepositedDeltaPerRow,
             sourcePositionId,
             sourceProtocol,
             sourceToken,
@@ -1236,57 +1302,11 @@ async function buildRows(
       );
     }
 
-    // Insert closure snapshot for the source position (P&L history)
-    const snapshotRow = await (async () => {
+    // Snapshot opcional de cierre. Reusa el cost basis ya calculado arriba.
+    const snapshotRow = (() => {
       try {
-        // Compute source position cost basis from historical transactions
-        const { data: srcTxs } = await client
-          .from("transactions")
-          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
-          .eq("portfolio_id", portfolioId)
-          .eq("protocol", sourceProtocol)
-          .eq("position_id", sourcePositionId)
-          .is("deleted_at", null);
-
-        const srcCapitalIn = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
-        const srcCapitalOut = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
-        let srcTotalDeposited = 0;
-        let srcTotalValue = 0;
-        const srcBalances: Record<string, number> = {};
-
-        for (const tx of srcTxs ?? []) {
-          const t = ((tx.type ?? "") as string).trim();
-          if (t === "position_closed") continue;
-          const inAmt = toNumber(tx.token_in_amount);
-          const outAmt = toNumber(tx.token_out_amount);
-          const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
-          const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
-          const sp = toNumber(tx.spot_price);
-          if (srcCapitalIn.has(t)) {
-            srcTotalDeposited += inAmt * sp;
-            if (inSym) srcBalances[inSym] = (srcBalances[inSym] ?? 0) + inAmt;
-          } else if (srcCapitalOut.has(t)) {
-            srcTotalDeposited -= outAmt * sp;
-            if (outSym) srcBalances[outSym] = (srcBalances[outSym] ?? 0) - outAmt;
-          }
-        }
-
-        // Current value of source position (before rebalance withdrawal)
-        for (const sym of Object.keys(srcBalances)) {
-          const bal = Math.max(0, srcBalances[sym] ?? 0);
-          const price = spotPriceFor(sym);
-          srcTotalValue += bal * price;
-        }
-
-        // Pro-rate: what fraction of the position is being rebalanced
-        const fraction = srcTotalValue > 0 ? rebalanceUsd / srcTotalValue : 1;
-        const proratedDeposited = srcTotalDeposited * Math.min(1, fraction);
         const realizedPnl = rebalanceUsd - proratedDeposited;
-
-        const tokenLabel = sourceTokenB
-          ? `${sourceToken}/${sourceTokenB}`
-          : sourceToken;
-
+        const tokenLabel = sourceTokenB ? `${sourceToken}/${sourceTokenB}` : sourceToken;
         return createRow({
           portfolio_id: portfolioId,
           type: "position_closed" as TransactionType,
@@ -1305,7 +1325,7 @@ async function buildRows(
               realizedPnl,
               reason: "rebalanced",
               closedAt: timestamp,
-              balances: srcBalances,
+              balances: sourceCostBasis.balances,
               destPositionId: targetPositionId,
               destProtocol: targetProtocol,
               destToken: targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken,

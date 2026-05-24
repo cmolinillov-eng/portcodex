@@ -310,6 +310,22 @@ function getMetadataFlag(
   return null;
 }
 
+function getMetadataNumber(
+  metadata: unknown,
+  notes: string | null,
+  key: "depositedDelta",
+): number | null {
+  const fromMetadata = parseJsonObject(metadata);
+  if (fromMetadata && typeof fromMetadata[key] === "number" && Number.isFinite(fromMetadata[key])) {
+    return Number(fromMetadata[key]);
+  }
+  const fromNotes = parseJsonObject(notes);
+  if (fromNotes && typeof fromNotes[key] === "number" && Number.isFinite(fromNotes[key])) {
+    return Number(fromNotes[key]);
+  }
+  return null;
+}
+
 function isMissingColumnError(message: string, column: string): boolean {
   return message.toLowerCase().includes(column.toLowerCase());
 }
@@ -1367,6 +1383,16 @@ export async function getDashboardData(options?: {
       if (!isInternalMovement) {
         totalDepositedUsd += inAmount * spotPrice;
       }
+      // Rebalance hereda el cost basis del origen sin afectar al total global.
+      if (isRebalanceTransfer && positionId) {
+        const depositedDelta = getMetadataNumber(tx.metadata, tx.notes, "depositedDelta");
+        if (depositedDelta !== null) {
+          const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
+          const fallbackKey = positionCompositeKey("", protocol, positionId);
+          depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + depositedDelta);
+          depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + depositedDelta);
+        }
+      }
       // Reinversión de harvest: descuenta la cantidad reinvertida del pending
       // de la posición de origen (no de la de destino).
       if (isHarvestReinvestInternal && inSymbol && inAmount > 0) {
@@ -1400,6 +1426,16 @@ export async function getDashboardData(options?: {
       }
       if (!isInternalMovement) {
         totalDepositedUsd -= outAmount * spotPrice;
+      }
+      // Rebalance descuenta cost basis del origen (depositedDelta viene negativo).
+      if (isRebalanceTransfer && positionId) {
+        const depositedDelta = getMetadataNumber(tx.metadata, tx.notes, "depositedDelta");
+        if (depositedDelta !== null) {
+          const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
+          const fallbackKey = positionCompositeKey("", protocol, positionId);
+          depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + depositedDelta);
+          depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + depositedDelta);
+        }
       }
       // Nota: ya no usamos las withdrawals con reason=harvest_reinvest para descontar
       // el pending (el descuento se hace al registrar el depósito de reinversión).
