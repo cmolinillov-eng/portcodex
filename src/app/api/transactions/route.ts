@@ -1434,9 +1434,15 @@ export async function POST(request: NextRequest) {
     ].filter((value): value is string => typeof value === "string");
     const pricesBySymbol = await getCachedPricesBySymbol(client, symbolsToPrice);
     const rows = await buildRows(payload, pricesBySymbol, client);
-    let { error } = await client.from("transactions").insert(rows);
+    // Separamos el snapshot opcional (position_closed) del resto.
+    // El enum transaction_type en la BD no siempre incluye "position_closed",
+    // así que lo intentamos por separado y, si el enum lo rechaza, lo ignoramos.
+    const snapshotRows = rows.filter((row) => (row.type as string) === "position_closed");
+    const mainRows = rows.filter((row) => (row.type as string) !== "position_closed");
+
+    let { error } = await client.from("transactions").insert(mainRows);
     if (error && error.message.toLowerCase().includes("operation_group_id")) {
-      const fallbackRows = rows.map((row) => {
+      const fallbackRows = mainRows.map((row) => {
         const clone = { ...row };
         delete clone.operation_group_id;
         return clone;
@@ -1449,7 +1455,25 @@ export async function POST(request: NextRequest) {
       throw new Error(`No se pudo guardar en BD: ${error.message}`);
     }
 
-    return NextResponse.json({ ok: true, inserted: rows.length });
+    let insertedSnapshots = 0;
+    if (snapshotRows.length > 0) {
+      const { error: snapshotError } = await client.from("transactions").insert(snapshotRows);
+      if (snapshotError) {
+        const msg = snapshotError.message.toLowerCase();
+        const isEnumIssue = msg.includes("invalid input value for enum") && msg.includes("position_closed");
+        if (!isEnumIssue) {
+          // Si el snapshot falla por otra razón (RLS, constraint…), no rompemos
+          // la operación principal: ya está guardada. Log y seguimos.
+          if (process.env.NODE_ENV !== "production") {
+            console.error("Snapshot position_closed insert failed:", snapshotError.message);
+          }
+        }
+      } else {
+        insertedSnapshots = snapshotRows.length;
+      }
+    }
+
+    return NextResponse.json({ ok: true, inserted: mainRows.length + insertedSnapshots });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Transaction error:", error);
     const message = error instanceof Error ? error.message : "Error inesperado al guardar la operación.";
