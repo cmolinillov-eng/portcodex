@@ -86,6 +86,7 @@ type OperationPayload = {
   rebalanceTargetAmount?: number;
   rebalanceTargetLpTokenSymbolB?: string;
   rebalanceTargetLpAmountB?: number;
+  rebalanceTargetIsNew?: boolean;
   harvestTargetPositionId?: string;
   harvestTargetProtocol?: string;
   lendingCollateralToken?: string;
@@ -1005,7 +1006,10 @@ async function buildRows(
     const sourceTokenB = sanitizeUppercase(payload.rebalanceSourceLpTokenSymbolB);
     const sourceAmountB = sanitizePositive(payload.rebalanceSourceLpAmountB);
 
-    const targetPositionId = sanitizeText(payload.rebalanceTargetPositionId);
+    const targetIsNew = Boolean(payload.rebalanceTargetIsNew);
+    const targetPositionId = targetIsNew
+      ? randomUUID()
+      : sanitizeText(payload.rebalanceTargetPositionId);
     const targetProtocol = sanitizeText(payload.rebalanceTargetProtocol);
     const targetPositionTypeRaw = sanitizeText(payload.rebalanceTargetPositionType, "Hold");
     const targetToken = sanitizeUppercase(payload.rebalanceTargetTokenSymbol);
@@ -1020,8 +1024,11 @@ async function buildRows(
     if (!sourcePositionId || !sourceProtocol) {
       throw new Error("Rebalanceo requiere origen válido (posición y protocolo).");
     }
-    if (!targetPositionId || !targetProtocol) {
-      throw new Error("Rebalanceo requiere destino válido (posición, protocolo, token).");
+    if (!targetProtocol) {
+      throw new Error("Rebalanceo requiere destino válido (protocolo).");
+    }
+    if (!targetIsNew && !targetPositionId) {
+      throw new Error("Rebalanceo requiere posición destino o crear una nueva.");
     }
 
     let rebalanceUsd = 0;

@@ -52,3 +52,62 @@ test("Rebalance automático: si precio destino inválido => 0", () => {
   assert.equal(rebalanceTargetAmountFromUsd(100, 0), 0);
 });
 
+// ── Rebalanceo a nueva posición: split LP ────────────────────────────────────
+
+function lpSplitAmounts(totalUsd, splitPercentA, priceA, priceB) {
+  const pct = Math.max(0, Math.min(100, splitPercentA));
+  const usdA = (totalUsd * pct) / 100;
+  const usdB = totalUsd - usdA;
+  const amountA = priceA > 0 ? usdA / priceA : 0;
+  const amountB = priceB > 0 ? usdB / priceB : 0;
+  return { amountA, amountB };
+}
+
+function lpSplitUsdTotal(amountA, priceA, amountB, priceB) {
+  return amountA * priceA + amountB * priceB;
+}
+
+test("Split 50/50: 200 USD, ETH 2000, USDC 1 => 0.05 ETH + 100 USDC", () => {
+  const { amountA, amountB } = lpSplitAmounts(200, 50, 2000, 1);
+  assert.equal(Number(amountA.toFixed(6)), 0.05);
+  assert.equal(Number(amountB.toFixed(4)), 100);
+});
+
+test("Split 60/40: 200 USD, ETH 2000, USDC 1 => valor total conservado", () => {
+  const { amountA, amountB } = lpSplitAmounts(200, 60, 2000, 1);
+  const total = lpSplitUsdTotal(amountA, 2000, amountB, 1);
+  assert.equal(Number(total.toFixed(6)), 200);
+});
+
+test("Split 40/60: montos reflejan el porcentaje correctamente", () => {
+  const { amountA, amountB } = lpSplitAmounts(100, 40, 1000, 2);
+  assert.equal(Number(amountA.toFixed(6)), 0.04);  // 40 USD / 1000
+  assert.equal(Number(amountB.toFixed(6)), 30);     // 60 USD / 2
+});
+
+test("Split 0%: todo va a token B", () => {
+  const { amountA, amountB } = lpSplitAmounts(100, 0, 2000, 1);
+  assert.equal(amountA, 0);
+  assert.equal(amountB, 100);
+});
+
+test("Split 100%: todo va a token A", () => {
+  const { amountA, amountB } = lpSplitAmounts(100, 100, 2000, 1);
+  assert.equal(Number(amountA.toFixed(6)), 0.05);
+  assert.equal(amountB, 0);
+});
+
+test("Split con precio 0 en token B: amountB sale 0, no explota", () => {
+  const { amountA, amountB } = lpSplitAmounts(100, 50, 2000, 0);
+  assert.ok(Number.isFinite(amountA));
+  assert.equal(amountB, 0);
+});
+
+test("Split preserva valor total con precios no redondos", () => {
+  const priceA = 63478.5;
+  const priceB = 1.0002;
+  const { amountA, amountB } = lpSplitAmounts(500, 70, priceA, priceB);
+  const total = lpSplitUsdTotal(amountA, priceA, amountB, priceB);
+  assert.ok(Math.abs(total - 500) < 0.01, `Expected ~500, got ${total}`);
+});
+

@@ -78,6 +78,10 @@ type FormState = {
   rebalanceTargetAmount: string;
   rebalanceTargetLpTokenSymbolB: string;
   rebalanceTargetLpAmountB: string;
+  rebalanceTargetIsNew: boolean;
+  rebalanceTargetNewProtocol: string;
+  rebalanceTargetNewPositionType: string;
+  rebalanceTargetLpSplitPercentA: string;
 };
 
 type TransactionExportRow = {
@@ -163,6 +167,10 @@ function createEmptyForm(): FormState {
     rebalanceTargetAmount: "",
     rebalanceTargetLpTokenSymbolB: "",
     rebalanceTargetLpAmountB: "",
+    rebalanceTargetIsNew: false,
+    rebalanceTargetNewProtocol: "",
+    rebalanceTargetNewPositionType: "Hold",
+    rebalanceTargetLpSplitPercentA: "50",
   };
 }
 
@@ -539,7 +547,10 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     const sourceTarget = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
     const targetTarget = baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey);
     const sourceType = (sourceTarget?.positionType ?? "").toLowerCase();
-    const targetType = (targetTarget?.positionType ?? "").toLowerCase();
+    const targetTypeRaw = form.rebalanceTargetIsNew
+      ? form.rebalanceTargetNewPositionType
+      : (targetTarget?.positionType ?? "");
+    const targetType = targetTypeRaw.toLowerCase();
 
     let usd = 0;
     const sourcePriceA = tokenPriceMap.get(form.rebalanceSourceTokenSymbol.toUpperCase()) ?? 0;
@@ -553,15 +564,32 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       if (Number.isFinite(sourceAmountA) && sourceAmountA > 0) usd = sourceAmountA * sourcePriceA;
     }
 
-    const targetPrice = tokenPriceMap.get(form.rebalanceTargetTokenSymbol.toUpperCase()) ?? 0;
-    const targetAmountAuto = targetPrice > 0 ? usd / targetPrice : 0;
+    const isTargetLp = targetType.includes("liquidity") || targetType.includes("lp");
+    const targetPriceA = tokenPriceMap.get(form.rebalanceTargetTokenSymbol.toUpperCase()) ?? 0;
+    const targetPriceB = tokenPriceMap.get(form.rebalanceTargetLpTokenSymbolB.toUpperCase()) ?? 0;
     const targetAmountManual = Number(form.rebalanceTargetAmount);
-    const targetAmount =
-      targetType.includes("liquidity") || targetType.includes("lp")
-        ? targetAmountManual
-        : (Number.isFinite(targetAmountManual) && targetAmountManual > 0 ? targetAmountManual : targetAmountAuto);
+    const targetAmountManualB = Number(form.rebalanceTargetLpAmountB);
 
-    return { usd, targetAmount };
+    let targetAmount = 0;
+    let suggestedAmountA = 0;
+    let suggestedAmountB = 0;
+
+    if (isTargetLp) {
+      // Para LP: sugerencias basadas en split %. Si el usuario ya editó, respetar.
+      const rawSplit = Number(form.rebalanceTargetLpSplitPercentA);
+      const splitA = Number.isFinite(rawSplit) ? Math.max(0, Math.min(100, rawSplit)) : 50;
+      const usdForA = (usd * splitA) / 100;
+      const usdForB = usd - usdForA;
+      suggestedAmountA = targetPriceA > 0 ? usdForA / targetPriceA : 0;
+      suggestedAmountB = targetPriceB > 0 ? usdForB / targetPriceB : 0;
+      targetAmount = Number.isFinite(targetAmountManual) && targetAmountManual > 0 ? targetAmountManual : suggestedAmountA;
+    } else {
+      const targetAmountAuto = targetPriceA > 0 ? usd / targetPriceA : 0;
+      targetAmount = Number.isFinite(targetAmountManual) && targetAmountManual > 0 ? targetAmountManual : targetAmountAuto;
+      suggestedAmountA = targetAmountAuto;
+    }
+
+    return { usd, targetAmount, suggestedAmountA, suggestedAmountB, isTargetLp, targetPriceA, targetPriceB, targetAmountManualB };
   }, [
     baseDepositTargets,
     form.rebalanceSourceAmount,
@@ -572,6 +600,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     form.rebalanceTargetAmount,
     form.rebalanceTargetKey,
     form.rebalanceTargetTokenSymbol,
+    form.rebalanceTargetLpTokenSymbolB,
+    form.rebalanceTargetLpAmountB,
+    form.rebalanceTargetLpSplitPercentA,
+    form.rebalanceTargetIsNew,
+    form.rebalanceTargetNewPositionType,
     tokenPriceMap,
   ]);
 
@@ -1509,9 +1542,20 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       const sourceTarget = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
       const targetTarget = baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey);
       const sourceType = (sourceTarget?.positionType ?? "").toLowerCase();
-      const targetType = (targetTarget?.positionType ?? "").toLowerCase();
-      if (!form.rebalanceSourceKey || !form.rebalanceTargetKey) {
-        setErrorMessage("Selecciona posición origen y destino para el rebalanceo.");
+      const targetTypeRaw = form.rebalanceTargetIsNew
+        ? form.rebalanceTargetNewPositionType
+        : (targetTarget?.positionType ?? "");
+      const targetType = targetTypeRaw.toLowerCase();
+      if (!form.rebalanceSourceKey) {
+        setErrorMessage("Selecciona la posición origen para el rebalanceo.");
+        return;
+      }
+      if (!form.rebalanceTargetIsNew && !form.rebalanceTargetKey) {
+        setErrorMessage("Selecciona destino o crea una posición nueva.");
+        return;
+      }
+      if (form.rebalanceTargetIsNew && !form.rebalanceTargetNewProtocol.trim()) {
+        setErrorMessage("Indica el protocolo de la nueva posición destino.");
         return;
       }
       if (sourceType.includes("liquidity") || sourceType.includes("lp")) {
@@ -1536,14 +1580,15 @@ export function DashboardClient({ data }: { data: DashboardData }) {
       }
 
       if (targetType.includes("liquidity") || targetType.includes("lp")) {
-        const targetAmountA = Number(form.rebalanceTargetAmount);
-        const targetAmountB = Number(form.rebalanceTargetLpAmountB);
         if (!form.rebalanceTargetTokenSymbol.trim() || !form.rebalanceTargetLpTokenSymbolB.trim()) {
           setErrorMessage("Si el destino es LP, debes indicar los dos tokens de entrada.");
           return;
         }
-        if (!Number.isFinite(targetAmountA) || targetAmountA <= 0 || !Number.isFinite(targetAmountB) || targetAmountB <= 0) {
-          setErrorMessage("Si el destino es LP, debes indicar cantidad válida para ambos tokens.");
+        // Si los amounts están vacíos, usamos las sugerencias derivadas del split %.
+        const resolvedA = Number(form.rebalanceTargetAmount) > 0 ? Number(form.rebalanceTargetAmount) : rebalancePreview.suggestedAmountA;
+        const resolvedB = Number(form.rebalanceTargetLpAmountB) > 0 ? Number(form.rebalanceTargetLpAmountB) : rebalancePreview.suggestedAmountB;
+        if (!Number.isFinite(resolvedA) || resolvedA <= 0 || !Number.isFinite(resolvedB) || resolvedB <= 0) {
+          setErrorMessage("No se pudo calcular el split del LP destino. Revisa precios o ajusta el split manualmente.");
           return;
         }
       } else if (!form.rebalanceTargetTokenSymbol.trim()) {
@@ -1646,13 +1691,26 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           rebalanceSourceAmount: Number(form.rebalanceSourceAmount || 0),
           rebalanceSourceLpTokenSymbolB: form.rebalanceSourceLpTokenSymbolB,
           rebalanceSourceLpAmountB: Number(form.rebalanceSourceLpAmountB || 0),
-          rebalanceTargetPositionId: baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.positionId,
-          rebalanceTargetProtocol: baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.protocol,
-          rebalanceTargetPositionType: baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.positionType,
+          rebalanceTargetIsNew: form.rebalanceTargetIsNew,
+          rebalanceTargetPositionId: form.rebalanceTargetIsNew
+            ? undefined
+            : baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.positionId,
+          rebalanceTargetProtocol: form.rebalanceTargetIsNew
+            ? form.rebalanceTargetNewProtocol
+            : baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.protocol,
+          rebalanceTargetPositionType: form.rebalanceTargetIsNew
+            ? form.rebalanceTargetNewPositionType
+            : baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.positionType,
           rebalanceTargetTokenSymbol: form.rebalanceTargetTokenSymbol,
-          rebalanceTargetAmount: Number(form.rebalanceTargetAmount || 0),
+          rebalanceTargetAmount:
+            Number(form.rebalanceTargetAmount) > 0
+              ? Number(form.rebalanceTargetAmount)
+              : (rebalancePreview.isTargetLp ? rebalancePreview.suggestedAmountA : 0),
           rebalanceTargetLpTokenSymbolB: form.rebalanceTargetLpTokenSymbolB,
-          rebalanceTargetLpAmountB: Number(form.rebalanceTargetLpAmountB || 0),
+          rebalanceTargetLpAmountB:
+            Number(form.rebalanceTargetLpAmountB) > 0
+              ? Number(form.rebalanceTargetLpAmountB)
+              : (rebalancePreview.isTargetLp ? rebalancePreview.suggestedAmountB : 0),
           lendingCollateralToken: form.lendingCollateralToken,
           lendingCollateralAmount: Number(form.lendingCollateralAmount || 0),
           lendingDebtToken: form.lendingDebtToken,
@@ -2606,18 +2664,36 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                   <label className="text-sm sm:col-span-2">
                     <span className="mb-1 block text-[var(--muted)]">Posición destino</span>
                     <select
-                      value={form.rebalanceTargetKey}
+                      value={form.rebalanceTargetIsNew ? "__new__" : form.rebalanceTargetKey}
                       onChange={(event) => {
-                        const target = baseDepositTargets.find((item) => item.key === event.target.value);
+                        const value = event.target.value;
+                        if (value === "__new__") {
+                          setForm((prev) => ({
+                            ...prev,
+                            rebalanceTargetIsNew: true,
+                            rebalanceTargetKey: "",
+                            rebalanceTargetTokenSymbol: "",
+                            rebalanceTargetLpTokenSymbolB: "",
+                            rebalanceTargetAmount: "",
+                            rebalanceTargetLpAmountB: "",
+                            rebalanceTargetNewPositionType: prev.rebalanceTargetNewPositionType || "Hold",
+                            rebalanceTargetLpSplitPercentA: prev.rebalanceTargetLpSplitPercentA || "50",
+                          }));
+                          return;
+                        }
+                        const target = baseDepositTargets.find((item) => item.key === value);
                         const targetType = (target?.positionType ?? "").toLowerCase();
                         setForm((prev) => ({
                           ...prev,
-                          rebalanceTargetKey: event.target.value,
+                          rebalanceTargetIsNew: false,
+                          rebalanceTargetKey: value,
                           rebalanceTargetTokenSymbol: target?.availableTokens[0] ?? "",
                           rebalanceTargetLpTokenSymbolB:
                             targetType.includes("liquidity") || targetType.includes("lp")
                               ? target?.availableTokens[1] ?? ""
                               : "",
+                          rebalanceTargetAmount: "",
+                          rebalanceTargetLpAmountB: "",
                         }));
                       }}
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
@@ -2628,11 +2704,51 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                           {target.label}
                         </option>
                       ))}
+                      <option value="__new__">+ Crear nueva posición…</option>
                     </select>
                   </label>
+                  {form.rebalanceTargetIsNew ? (
+                    <>
+                      <label className="text-sm">
+                        <span className="mb-1 block text-[var(--muted)]">Tipo de posición nueva</span>
+                        <select
+                          value={form.rebalanceTargetNewPositionType}
+                          onChange={(event) => {
+                            const newType = event.target.value;
+                            setForm((prev) => ({
+                              ...prev,
+                              rebalanceTargetNewPositionType: newType,
+                              rebalanceTargetTokenSymbol: "",
+                              rebalanceTargetLpTokenSymbolB: "",
+                              rebalanceTargetAmount: "",
+                              rebalanceTargetLpAmountB: "",
+                            }));
+                          }}
+                          className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                        >
+                          <option value="Hold">Hold</option>
+                          <option value="Staking">Staking</option>
+                          <option value="Lending">Lending</option>
+                          <option value="Liquidity Pool">Liquidity Pool</option>
+                        </select>
+                      </label>
+                      <label className="text-sm">
+                        <span className="mb-1 block text-[var(--muted)]">Protocolo / Plataforma</span>
+                        <input
+                          value={form.rebalanceTargetNewProtocol}
+                          onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetNewProtocol: event.target.value }))}
+                          className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                          placeholder="ej: Uniswap V3, Aave, Lido"
+                        />
+                      </label>
+                    </>
+                  ) : null}
                   {(() => {
+                    const targetTypeStr = form.rebalanceTargetIsNew
+                      ? form.rebalanceTargetNewPositionType
+                      : (baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey)?.positionType ?? "");
+                    const targetType = targetTypeStr.toLowerCase();
                     const target = baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey);
-                    const targetType = (target?.positionType ?? "").toLowerCase();
                     if (targetType.includes("liquidity") || targetType.includes("lp")) {
                       return (
                         <>
@@ -2642,17 +2758,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               value={form.rebalanceTargetTokenSymbol}
                               onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetTokenSymbol: event.target.value.toUpperCase() }))}
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                            />
-                          </label>
-                          <label className="text-sm">
-                            <span className="mb-1 block text-[var(--muted)]">Cantidad A (entra al pool)</span>
-                            <input
-                              type="number"
-                              step="any"
-                              min="0"
-                              value={form.rebalanceTargetAmount}
-                              onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetAmount: event.target.value }))}
-                              className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                              placeholder="ETH"
                             />
                           </label>
                           <label className="text-sm">
@@ -2661,6 +2767,75 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               value={form.rebalanceTargetLpTokenSymbolB}
                               onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetLpTokenSymbolB: event.target.value.toUpperCase() }))}
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                              placeholder="USDC"
+                            />
+                          </label>
+                          <div className="sm:col-span-2 rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] p-3">
+                            <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-2">
+                              <span>Split entre tokens (% en {form.rebalanceTargetTokenSymbol || "Token A"})</span>
+                              <span className="font-semibold text-[var(--brand)]">
+                                {form.rebalanceTargetLpSplitPercentA || "50"}% / {Math.max(0, 100 - Number(form.rebalanceTargetLpSplitPercentA || 50))}%
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={form.rebalanceTargetLpSplitPercentA || "50"}
+                                onChange={(event) => {
+                                  const split = event.target.value;
+                                  setForm((prev) => ({ ...prev, rebalanceTargetLpSplitPercentA: split, rebalanceTargetAmount: "", rebalanceTargetLpAmountB: "" }));
+                                }}
+                                className="flex-1 accent-[var(--brand)]"
+                              />
+                              <input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={form.rebalanceTargetLpSplitPercentA || "50"}
+                                onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetLpSplitPercentA: event.target.value, rebalanceTargetAmount: "", rebalanceTargetLpAmountB: "" }))}
+                                className="w-20 rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1 text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setForm((prev) => ({ ...prev, rebalanceTargetLpSplitPercentA: "50", rebalanceTargetAmount: "", rebalanceTargetLpAmountB: "" }))}
+                                className="rounded-lg border border-[var(--line)] px-2 py-1 text-xs hover:bg-white/5"
+                              >
+                                50/50
+                              </button>
+                            </div>
+                            <p className="mt-2 text-[11px] text-[var(--muted)]">
+                              Sugerencia: <strong className="text-[var(--brand)]">{rebalancePreview.suggestedAmountA > 0 ? rebalancePreview.suggestedAmountA.toFixed(6) : "—"}</strong> {form.rebalanceTargetTokenSymbol || "A"}
+                              {" + "}
+                              <strong className="text-[var(--brand)]">{rebalancePreview.suggestedAmountB > 0 ? rebalancePreview.suggestedAmountB.toFixed(6) : "—"}</strong> {form.rebalanceTargetLpTokenSymbolB || "B"}
+                            </p>
+                          </div>
+                          <label className="text-sm">
+                            <span className="mb-1 block text-[var(--muted)]">Cantidad A (entra al pool)</span>
+                            <input
+                              type="number"
+                              step="any"
+                              min="0"
+                              value={form.rebalanceTargetAmount}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                const amountA = Number(value);
+                                // Recalcular split si el usuario edita amount manualmente
+                                const priceA = tokenPriceMap.get(form.rebalanceTargetTokenSymbol.toUpperCase()) ?? 0;
+                                const totalUsd = rebalancePreview.usd;
+                                if (Number.isFinite(amountA) && amountA > 0 && priceA > 0 && totalUsd > 0) {
+                                  const usedUsd = amountA * priceA;
+                                  const pct = Math.max(0, Math.min(100, (usedUsd / totalUsd) * 100));
+                                  setForm((prev) => ({ ...prev, rebalanceTargetAmount: value, rebalanceTargetLpSplitPercentA: pct.toFixed(2) }));
+                                } else {
+                                  setForm((prev) => ({ ...prev, rebalanceTargetAmount: value }));
+                                }
+                              }}
+                              className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                              placeholder={rebalancePreview.suggestedAmountA > 0 ? rebalancePreview.suggestedAmountA.toFixed(6) : "0.00"}
                             />
                           </label>
                           <label className="text-sm">
@@ -2670,8 +2845,21 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                               step="any"
                               min="0"
                               value={form.rebalanceTargetLpAmountB}
-                              onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetLpAmountB: event.target.value }))}
+                              onChange={(event) => {
+                                const value = event.target.value;
+                                const amountB = Number(value);
+                                const priceB = tokenPriceMap.get(form.rebalanceTargetLpTokenSymbolB.toUpperCase()) ?? 0;
+                                const totalUsd = rebalancePreview.usd;
+                                if (Number.isFinite(amountB) && amountB > 0 && priceB > 0 && totalUsd > 0) {
+                                  const usedUsd = amountB * priceB;
+                                  const pctB = Math.max(0, Math.min(100, (usedUsd / totalUsd) * 100));
+                                  setForm((prev) => ({ ...prev, rebalanceTargetLpAmountB: value, rebalanceTargetLpSplitPercentA: (100 - pctB).toFixed(2) }));
+                                } else {
+                                  setForm((prev) => ({ ...prev, rebalanceTargetLpAmountB: value }));
+                                }
+                              }}
                               className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
+                              placeholder={rebalancePreview.suggestedAmountB > 0 ? rebalancePreview.suggestedAmountB.toFixed(6) : "0.00"}
                             />
                           </label>
                           <label className="flex items-center gap-2 text-sm">
@@ -2717,7 +2905,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                       <>
                         <label className="text-sm">
                           <span className="mb-1 block text-[var(--muted)]">Token destino</span>
-                          {(target?.availableTokens ?? []).length > 0 ? (
+                          {!form.rebalanceTargetIsNew && (target?.availableTokens ?? []).length > 0 ? (
                             <select
                               value={form.rebalanceTargetTokenSymbol}
                               onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetTokenSymbol: event.target.value.toUpperCase() }))}
@@ -2748,7 +2936,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             value={form.rebalanceTargetAmount}
                             onChange={(event) => setForm((prev) => ({ ...prev, rebalanceTargetAmount: event.target.value }))}
                             className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
-                            placeholder="Si lo dejas vacío, se calcula automático"
+                            placeholder={rebalancePreview.suggestedAmountA > 0 ? `Sugerido: ${rebalancePreview.suggestedAmountA.toFixed(6)}` : "Si lo dejas vacío, se calcula automático"}
                           />
                         </label>
                       </>
