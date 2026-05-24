@@ -1331,6 +1331,9 @@ export async function getDashboardData(options?: {
     const reason = getMetadataFlag(tx.metadata, tx.notes, "reason");
     const source = getMetadataFlag(tx.metadata, tx.notes, "source");
     const isHarvestReinvestInternal = reason === "harvest_reinvest" || source === "harvest_reinvest";
+    // Rebalanceo: movimiento interno entre posiciones; no altera el total depositado.
+    const isRebalanceTransfer = reason === "rebalance_transfer" || source === "rebalance_transfer";
+    const isInternalMovement = isHarvestReinvestInternal || isRebalanceTransfer;
 
     if (txType === "harvest") {
       totalHarvestUsd += inAmount * spotPrice;
@@ -1354,14 +1357,14 @@ export async function getDashboardData(options?: {
     }
 
     if (capitalInTypes.has(txType)) {
-      if (!isHarvestReinvestInternal && positionId) {
+      if (!isInternalMovement && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
         const delta = inAmount * spotPrice;
         depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
         depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
       }
-      if (!isHarvestReinvestInternal) {
+      if (!isInternalMovement) {
         totalDepositedUsd += inAmount * spotPrice;
       }
       // Reinversión de harvest: descuenta la cantidad reinvertida del pending
@@ -1388,14 +1391,14 @@ export async function getDashboardData(options?: {
     }
 
     if (capitalOutTypes.has(txType)) {
-      if (!isHarvestReinvestInternal && positionId) {
+      if (!isInternalMovement && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
         const delta = outAmount * spotPrice;
         depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) - delta);
         depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) - delta);
       }
-      if (!isHarvestReinvestInternal) {
+      if (!isInternalMovement) {
         totalDepositedUsd -= outAmount * spotPrice;
       }
       // Nota: ya no usamos las withdrawals con reason=harvest_reinvest para descontar

@@ -489,29 +489,45 @@ async function buildRows(
     const tokenB = sanitizeUppercase(payload.lpTokenSymbolB);
     const amountA = amount;
     const amountB = sanitizePositive(payload.lpAmountB);
-    const rangeLower = sanitizePositive(payload.lpRangeLower);
-    const rangeUpper = sanitizePositive(payload.lpRangeUpper);
+    const rangeLowerPayload = sanitizePositive(payload.lpRangeLower);
+    const rangeUpperPayload = sanitizePositive(payload.lpRangeUpper);
 
     if (!tokenA || !tokenB || amountA <= 0 || amountB <= 0) {
       throw new Error("LP requiere token A/B y cantidades válidas.");
     }
 
-    if (rangeLower <= 0 || rangeUpper <= rangeLower) {
+    const lpPositionId = sanitizeText(payload.positionId, randomUUID());
+
+    // Si la posición LP ya existe (depósito incremental), heredar rango y entryPriceRatio
+    // del primer lp_deposit registrado. Solo se exige rango del payload cuando es nueva.
+    const existingLpMeta = await getLatestLpMetadata(client, portfolioId, protocol, lpPositionId);
+    const existingLp = (parseObject(existingLpMeta)?.lp ?? null) as
+      | { tokenA?: string; tokenB?: string; rangeLower?: number; rangeUpper?: number; entryPriceRatio?: number; isCorrelated?: boolean }
+      | null;
+
+    const rangeLower = existingLp?.rangeLower && existingLp.rangeLower > 0 ? Number(existingLp.rangeLower) : rangeLowerPayload;
+    const rangeUpper = existingLp?.rangeUpper && existingLp.rangeUpper > 0 ? Number(existingLp.rangeUpper) : rangeUpperPayload;
+
+    if (!existingLp && (rangeLower <= 0 || rangeUpper <= rangeLower)) {
       throw new Error("Rango LP inválido.");
     }
 
-    const entryPriceRatio = amountB / amountA;
+    const entryPriceRatio = existingLp?.entryPriceRatio && Number(existingLp.entryPriceRatio) > 0
+      ? Number(existingLp.entryPriceRatio)
+      : amountB / amountA;
+
     const metadata = {
       lp: {
-        tokenA,
-        tokenB,
+        tokenA: existingLp?.tokenA ?? tokenA,
+        tokenB: existingLp?.tokenB ?? tokenB,
         rangeLower,
         rangeUpper,
         entryPriceRatio,
+        ...(existingLp?.isCorrelated !== undefined
+          ? { isCorrelated: existingLp.isCorrelated }
+          : payload.isCorrelated === true ? { isCorrelated: true } : {}),
       },
     };
-
-    const lpPositionId = sanitizeText(payload.positionId, randomUUID());
 
     return [
       makeRow({
@@ -1430,7 +1446,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
-      throw new Error(error.message);
+      throw new Error(`No se pudo guardar en BD: ${error.message}`);
     }
 
     return NextResponse.json({ ok: true, inserted: rows.length });
