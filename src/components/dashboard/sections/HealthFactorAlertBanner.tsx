@@ -2,7 +2,7 @@
 
 import { AlertTriangle, ShieldAlert } from "lucide-react";
 import type { PositionSection, DefiPosition } from "@/types/portfolio";
-import { currency } from "../utils/formatters";
+import { useMoneyFormatters } from "../utils/currency-context";
 
 /**
  * Banner de alertas de Health Factor.
@@ -16,6 +16,7 @@ import { currency } from "../utils/formatters";
  * Click en una alerta → scroll a la sección de lending del dashboard.
  */
 export function HealthFactorAlertBanner({ sections }: { sections: PositionSection[] }) {
+  const { fmtMoney: currency } = useMoneyFormatters();
   const lendingSection = sections.find((s) => s.key === "lending");
   if (!lendingSection) return null;
 

@@ -3,7 +3,8 @@
 import { Fragment } from "react";
 import { BadgeDollarSign, Layers, Pencil, Trash2, TrendingDown, TrendingUp } from "lucide-react";
 import type { PositionSection, DefiPosition } from "@/types/portfolio";
-import { currency, percent, plainPercent, signedCurrency } from "../utils/formatters";
+import { percent, plainPercent } from "../utils/formatters";
+import { useMoneyFormatters } from "../utils/currency-context";
 import { StrategyTagBadge } from "./StrategyTagBadge";
 
 interface PositionSectionCardProps {
@@ -46,6 +47,7 @@ function formatPriceCompact(value: number): string {
 }
 
 function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; colSpan: number }) {
+  const { fmtMoney: currency } = useMoneyFormatters();
   const details = position.lendingDetails;
   if (!details) return null;
 
@@ -181,6 +183,7 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
 }
 
 function BreakdownCell({ items, emptyLabel }: { items: DefiPosition["collateralBreakdown"]; emptyLabel: string }) {
+  const { fmtMoney: currency } = useMoneyFormatters();
   if (items.length === 0) {
     return <span className="text-xs text-[var(--muted)]">{emptyLabel}</span>;
   }
@@ -350,6 +353,7 @@ export function PositionSectionCard({
   openReinvestHarvest,
   onChangeStrategyTag,
 }: PositionSectionCardProps) {
+  const { fmtMoney: currency, fmtMoneySigned: signedCurrency } = useMoneyFormatters();
   const isLending = section.key === "lending";
   const showIlColumn = section.key === "liquidity_pools";
   const showHealthFactor = isLending;

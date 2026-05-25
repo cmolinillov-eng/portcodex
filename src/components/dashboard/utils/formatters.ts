@@ -123,10 +123,27 @@ export function createEmptyForm(): FormState {
   };
 }
 
-export function currency(value: number): string {
+export type SupportedCurrency = "USD" | "EUR";
+
+export type CurrencyFormatOptions = {
+  /** Moneda objetivo de salida. Default USD. */
+  currency?: SupportedCurrency;
+  /** Tasa de conversión desde USD (multiplicador). Default 1. */
+  rate?: number;
+};
+
+const DEFAULT_OPTS: Required<CurrencyFormatOptions> = { currency: "USD", rate: 1 };
+
+function applyConversion(usdValue: number, opts?: CurrencyFormatOptions): { value: number; currency: SupportedCurrency } {
+  const merged = { ...DEFAULT_OPTS, ...(opts ?? {}) };
+  return { value: usdValue * merged.rate, currency: merged.currency };
+}
+
+export function currency(usdValue: number, opts?: CurrencyFormatOptions): string {
+  const { value, currency } = applyConversion(usdValue, opts);
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: 2,
   }).format(value);
 }
@@ -139,26 +156,27 @@ export function plainPercent(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-export function signedCurrency(value: number): string {
-  const base = currency(Math.abs(value));
-  if (value > 0) return `+${base}`;
-  if (value < 0) return `-${base}`;
+export function signedCurrency(usdValue: number, opts?: CurrencyFormatOptions): string {
+  const base = currency(Math.abs(usdValue), opts);
+  if (usdValue > 0) return `+${base}`;
+  if (usdValue < 0) return `-${base}`;
   return base;
 }
 
 /** Currency without decimals — for compact stat displays */
-export function currencyCompact(value: number): string {
+export function currencyCompact(usdValue: number, opts?: CurrencyFormatOptions): string {
+  const { value, currency } = applyConversion(usdValue, opts);
   return new Intl.NumberFormat("es-ES", {
     style: "currency",
-    currency: "USD",
+    currency,
     maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
   }).format(value);
 }
 
-export function signedCurrencyCompact(value: number): string {
-  const base = currencyCompact(Math.abs(value));
-  if (value > 0) return `+${base}`;
-  if (value < 0) return `-${base}`;
+export function signedCurrencyCompact(usdValue: number, opts?: CurrencyFormatOptions): string {
+  const base = currencyCompact(Math.abs(usdValue), opts);
+  if (usdValue > 0) return `+${base}`;
+  if (usdValue < 0) return `-${base}`;
   return base;
 }
 

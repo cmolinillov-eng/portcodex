@@ -2,7 +2,8 @@
 
 import { BadgeDollarSign, Camera, Clock, FileDown, History, LogOut, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 import { useState } from "react";
-import { currency, currencyCompact, plainPercent, percent, signedCurrency, signedCurrencyCompact } from "../utils/formatters";
+import { plainPercent, percent } from "../utils/formatters";
+import { useCurrency, useMoneyFormatters } from "../utils/currency-context";
 
 interface DashboardHeaderProps {
   summary: any;
@@ -32,6 +33,8 @@ export function DashboardHeader({
   const [hoveredCompositionKey, setHoveredCompositionKey] = useState<string | null>(null);
   const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
   const [snapshotFeedback, setSnapshotFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const { activeCurrency, setActiveCurrency } = useCurrency();
+  const { fmtMoney: currency, fmtMoneySigned: signedCurrency, fmtMoneyCompact: currencyCompact, fmtMoneySignedCompact: signedCurrencyCompact } = useMoneyFormatters();
 
   async function captureSnapshot() {
     const portfolioId = portfolioContext?.portfolioId;
@@ -195,6 +198,37 @@ export function DashboardHeader({
 
           {/* Action buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Currency toggle USD ↔ EUR */}
+            <div
+              className="inline-flex items-center rounded-lg border border-[var(--line)] bg-black/30 p-0.5 text-xs"
+              role="group"
+              aria-label="Cambiar moneda"
+            >
+              <button
+                type="button"
+                onClick={() => setActiveCurrency("USD")}
+                className={`rounded-md px-2.5 py-1 font-medium transition ${
+                  activeCurrency === "USD"
+                    ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+                aria-pressed={activeCurrency === "USD"}
+              >
+                $ USD
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveCurrency("EUR")}
+                className={`rounded-md px-2.5 py-1 font-medium transition ${
+                  activeCurrency === "EUR"
+                    ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+                aria-pressed={activeCurrency === "EUR"}
+              >
+                € EUR
+              </button>
+            </div>
             {viewer.canRefreshPrices ? (
               <button
                 type="button"

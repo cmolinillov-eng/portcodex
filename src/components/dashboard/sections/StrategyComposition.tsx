@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { Layers3 } from "lucide-react";
 import type { PositionSection } from "@/types/portfolio";
-import { currency, plainPercent } from "../utils/formatters";
+import { plainPercent } from "../utils/formatters";
+import { useMoneyFormatters } from "../utils/currency-context";
 
 interface Props {
   sections: PositionSection[];
@@ -26,6 +27,7 @@ const PALETTE = [
  * (zero noise hasta que el gestor empieza a etiquetar).
  */
 export function StrategyComposition({ sections }: Props) {
+  const { fmtMoney: currency } = useMoneyFormatters();
   const data = useMemo(() => {
     const map = new Map<string, number>();
     let untaggedValue = 0;

@@ -8,6 +8,7 @@ import {
   calculateLtv,
   calculateMaxLtv,
 } from "@/lib/lending/thresholds";
+import { getUsdToEurRate } from "@/lib/fx/usd-eur";
 
 export type ViewerPermissions = {
   role: ViewerRole;
@@ -26,6 +27,10 @@ export type DashboardData = {
   pricesBySymbol: Record<string, number>;
   pricesLastUpdatedAt: string | null;
   pricesAreStale: boolean;
+  /** Tipos de cambio relativos al USD (1 USD = fxRates.eur EUR). */
+  fxRates: {
+    eur: number;
+  };
   viewer: ViewerPermissions;
   portfolioContext: {
     portfolioId: string;
@@ -779,7 +784,7 @@ export async function getDashboardData(options?: {
       ? await fetchPortfolioIdsForTargetUser(targetUserId)
       : access.allowedPortfolioIds;
 
-  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows] = await Promise.all([
+  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, usdToEurRate] = await Promise.all([
     fetchLivePositions(allowedPortfolioIds),
     fetchCachedPrices(),
     fetchLendingTransactions(allowedPortfolioIds),
@@ -787,6 +792,7 @@ export async function getDashboardData(options?: {
     fetchRecentActivityRows(allowedPortfolioIds),
     fetchPortfolioContexts(allowedPortfolioIds),
     fetchPositionTags(allowedPortfolioIds),
+    getUsdToEurRate(),
   ]);
 
   // Map (portfolio_id, protocol, position_id) → strategy_tag para lookup rápido.
@@ -1747,6 +1753,9 @@ export async function getDashboardData(options?: {
     pricesBySymbol: Object.fromEntries(cachedPrices.pricesBySymbol.entries()),
     pricesLastUpdatedAt: cachedPrices.pricesLastUpdatedAt,
     pricesAreStale: cachedPrices.pricesAreStale,
+    fxRates: {
+      eur: usdToEurRate,
+    },
     viewer,
     portfolioContext,
   };

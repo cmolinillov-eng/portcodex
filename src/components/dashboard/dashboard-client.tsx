@@ -26,6 +26,7 @@ import { DashboardHeader } from "./sections/DashboardHeader";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { StrategyComposition } from "./sections/StrategyComposition";
+import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
 
@@ -278,6 +279,14 @@ function parseManualSpotPrices(input: Record<string, string>): Record<string, nu
 }
 
 export function DashboardClient({ data }: { data: DashboardData }) {
+  return (
+    <CurrencyProvider fxRateUsdToEur={data.fxRates.eur}>
+      <DashboardClientInner data={data} />
+    </CurrencyProvider>
+  );
+}
+
+function DashboardClientInner({ data }: { data: DashboardData }) {
   const router = useRouter();
   const {
     summary,
