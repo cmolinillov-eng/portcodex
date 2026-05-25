@@ -1,8 +1,13 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getViewerAccess, type ViewerRole } from "@/lib/auth/viewer-access";
-import type { DefiPosition, PortfolioSummary, PositionSection, QuickAction } from "@/types/portfolio";
-import { calculateHealthFactor } from "@/lib/lending/thresholds";
+import type { DefiPosition, LendingDetails, PortfolioSummary, PositionSection, QuickAction } from "@/types/portfolio";
+import {
+  calculateHealthFactor,
+  calculateLiquidationPrices,
+  calculateLtv,
+  calculateMaxLtv,
+} from "@/lib/lending/thresholds";
 
 export type ViewerPermissions = {
   role: ViewerRole;
@@ -992,6 +997,7 @@ export async function getDashboardData(options?: {
         valueBreakdown: [{ tokenSymbol, valueUsd: currentValue }],
         collateralBreakdown: [],
         debtBreakdown: [],
+        lendingDetails: null,
       };
     })
     .filter((position) => position.tokenSymbol && position.currentBalance > 0);
@@ -1208,6 +1214,7 @@ export async function getDashboardData(options?: {
       valueBreakdown,
       collateralBreakdown: [],
       debtBreakdown: [],
+      lendingDetails: null,
     };
   });
 
@@ -1254,6 +1261,40 @@ export async function getDashboardData(options?: {
     return { collateralBreakdown, debtBreakdown };
   };
 
+  const buildLendingDetails = (
+    collateralBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>,
+    debtBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>,
+  ): LendingDetails | null => {
+    if (collateralBreakdown.length === 0 && debtBreakdown.length === 0) return null;
+    const totalCollateralUsd = collateralBreakdown.reduce((acc, c) => acc + c.valueUsd, 0);
+    const totalDebtUsd = debtBreakdown.reduce((acc, d) => acc + d.valueUsd, 0);
+    const ltv = calculateLtv(
+      collateralBreakdown.map((c) => ({ valueUsd: c.valueUsd })),
+      debtBreakdown.map((d) => ({ valueUsd: d.valueUsd })),
+    );
+    const maxLtv = calculateMaxLtv(
+      collateralBreakdown.map((c) => ({ symbol: c.tokenSymbol, valueUsd: c.valueUsd })),
+    );
+    const liquidationRisks = calculateLiquidationPrices(
+      collateralBreakdown.map((c) => ({ symbol: c.tokenSymbol, amount: c.amount, valueUsd: c.valueUsd })),
+      debtBreakdown.map((d) => ({ valueUsd: d.valueUsd })),
+    ).map((r) => ({
+      tokenSymbol: r.symbol,
+      currentPrice: r.currentPrice,
+      liquidationPrice: r.liquidationPrice,
+      dropPercent: r.dropPercent,
+    }));
+    return {
+      ltv: ltv ?? 0,
+      maxLtv: maxLtv ?? 0,
+      ltvUtilization: maxLtv && maxLtv > 0 && ltv !== null ? ltv / maxLtv : 0,
+      totalCollateralUsd,
+      totalDebtUsd,
+      netValueUsd: totalCollateralUsd - totalDebtUsd,
+      liquidationRisks,
+    };
+  };
+
   const aggregatedLendingPositions: DefiPosition[] = Object.values(lendingGroup).map((group) => {
     const sample = group[0];
     const lendingKey = positionCompositeKey(sample.portfolioId, sample.protocol, sample.positionId);
@@ -1273,6 +1314,7 @@ export async function getDashboardData(options?: {
         currentValue: currentValueSingle,
         collateralBreakdown,
         debtBreakdown,
+        lendingDetails: buildLendingDetails(collateralBreakdown, debtBreakdown),
       };
     }
 
@@ -1341,6 +1383,7 @@ export async function getDashboardData(options?: {
       valueBreakdown: [{ tokenSymbol: tokenSymbol || "LENDING", valueUsd: currentValue }],
       collateralBreakdown,
       debtBreakdown,
+      lendingDetails: buildLendingDetails(collateralBreakdown, debtBreakdown),
     };
   });
 

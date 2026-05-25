@@ -40,6 +40,33 @@ export type DefiPosition = {
   }>;
   collateralBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
   debtBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
+  lendingDetails: LendingDetails | null;
+};
+
+/**
+ * Detalle ampliado de una posición de lending. Sólo se rellena para
+ * posiciones cuyo position_type pertenece a la categoría 'lending'.
+ */
+export type LendingDetails = {
+  /** Loan-to-Value actual: deuda / colateral (sin ponderar). 0..1 (puede superar 1 si la deuda excede el colateral). */
+  ltv: number;
+  /** LTV máximo ponderado por threshold de cada colateral. 0..1. */
+  maxLtv: number;
+  /** Utilización del límite: ltv / maxLtv. 1.0 = liquidación inminente. */
+  ltvUtilization: number;
+  /** Colateral total en USD. */
+  totalCollateralUsd: number;
+  /** Deuda total en USD. */
+  totalDebtUsd: number;
+  /** Net = colateral - deuda. Lo que recuperarías si cerrases la posición hoy. */
+  netValueUsd: number;
+  /** Distancia a liquidación por activo de colateral. */
+  liquidationRisks: Array<{
+    tokenSymbol: string;
+    currentPrice: number;
+    liquidationPrice: number | null;
+    dropPercent: number | null;
+  }>;
 };
 
 export type PositionSection = {

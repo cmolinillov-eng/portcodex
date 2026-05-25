@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { BadgeDollarSign, Layers, Pencil, Trash2, TrendingDown, TrendingUp } from "lucide-react";
 import type { PositionSection, DefiPosition } from "@/types/portfolio";
 import { currency, percent, plainPercent, signedCurrency } from "../utils/formatters";
@@ -32,6 +33,149 @@ function formatTokenAmount(amount: number): string {
   if (amount >= 1000) return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (amount >= 1) return amount.toLocaleString("en-US", { maximumFractionDigits: 4 });
   return amount.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function formatPriceCompact(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  if (value >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  if (value >= 1) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (value >= 0.01) return value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  return value.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; colSpan: number }) {
+  const details = position.lendingDetails;
+  if (!details) return null;
+
+  const ltvPercent = details.ltv * 100;
+  const maxLtvPercent = details.maxLtv * 100;
+  const utilization = details.ltvUtilization;
+  // Color de utilización: 0-0.7 verde, 0.7-0.9 amarillo, 0.9-1 rojo, >=1 liquidación
+  const utilColor =
+    utilization >= 1 ? "rgb(239,68,68)"
+    : utilization >= 0.9 ? "rgb(248,113,113)"
+    : utilization >= 0.7 ? "rgb(245,158,11)"
+    : "rgb(16,185,129)";
+  const utilLabel =
+    utilization >= 1 ? "Liquidación"
+    : utilization >= 0.9 ? "Crítico"
+    : utilization >= 0.7 ? "Atención"
+    : "Seguro";
+
+  // Cap visual del LTV bar al 100% (referencia: el max LTV puntea el límite)
+  const ltvBarPercent = Math.min(100, Math.max(0, (ltvPercent / Math.max(maxLtvPercent, 1)) * 100));
+  // posición del max-LTV marker (siempre al 100% del max → al final de la barra escalada)
+
+  const hasDebt = details.totalDebtUsd > 0;
+
+  return (
+    <tr className="border-t border-[var(--line)] bg-[rgba(252,211,77,0.025)]">
+      <td colSpan={colSpan} className="px-4 py-4">
+        <div className="grid gap-5 md:grid-cols-3">
+          {/* Net Value */}
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] mb-2">
+              Posición neta
+            </p>
+            <p className={`text-xl font-semibold tabular-nums ${details.netValueUsd >= 0 ? "text-[#fcd34d]" : "text-rose-300"}`}>
+              {currency(details.netValueUsd)}
+            </p>
+            <div className="mt-2 space-y-1 text-[11px] text-[var(--muted)]">
+              <p className="flex justify-between gap-3">
+                <span>Colateral total</span>
+                <span className="tabular-nums text-emerald-300">{currency(details.totalCollateralUsd)}</span>
+              </p>
+              <p className="flex justify-between gap-3">
+                <span>Deuda total</span>
+                <span className="tabular-nums text-rose-300">−{currency(details.totalDebtUsd)}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* LTV bar */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                Loan-to-Value
+              </p>
+              {hasDebt ? (
+                <span
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{ color: utilColor, borderColor: `${utilColor}66`, borderWidth: 1, backgroundColor: `${utilColor}14` }}
+                >
+                  {utilLabel}
+                </span>
+              ) : null}
+            </div>
+            {hasDebt ? (
+              <>
+                <div className="relative h-2 rounded-full bg-[rgba(255,255,255,0.06)] overflow-hidden">
+                  <div
+                    className="absolute top-0 left-0 h-full rounded-full transition-all"
+                    style={{ width: `${ltvBarPercent}%`, background: `linear-gradient(90deg, ${utilColor}66, ${utilColor})` }}
+                  />
+                  {/* marca del max LTV al borde derecho */}
+                  <div
+                    className="absolute top-0 h-full w-px bg-white/40"
+                    style={{ left: "100%" }}
+                  />
+                </div>
+                <div className="flex items-center justify-between mt-1.5 text-[10px] tabular-nums">
+                  <span className="text-[var(--muted)]">
+                    Actual: <span className="text-[var(--foreground)]">{ltvPercent.toFixed(1)}%</span>
+                  </span>
+                  <span className="text-[var(--muted)]">
+                    Máx: <span className="text-[var(--foreground)]">{maxLtvPercent.toFixed(1)}%</span>
+                  </span>
+                </div>
+                <p className="mt-1 text-[10px] text-[var(--muted)]">
+                  Capacidad libre: {currency(Math.max(0, details.totalCollateralUsd * details.maxLtv - details.totalDebtUsd))}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-emerald-300">Sin deuda</p>
+            )}
+          </div>
+
+          {/* Distancia a liquidación */}
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] mb-2">
+              Distancia a liquidación
+            </p>
+            {!hasDebt || details.liquidationRisks.length === 0 ? (
+              <p className="text-sm text-[var(--muted)]">Sin riesgo</p>
+            ) : (
+              <div className="space-y-1.5">
+                {details.liquidationRisks.map((risk) => {
+                  const drop = risk.dropPercent;
+                  const liqColor =
+                    drop === null ? "var(--muted)"
+                    : drop < 0 ? "rgb(239,68,68)"
+                    : drop < 10 ? "rgb(248,113,113)"
+                    : drop < 25 ? "rgb(245,158,11)"
+                    : "rgb(16,185,129)";
+                  return (
+                    <div key={risk.tokenSymbol} className="flex items-center justify-between gap-3 text-[11px]">
+                      <span className="token-emphasis tabular-nums">{risk.tokenSymbol}</span>
+                      <span className="text-[var(--muted)] tabular-nums">
+                        {formatPriceCompact(risk.currentPrice)} → <span className="text-[var(--foreground)]">{formatPriceCompact(risk.liquidationPrice ?? 0)}</span>
+                      </span>
+                      <span className="font-semibold tabular-nums" style={{ color: liqColor }}>
+                        {drop === null ? "—" : drop < 0 ? `${drop.toFixed(1)}%` : `−${drop.toFixed(1)}%`}
+                      </span>
+                    </div>
+                  );
+                })}
+                <p className="text-[10px] text-[var(--muted)] pt-1">
+                  Asumiendo el resto de precios constantes.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </td>
+    </tr>
+  );
 }
 
 function BreakdownCell({ items, emptyLabel }: { items: DefiPosition["collateralBreakdown"]; emptyLabel: string }) {
@@ -214,6 +358,16 @@ export function PositionSectionCard({
 
   const thClass = "px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]";
 
+  // colSpan dinámico para el panel de detalles lending (debe abarcar toda la tabla)
+  const lendingColSpan =
+    (isLending ? 2 : (showEntryPriceColumn ? 3 : 2)) +
+    4 /* deposited, current, allocation, protocol */ +
+    (showYieldColumn ? 1 : 0) +
+    1 /* P&L */ +
+    (showHealthFactor ? 1 : 0) +
+    (showIlColumn ? 1 : 0) +
+    (showActionsColumn ? 1 : 0);
+
   return (
     <section
       className={`glass-panel page-section-card ${sectionToneClass} p-5 md:p-6 mb-6 animate-fade-up`}
@@ -282,8 +436,8 @@ export function PositionSectionCard({
                 summary.totalValueUsd > 0 ? (position.currentValue / summary.totalValueUsd) * 100 : 0;
 
               return (
+                <Fragment key={`${position.positionId}-${position.tokenSymbol}`}>
                 <tr
-                  key={`${position.positionId}-${position.tokenSymbol}`}
                   className="border-t border-[var(--line)]"
                 >
                   {isLending ? (
@@ -490,6 +644,10 @@ export function PositionSectionCard({
                     </td>
                   ) : null}
                 </tr>
+                {isLending && position.lendingDetails ? (
+                  <LendingDetailsPanel position={position} colSpan={lendingColSpan} />
+                ) : null}
+                </Fragment>
               );
             })}
           </tbody>

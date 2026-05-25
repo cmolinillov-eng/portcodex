@@ -114,3 +114,90 @@ export function calculateHealthFactor(
   if (totalEffectiveCollateralUsd <= 0) return 0;
   return totalEffectiveCollateralUsd / totalDebtUsd;
 }
+
+/**
+ * LTV (Loan-to-Value) actual: deuda / colateral total (sin ponderar).
+ *
+ * Es el ratio "crudo" de apalancamiento. Devuelve null si no hay colateral.
+ */
+export function calculateLtv(
+  collateralBreakdown: Array<{ valueUsd: number }>,
+  debtBreakdown: Array<{ valueUsd: number }>,
+): number | null {
+  const totalCollateral = collateralBreakdown.reduce((acc, c) => acc + Math.max(0, c.valueUsd), 0);
+  if (totalCollateral <= 0) return null;
+  const totalDebt = debtBreakdown.reduce((acc, d) => acc + Math.max(0, d.valueUsd), 0);
+  return totalDebt / totalCollateral;
+}
+
+/**
+ * LTV máximo: el ratio ponderado de thresholds por valor de colateral.
+ * Representa el porcentaje máximo del colateral que puedes pedir prestado
+ * antes de tocar el umbral de liquidación.
+ *
+ * maxLtv = Σ(colateral_i × threshold_i) / Σ(colateral_i)
+ *
+ * Devuelve null si no hay colateral.
+ */
+export function calculateMaxLtv(
+  collateralBreakdown: Array<{ symbol: string; valueUsd: number }>,
+): number | null {
+  const totalCollateral = collateralBreakdown.reduce((acc, c) => acc + Math.max(0, c.valueUsd), 0);
+  if (totalCollateral <= 0) return null;
+  const weighted = collateralBreakdown.reduce((acc, c) => {
+    const value = Math.max(0, c.valueUsd);
+    const threshold = getLiquidationThreshold(c.symbol);
+    return acc + value * threshold;
+  }, 0);
+  return weighted / totalCollateral;
+}
+
+/**
+ * Precio de liquidación por activo de colateral, asumiendo que el resto
+ * de precios se mantienen constantes y la deuda no varía.
+ *
+ * Para cada activo i: encuentra el precio p_i_liq tal que HF = 1.0:
+ *   Σ_{j≠i}(amount_j × price_j × threshold_j) + amount_i × p_i_liq × threshold_i = totalDebt
+ *   ⇒ p_i_liq = (totalDebt - otherEffective) / (amount_i × threshold_i)
+ *
+ * Si p_i_liq ≤ 0 significa que el resto del colateral ya cubre la deuda
+ * con margen — no hay riesgo de liquidación por este activo aislado.
+ *
+ * dropPercent: cuánto puede caer el precio actual antes de tocar el de
+ * liquidación. Positivo = todavía hay margen; negativo = ya estás por
+ * debajo (HF < 1.0 antes de empezar).
+ */
+export function calculateLiquidationPrices(
+  collateralBreakdown: Array<{ symbol: string; amount: number; valueUsd: number }>,
+  debtBreakdown: Array<{ valueUsd: number }>,
+): Array<{
+  symbol: string;
+  currentPrice: number;
+  liquidationPrice: number | null;
+  dropPercent: number | null;
+}> {
+  const totalDebt = debtBreakdown.reduce((acc, d) => acc + Math.max(0, d.valueUsd), 0);
+  const enriched = collateralBreakdown.map((c) => {
+    const amount = Math.max(0, c.amount);
+    const value = Math.max(0, c.valueUsd);
+    const threshold = getLiquidationThreshold(c.symbol);
+    const currentPrice = amount > 0 ? value / amount : 0;
+    return { ...c, amount, value, threshold, currentPrice, effective: value * threshold };
+  });
+  const totalEffective = enriched.reduce((acc, e) => acc + e.effective, 0);
+
+  return enriched.map((e) => {
+    if (totalDebt <= 0 || e.amount <= 0 || e.threshold <= 0) {
+      return { symbol: e.symbol, currentPrice: e.currentPrice, liquidationPrice: null, dropPercent: null };
+    }
+    const otherEffective = totalEffective - e.effective;
+    const required = totalDebt - otherEffective;
+    if (required <= 0) {
+      // El resto del colateral ya cubre la deuda con margen → este token puede ir a 0 sin liquidar.
+      return { symbol: e.symbol, currentPrice: e.currentPrice, liquidationPrice: 0, dropPercent: 100 };
+    }
+    const liquidationPrice = required / (e.amount * e.threshold);
+    const dropPercent = e.currentPrice > 0 ? ((e.currentPrice - liquidationPrice) / e.currentPrice) * 100 : null;
+    return { symbol: e.symbol, currentPrice: e.currentPrice, liquidationPrice, dropPercent };
+  });
+}

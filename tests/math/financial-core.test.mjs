@@ -291,3 +291,119 @@ test("HF threshold conservador vs simple: SOL es más volátil que BTC", () => {
   assert.ok(hfSol < hfBtc, `SOL (${hfSol}) debería ser menos seguro que BTC (${hfBtc})`);
 });
 
+
+// ---------------- LTV / Max LTV / Liquidation Price ----------------
+
+function ltv(collateral, debt) {
+  const totalCollateral = collateral.reduce((s, c) => s + Math.max(0, c.valueUsd), 0);
+  if (totalCollateral <= 0) return null;
+  const totalDebt = debt.reduce((s, d) => s + Math.max(0, d.valueUsd), 0);
+  return totalDebt / totalCollateral;
+}
+
+function maxLtv(collateral) {
+  const total = collateral.reduce((s, c) => s + Math.max(0, c.valueUsd), 0);
+  if (total <= 0) return null;
+  const weighted = collateral.reduce(
+    (s, c) => s + Math.max(0, c.valueUsd) * thresholdFor(c.symbol),
+    0,
+  );
+  return weighted / total;
+}
+
+function liquidationPrices(collateral, debt) {
+  const totalDebt = debt.reduce((s, d) => s + Math.max(0, d.valueUsd), 0);
+  const enriched = collateral.map((c) => {
+    const threshold = thresholdFor(c.symbol);
+    const currentPrice = c.amount > 0 ? c.valueUsd / c.amount : 0;
+    return { ...c, threshold, currentPrice, effective: c.valueUsd * threshold };
+  });
+  const totalEffective = enriched.reduce((s, e) => s + e.effective, 0);
+  return enriched.map((e) => {
+    if (totalDebt <= 0 || e.amount <= 0 || e.threshold <= 0) {
+      return { symbol: e.symbol, liquidationPrice: null, dropPercent: null };
+    }
+    const otherEffective = totalEffective - e.effective;
+    const required = totalDebt - otherEffective;
+    if (required <= 0) {
+      return { symbol: e.symbol, liquidationPrice: 0, dropPercent: 100 };
+    }
+    const liquidationPrice = required / (e.amount * e.threshold);
+    const dropPercent = ((e.currentPrice - liquidationPrice) / e.currentPrice) * 100;
+    return { symbol: e.symbol, liquidationPrice, dropPercent };
+  });
+}
+
+test("LTV: 500 deuda / 1000 colateral = 0.5 (50%)", () => {
+  const v = ltv(
+    [{ valueUsd: 1000 }],
+    [{ valueUsd: 500 }],
+  );
+  assert.equal(v, 0.5);
+});
+
+test("LTV: sin colateral → null", () => {
+  assert.equal(ltv([], [{ valueUsd: 100 }]), null);
+});
+
+test("LTV: sin deuda → 0", () => {
+  assert.equal(ltv([{ valueUsd: 1000 }], []), 0);
+});
+
+test("MaxLTV: 100% BTC = threshold de BTC (0.78)", () => {
+  assert.equal(maxLtv([{ symbol: "BTC", valueUsd: 1000 }]), 0.78);
+});
+
+test("MaxLTV mixto: 50/50 BTC/USDC = media ponderada", () => {
+  // 500*0.78 + 500*0.87 = 390 + 435 = 825 → /1000 = 0.825
+  const v = maxLtv([
+    { symbol: "BTC", valueUsd: 500 },
+    { symbol: "USDC", valueUsd: 500 },
+  ]);
+  assert.equal(Number(v.toFixed(4)), 0.825);
+});
+
+test("Liquidation price: 1 BTC@40000 con deuda 20000 USDC → liq @ 25641", () => {
+  // p_liq = debt / (amount * threshold) = 20000 / (1 * 0.78) = 25641.0256...
+  const out = liquidationPrices(
+    [{ symbol: "BTC", amount: 1, valueUsd: 40000 }],
+    [{ valueUsd: 20000 }],
+  );
+  assert.equal(out.length, 1);
+  assert.equal(Math.round(out[0].liquidationPrice), 25641);
+  // dropPercent: (40000 - 25641) / 40000 = 35.9%
+  assert.ok(out[0].dropPercent > 35 && out[0].dropPercent < 36.5);
+});
+
+test("Liquidation price: stablecoin como colateral → drop alto", () => {
+  // USDC threshold 0.87, mucha holgura
+  const out = liquidationPrices(
+    [{ symbol: "USDC", amount: 1000, valueUsd: 1000 }],
+    [{ valueUsd: 500 }],
+  );
+  // p_liq = 500 / (1000 * 0.87) = 0.5747
+  assert.equal(Number(out[0].liquidationPrice.toFixed(4)), 0.5747);
+});
+
+test("Liquidation price multi-collateral: otros activos cubren la deuda → liq=0", () => {
+  // 1 BTC @40000 + 10000 USDC, deuda 5000 → USDC sola ya cubre con margen
+  const out = liquidationPrices(
+    [
+      { symbol: "BTC", amount: 1, valueUsd: 40000 },
+      { symbol: "USDC", amount: 10000, valueUsd: 10000 },
+    ],
+    [{ valueUsd: 5000 }],
+  );
+  const btc = out.find((o) => o.symbol === "BTC");
+  // El BTC puede caer a 0 sin liquidar porque USDC*0.87 = 8700 > 5000
+  assert.equal(btc.liquidationPrice, 0);
+  assert.equal(btc.dropPercent, 100);
+});
+
+test("Liquidation price: sin deuda → null", () => {
+  const out = liquidationPrices(
+    [{ symbol: "BTC", amount: 1, valueUsd: 40000 }],
+    [],
+  );
+  assert.equal(out[0].liquidationPrice, null);
+});
