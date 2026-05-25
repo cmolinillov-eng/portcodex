@@ -23,6 +23,7 @@ import { EditModal } from "./modals/edit-modal";
 import { CsvModal } from "./modals/csv-modal";
 import { ManualPriceModal } from "./modals/manual-price-modal";
 import { DashboardHeader } from "./sections/DashboardHeader";
+import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { RecentActivity } from "./sections/RecentActivity";
 
@@ -1758,6 +1759,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           compositionStyles={compositionStyles}
           openModal={openModal}
         />
+
+        <HealthFactorAlertBanner sections={sections} />
 
         {lastDeletedPosition ? (
           <section className="rounded-2xl border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-4 py-3 text-sm">

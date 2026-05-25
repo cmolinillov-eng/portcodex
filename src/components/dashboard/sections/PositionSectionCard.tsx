@@ -370,7 +370,8 @@ export function PositionSectionCard({
 
   return (
     <section
-      className={`glass-panel page-section-card ${sectionToneClass} p-5 md:p-6 mb-6 animate-fade-up`}
+      id={`dashboard-section-${section.key}`}
+      className={`glass-panel page-section-card ${sectionToneClass} p-5 md:p-6 mb-6 animate-fade-up scroll-mt-24`}
       aria-label={`Sección ${meta.label}`}
     >
       {/* Section header */}
