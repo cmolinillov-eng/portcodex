@@ -857,29 +857,52 @@ export async function getDashboardData(options?: {
     {} as Record<string, { metadata: LpMetadata; at: number }>,
   );
 
-  // Compute accurate balance and avg entry price from active transactions (not VIEW)
+  // Compute accurate balance and avg entry price from active transactions (not VIEW).
+  // Importante: las withdrawals usan token_out_symbol (token_in_symbol viene null),
+  // por lo que el símbolo de la clave depende del tipo de operación.
   const txBalanceByTokenPosition = new Map<string, { balance: number; costUsd: number; depositedAmount: number }>();
+  const capitalInSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+  const capitalOutSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
   for (const tx of portfolioTransactions) {
     const txType = (tx.type ?? "").trim();
     const inAmount = toNumber(tx.token_in_amount);
     const outAmount = toNumber(tx.token_out_amount);
     const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
+    const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
     const spotPrice = toNumber(tx.spot_price);
     const portfolioId = tx.portfolio_id ?? "";
     const protocol = (tx.protocol ?? "Wallet").trim();
     const positionId = tx.position_id ?? "";
-    if (!inSymbol || !positionId) continue;
-    const tpKey = `${positionCompositeKey(portfolioId, protocol, positionId)}::${inSymbol}`;
+    if (!positionId) continue;
+
+    const isIn = capitalInSet.has(txType);
+    const isOut = capitalOutSet.has(txType);
+    if (!isIn && !isOut) continue;
+
+    const symbol = isIn ? inSymbol : outSymbol;
+    if (!symbol) continue;
+
+    const tpKey = `${positionCompositeKey(portfolioId, protocol, positionId)}::${symbol}`;
     if (!txBalanceByTokenPosition.has(tpKey)) {
       txBalanceByTokenPosition.set(tpKey, { balance: 0, costUsd: 0, depositedAmount: 0 });
     }
     const entry = txBalanceByTokenPosition.get(tpKey)!;
-    if (["deposit", "staking_deposit", "lp_deposit", "lending_supply"].includes(txType)) {
+
+    if (isIn) {
       entry.balance += inAmount;
       entry.costUsd += inAmount * spotPrice;
       entry.depositedAmount += inAmount;
-    } else if (["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"].includes(txType)) {
+    } else {
+      // Withdrawal: reducir pro-rata costUsd y depositedAmount para mantener
+      // el average entry price del balance restante invariante.
+      // (1 BTC depositado a 60k, sacar 0.5 → balance=0.5, costUsd=30k, avgPrice=60k)
+      if (entry.balance > 0 && outAmount > 0) {
+        const fraction = Math.min(1, outAmount / entry.balance);
+        entry.costUsd -= entry.costUsd * fraction;
+        entry.depositedAmount -= entry.depositedAmount * fraction;
+      }
       entry.balance -= outAmount;
+      if (entry.balance < 0) entry.balance = 0;
     }
   }
 
@@ -990,8 +1013,14 @@ export async function getDashboardData(options?: {
     const lpRangeStatus: DefiPosition["lpRangeStatus"] =
       ratioChange < rangeLowerRatio || ratioChange > rangeUpperRatio ? "out_of_range" : "in_range";
 
-    const effectiveRatioChange = Math.min(Math.max(ratioChange, rangeLowerRatio), rangeUpperRatio);
-    const ilPercentFromPair = calculateImpermanentLossFromRatio(effectiveRatioChange);
+    // Si la posición está fuera de rango en un LP V3, el AMM ya no rebalancea:
+    // queda 100% en un solo token, por lo que NO hay impermanent loss real.
+    // El IL solo aplica mientras estamos dentro del rango y el AMM está activamente reequilibrando.
+    if (lpRangeStatus === "out_of_range") {
+      return { ...position, impermanentLossPercent: 0, lpRangeStatus };
+    }
+
+    const ilPercentFromPair = calculateImpermanentLossFromRatio(ratioChange);
     if (ilPercentFromPair === null) return { ...position, lpRangeStatus };
 
     const totalValue = positionTotalValue.get(valueKey) ?? 0;
