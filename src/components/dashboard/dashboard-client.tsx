@@ -25,6 +25,7 @@ import { ManualPriceModal } from "./modals/manual-price-modal";
 import { DashboardHeader } from "./sections/DashboardHeader";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
+import { StrategyComposition } from "./sections/StrategyComposition";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
 
@@ -1029,6 +1030,30 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     }
   }
 
+  async function updateStrategyTag(pos: DefiPosition, newTag: string | null) {
+    try {
+      setErrorMessage("");
+      const response = await fetch("/api/positions/tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioId: pos.portfolioId,
+          protocol: pos.protocol,
+          positionId: pos.positionId,
+          strategyTag: newTag,
+        }),
+      });
+      const body = (await response.json()) as { error?: string; hint?: string };
+      if (!response.ok) {
+        throw new Error(body.hint ? `${body.error} — ${body.hint}` : (body.error ?? "No se pudo actualizar la etiqueta."));
+      }
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido actualizando etiqueta.";
+      setErrorMessage(message);
+    }
+  }
+
   function exportCurrentReportPdf() {
     const html = buildPortfolioReportHtml({
       summary,
@@ -1620,6 +1645,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
 
         <HealthFactorAlertBanner sections={sections} />
 
+        <StrategyComposition sections={sections} />
+
         {lastDeletedPosition ? (
           <section className="rounded-2xl border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1661,6 +1688,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               deletePosition={deletePosition}
               openQuickHarvest={openQuickHarvest}
               openReinvestHarvest={openReinvestHarvest}
+              onChangeStrategyTag={updateStrategyTag}
             />
           ))
         )}

@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { BadgeDollarSign, Layers, Pencil, Trash2, TrendingDown, TrendingUp } from "lucide-react";
 import type { PositionSection, DefiPosition } from "@/types/portfolio";
 import { currency, percent, plainPercent, signedCurrency } from "../utils/formatters";
+import { StrategyTagBadge } from "./StrategyTagBadge";
 
 interface PositionSectionCardProps {
   section: PositionSection;
@@ -19,6 +20,7 @@ interface PositionSectionCardProps {
   deletePosition: (pos: DefiPosition) => void;
   openQuickHarvest: (pos: DefiPosition) => void;
   openReinvestHarvest: (pos: DefiPosition) => void;
+  onChangeStrategyTag?: (pos: DefiPosition, newTag: string | null) => Promise<void>;
 }
 
 // Per-section visual identity (anchor: top-border gradient + header accent)
@@ -346,6 +348,7 @@ export function PositionSectionCard({
   deletePosition,
   openQuickHarvest,
   openReinvestHarvest,
+  onChangeStrategyTag,
 }: PositionSectionCardProps) {
   const isLending = section.key === "lending";
   const showIlColumn = section.key === "liquidity_pools";
@@ -498,18 +501,27 @@ export function PositionSectionCard({
                     </div>
                   </td>
 
-                  {/* Protocol badge */}
+                  {/* Protocol badge + strategy tag */}
                   <td className="px-4 py-4">
-                    <span
-                      className="inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium"
-                      style={{
-                        borderColor: `${meta.color}44`,
-                        backgroundColor: `${meta.color}12`,
-                        color: meta.color,
-                      }}
-                    >
-                      {position.protocol}
-                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      <span
+                        className="inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                        style={{
+                          borderColor: `${meta.color}44`,
+                          backgroundColor: `${meta.color}12`,
+                          color: meta.color,
+                        }}
+                      >
+                        {position.protocol}
+                      </span>
+                      {onChangeStrategyTag ? (
+                        <StrategyTagBadge
+                          currentTag={position.strategyTag}
+                          canEdit={viewer.canOperate}
+                          onChange={(newTag) => onChangeStrategyTag(position, newTag)}
+                        />
+                      ) : null}
+                    </div>
                   </td>
 
                   {/* Yield */}

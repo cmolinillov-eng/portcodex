@@ -41,7 +41,23 @@ export type DefiPosition = {
   collateralBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
   debtBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
   lendingDetails: LendingDetails | null;
+  /** Etiqueta estratégica libre asignada por el gestor (ej: "Stablecoin yield"). */
+  strategyTag: string | null;
 };
+
+/** Tags sugeridos en la UI. Free-text: el gestor puede teclear cualquier otro. */
+export const SUGGESTED_STRATEGY_TAGS = [
+  "Stablecoin yield",
+  "Blue-chip long",
+  "Memecoin gamble",
+  "Hedge",
+  "Arbitrage",
+  "Yield farming",
+  "Liquidity provision",
+  "Lending colateralizado",
+  "Trading activo",
+  "Reserva táctica",
+] as const;
 
 /**
  * Detalle ampliado de una posición de lending. Sólo se rellena para

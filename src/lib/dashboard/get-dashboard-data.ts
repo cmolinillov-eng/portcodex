@@ -711,6 +711,41 @@ async function fetchRecentActivityRows(allowedPortfolioIds: string[], limit = 10
   return serviceData ?? [];
 }
 
+type PositionTagRow = {
+  portfolio_id: string;
+  protocol: string;
+  position_id: string;
+  strategy_tag: string;
+};
+
+/**
+ * Lee los strategy tags asignados a las posiciones del usuario.
+ * Si la tabla position_tags todavía no existe (phase20 no aplicada),
+ * devuelve [] silenciosamente para no romper el dashboard.
+ */
+async function fetchPositionTags(allowedPortfolioIds: string[]): Promise<PositionTagRow[]> {
+  if (allowedPortfolioIds.length === 0) return [];
+  const serviceClient = getSupabaseServiceClient();
+  const client = serviceClient ?? getSupabaseServerClient();
+  const query = await client
+    .from("position_tags")
+    .select("portfolio_id, protocol, position_id, strategy_tag")
+    .in("portfolio_id", allowedPortfolioIds);
+  if (query.error) {
+    // 42P01 = undefined_table → tabla no creada aún
+    const code = (query.error as { code?: string }).code;
+    const message = query.error.message ?? "";
+    if (code === "42P01" || /position_tags.*does not exist/i.test(message)) {
+      return [];
+    }
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("fetchPositionTags warning:", query.error);
+    }
+    return [];
+  }
+  return (query.data ?? []) as PositionTagRow[];
+}
+
 export async function getDashboardData(options?: {
   targetUserId?: string;
   targetPortfolioId?: string;
@@ -744,14 +779,22 @@ export async function getDashboardData(options?: {
       ? await fetchPortfolioIdsForTargetUser(targetUserId)
       : access.allowedPortfolioIds;
 
-  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts] = await Promise.all([
+  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows] = await Promise.all([
     fetchLivePositions(allowedPortfolioIds),
     fetchCachedPrices(),
     fetchLendingTransactions(allowedPortfolioIds),
     fetchLpMetadataRows(allowedPortfolioIds),
     fetchRecentActivityRows(allowedPortfolioIds),
     fetchPortfolioContexts(allowedPortfolioIds),
+    fetchPositionTags(allowedPortfolioIds),
   ]);
+
+  // Map (portfolio_id, protocol, position_id) → strategy_tag para lookup rápido.
+  const positionTagByKey = new Map<string, string>();
+  for (const tag of positionTagRows) {
+    const key = positionCompositeKey(tag.portfolio_id, tag.protocol, tag.position_id);
+    positionTagByKey.set(key, tag.strategy_tag);
+  }
 
   const portfolioIds = Array.from(new Set(rows.map((row) => row.portfolio_id ?? "").filter((id) => id.length > 0)))
     .filter((id) => access.isSuperAdmin || allowedPortfolioIds.includes(id));
@@ -1001,6 +1044,9 @@ export async function getDashboardData(options?: {
         collateralBreakdown: [],
         debtBreakdown: [],
         lendingDetails: null,
+        strategyTag: positionTagByKey.get(
+          positionCompositeKey(row.portfolio_id ?? "", row.protocol ?? "Wallet", row.position_id ?? ""),
+        ) ?? null,
       };
     })
     .filter((position) => position.tokenSymbol && position.currentBalance > 0);

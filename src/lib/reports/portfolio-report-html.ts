@@ -225,6 +225,81 @@ function buildCompositionByCategory(input: ReportInput): string {
   `;
 }
 
+function buildCompositionByStrategy(input: ReportInput): string {
+  const map = new Map<string, number>();
+  let untaggedValue = 0;
+  let total = 0;
+  for (const section of input.sections) {
+    for (const pos of section.positions) {
+      const value = Math.max(0, pos.currentValue);
+      if (value <= 0) continue;
+      total += value;
+      const tag = pos.strategyTag?.trim();
+      if (!tag) untaggedValue += value;
+      else map.set(tag, (map.get(tag) ?? 0) + value);
+    }
+  }
+  if (map.size === 0) return ""; // nada etiquetado → no incluir sección
+
+  const palette = ["#7c3aed", "#3b82f6", "#f59e0b", "#10b981", "#ec4899", "#06b6d4", "#84cc16", "#f97316"];
+  const rows = Array.from(map.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([tag, value], idx) => ({
+      tag, value, pct: (value / total) * 100, color: palette[idx % palette.length],
+    }));
+
+  // Donut
+  const radius = 46;
+  const circ = 2 * Math.PI * radius;
+  let offset = 0;
+  const segs = rows.map((r) => {
+    const len = (r.pct / 100) * circ;
+    const seg = `<circle cx="80" cy="80" r="${radius}" fill="none" stroke="${r.color}" stroke-width="22" stroke-dasharray="${len} ${circ - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 80 80)" />`;
+    offset += len;
+    return seg;
+  }).join("");
+  // Segmento untagged en gris
+  let untaggedSeg = "";
+  if (untaggedValue > 0) {
+    const pct = (untaggedValue / total) * 100;
+    const len = (pct / 100) * circ;
+    untaggedSeg = `<circle cx="80" cy="80" r="${radius}" fill="none" stroke="#e5e7eb" stroke-width="22" stroke-dasharray="${len} ${circ - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 80 80)" />`;
+  }
+  const donut = `
+    <svg width="140" height="140" viewBox="0 0 160 160">
+      <circle cx="80" cy="80" r="${radius}" fill="none" stroke="#f3f4f6" stroke-width="22" />
+      ${segs}
+      ${untaggedSeg}
+      <circle cx="80" cy="80" r="28" fill="#ffffff" />
+    </svg>
+  `;
+  const legend = rows.map((r) => `
+    <div class="legend-row">
+      <span class="legend-dot" style="background:${r.color}"></span>
+      <span class="legend-label">${escapeHtml(r.tag)}</span>
+      <span class="legend-pct">${fmtPct(r.pct)}</span>
+      <span class="legend-value">${fmtUsd(r.value)}</span>
+    </div>
+  `).join("") + (untaggedValue > 0 ? `
+    <div class="legend-row" style="opacity:0.6">
+      <span class="legend-dot" style="background:#e5e7eb"></span>
+      <span class="legend-label">Sin etiqueta</span>
+      <span class="legend-pct">${fmtPct((untaggedValue / total) * 100)}</span>
+      <span class="legend-value">${fmtUsd(untaggedValue)}</span>
+    </div>
+  ` : "");
+
+  return `
+    <section class="card">
+      <h2>Composición por estrategia</h2>
+      <div class="composition-row">
+        <div class="composition-donut">${donut}</div>
+        <div class="composition-legend">${legend}</div>
+      </div>
+    </section>
+  `;
+}
+
 function buildCompositionByToken(input: ReportInput): string {
   const tokenMap = new Map<string, number>();
   for (const section of input.sections) {
@@ -621,6 +696,7 @@ export function buildPortfolioReportHtml(input: ReportInput): string {
   ${buildSummary(input)}
   ${buildAlertsSection(input)}
   ${buildCompositionByCategory(input)}
+  ${buildCompositionByStrategy(input)}
   ${buildCompositionByToken(input)}
   ${buildPositionsBySection(input)}
   ${buildLendingRisksSection(input)}
