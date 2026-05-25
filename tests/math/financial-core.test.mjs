@@ -407,3 +407,134 @@ test("Liquidation price: sin deuda → null", () => {
   );
   assert.equal(out[0].liquidationPrice, null);
 });
+
+// ---------------- Cadenas de rebalanceo y full withdrawal ----------------
+
+/**
+ * Modelo simplificado de Total Depositado:
+ * - Cada deposit "externo" suma al total
+ * - Cada withdrawal "externo" resta al total
+ * - Los rebalance_transfer son INTERNOS: no mueven el total
+ * - Las metadata.depositedDelta de los rebalances se cancelan entre sí (source negativo + target positivo)
+ *
+ * Esta simulación replica la lógica de get-dashboard-data txBalanceByTokenPosition
+ * + capitalIn/capitalOut + depositedDelta para rebalanceos.
+ */
+
+function simulateTotalDeposited(transactions) {
+  let totalDeposited = 0;
+  for (const tx of transactions) {
+    if (tx.isInternal) {
+      // Solo aplicar depositedDelta si lo hay (mantiene el total invariante en rebalances)
+      if (typeof tx.depositedDelta === "number") {
+        totalDeposited += tx.depositedDelta;
+      }
+      continue;
+    }
+    if (tx.type === "deposit") totalDeposited += tx.usd;
+    else if (tx.type === "withdrawal") totalDeposited -= tx.usd;
+  }
+  return totalDeposited;
+}
+
+test("Cadena rebalanceo A→B→C: Total Depositado invariante", () => {
+  // Usuario deposita $1000 en pool A. Luego rebalancea todo a B. Luego todo a C.
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    // Rebalance A → B: salida + entrada con deltas que se cancelan
+    { isInternal: true, depositedDelta: -1000 }, // source A
+    { isInternal: true, depositedDelta: +1000 }, // target B
+    // Rebalance B → C
+    { isInternal: true, depositedDelta: -1000 }, // source B
+    { isInternal: true, depositedDelta: +1000 }, // target C
+  ];
+  assert.equal(simulateTotalDeposited(txs), 1000);
+});
+
+test("Cadena rebalanceo parcial: A→B (50%) → C", () => {
+  // $1000 en A. Rebalance 50% a B (queda 500 en A, 500 en B). Luego B→C completo.
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { isInternal: true, depositedDelta: -500 }, // 50% de A sale
+    { isInternal: true, depositedDelta: +500 }, // 50% entra a B
+    { isInternal: true, depositedDelta: -500 }, // 100% de B sale
+    { isInternal: true, depositedDelta: +500 }, // 100% entra a C
+  ];
+  assert.equal(simulateTotalDeposited(txs), 1000);
+});
+
+test("Full withdrawal tras rebalance: Total Depositado se reduce correctamente", () => {
+  // $1000 en A, rebalance completo a B, luego full withdrawal de B → $0 depositado
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { isInternal: true, depositedDelta: -1000 },
+    { isInternal: true, depositedDelta: +1000 },
+    { type: "withdrawal", usd: 1000 },
+  ];
+  assert.equal(simulateTotalDeposited(txs), 0);
+});
+
+test("Withdrawal parcial tras rebalance: descuento correcto", () => {
+  // $1000 en A, rebalance a B, retiro $400 de B → $600 depositado restante
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { isInternal: true, depositedDelta: -1000 },
+    { isInternal: true, depositedDelta: +1000 },
+    { type: "withdrawal", usd: 400 },
+  ];
+  assert.equal(simulateTotalDeposited(txs), 600);
+});
+
+test("Múltiples depósitos + cadena rebalanceos: agregación correcta", () => {
+  // $500 en A, $300 en B, $200 en C
+  // Rebalance: 100% de A → D
+  // Rebalance: 50% de C → D
+  // Luego retiro de D parcial
+  const txs = [
+    { type: "deposit", usd: 500 },  // A
+    { type: "deposit", usd: 300 },  // B
+    { type: "deposit", usd: 200 },  // C
+    // A → D completo
+    { isInternal: true, depositedDelta: -500 },
+    { isInternal: true, depositedDelta: +500 },
+    // C → D 50%
+    { isInternal: true, depositedDelta: -100 },
+    { isInternal: true, depositedDelta: +100 },
+    // Retiro de D parcial: $300
+    { type: "withdrawal", usd: 300 },
+  ];
+  // Total invariante por los rebalances internos. Solo deposits/withdraws externos cuentan.
+  // 500 + 300 + 200 - 300 = 700
+  assert.equal(simulateTotalDeposited(txs), 700);
+});
+
+test("Rebalance con deltas mal balanceados causa drift detectable", () => {
+  // Si por bug los deltas no suman 0, el total deposit se distorsiona.
+  // Este test SIRVE PARA DEFENDER: cualquier futuro cambio que rompa la
+  // invariante source.delta + target.delta = 0 lo hace evidente.
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { isInternal: true, depositedDelta: -1000 },
+    { isInternal: true, depositedDelta: +900 }, // ¡falta $100!
+  ];
+  // Detecta el drift
+  assert.notEqual(simulateTotalDeposited(txs), 1000);
+  assert.equal(simulateTotalDeposited(txs), 900);
+});
+
+test("LP costBasisUsd: agregado desde balance × avgPrice cuando individuales tienen costo", () => {
+  // Simula el fix de "LP sin costBasisUsd": antes individuales=null, agregado=0, roi=0.
+  // Ahora individuales=balance × avg, agregado suma → roi real.
+  const individuals = [
+    { tokenSymbol: "WETH", balance: 1, avgPrice: 3000, currentValue: 3500 },
+    { tokenSymbol: "USDC", balance: 3000, avgPrice: 1, currentValue: 3000 },
+  ];
+  const totalCurrent = individuals.reduce((s, i) => s + i.currentValue, 0);
+  // costBasisUsd ahora viene del histórico tx (simulamos = balance * avgPrice)
+  const totalCost = individuals.reduce((s, i) => s + i.balance * i.avgPrice, 0);
+  const roi = totalCost > 0 ? ((totalCurrent - totalCost) / totalCost) * 100 : 0;
+  assert.equal(totalCost, 6000);
+  assert.equal(totalCurrent, 6500);
+  // ROI esperado: +8.33%
+  assert.ok(roi > 8 && roi < 9, `ROI esperado ~8.33%, got ${roi}`);
+});

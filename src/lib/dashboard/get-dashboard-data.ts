@@ -991,7 +991,10 @@ export async function getDashboardData(options?: {
         dataQualityIssue: null,
         isAggregatePosition: false,
         balanceLabel: null,
-        costBasisUsd: null,
+        // costBasisUsd real desde el histórico de transacciones (ya considera
+        // withdrawals pro-rata gracias al fix C1). Antes era siempre null, lo
+        // que provocaba ROI=0 en LPs agregados (mejora menor de la auditoría).
+        costBasisUsd: txData && txData.costUsd > 0 ? txData.costUsd : null,
         totalHarvested: toNumber(row.total_harvested),
         isActive: row.is_active === true,
         valueBreakdown: [{ tokenSymbol, valueUsd: currentValue }],
