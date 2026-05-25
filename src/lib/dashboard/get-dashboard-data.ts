@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getViewerAccess, type ViewerRole } from "@/lib/auth/viewer-access";
 import type { DefiPosition, PortfolioSummary, PositionSection, QuickAction } from "@/types/portfolio";
+import { calculateHealthFactor } from "@/lib/lending/thresholds";
 
 export type ViewerPermissions = {
   role: ViewerRole;
@@ -937,8 +938,25 @@ export async function getDashboardData(options?: {
         hodlEquivalentValue !== null ? currentValue - hodlEquivalentValue : null;
       const lendingKey = positionCompositeKey(row.portfolio_id ?? "", row.protocol ?? "Wallet", row.position_id ?? "");
       const lending = lendingMetrics[lendingKey];
-      const healthFactor =
-        lending && lending.debtUsd > 0 ? lending.collateralUsd / lending.debtUsd : null;
+      // Health Factor con liquidation thresholds por token (Aave V3 reference).
+      // HF = Σ(colateral × precio × threshold) / Σ(deuda × precio)
+      const healthFactor = lending
+        ? (() => {
+            const collateralBreakdownLocal = Object.entries(lending.collateralByToken)
+              .filter(([, amt]) => amt > 0)
+              .map(([sym, amt]) => ({
+                symbol: sym,
+                valueUsd: amt * (cachedPrices.pricesBySymbol.get(sym) ?? 0),
+              }));
+            const debtBreakdownLocal = Object.entries(lending.debtByToken)
+              .filter(([, amt]) => amt > 0)
+              .map(([sym, amt]) => ({
+                symbol: sym,
+                valueUsd: amt * (cachedPrices.pricesBySymbol.get(sym) ?? 0),
+              }));
+            return calculateHealthFactor(collateralBreakdownLocal, debtBreakdownLocal);
+          })()
+        : null;
       let healthStatus: DefiPosition["healthStatus"] = "na";
       if (healthFactor !== null) {
         if (healthFactor < 1.5) healthStatus = "critical";
@@ -1272,7 +1290,11 @@ export async function getDashboardData(options?: {
       return sum + (item.costBasisUsd ?? 0);
     }, 0);
     const roiPercent = costBasisUsd > 0 ? ((currentValue - costBasisUsd) / costBasisUsd) * 100 : 0;
-    const healthFactor = debtUsd > 0 ? collateralUsd / debtUsd : null;
+    // Health Factor con thresholds por token (ver lib/lending/thresholds).
+    const healthFactor = calculateHealthFactor(
+      collateralBreakdown.map((c) => ({ symbol: c.tokenSymbol, valueUsd: c.valueUsd })),
+      debtBreakdown.map((d) => ({ symbol: d.tokenSymbol, valueUsd: d.valueUsd })),
+    );
     let healthStatus: DefiPosition["healthStatus"] = "na";
     if (healthFactor !== null) {
       if (healthFactor < 1.5) healthStatus = "critical";

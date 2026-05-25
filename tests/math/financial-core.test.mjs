@@ -189,3 +189,105 @@ test("Withdrawal y re-depósito: avgPrice se promedia con el balance restante", 
   assert.equal(avgPrice(entry), 70000);
 });
 
+// ── Health Factor con liquidation thresholds (Aave V3 reference) ────────────
+
+const THRESHOLDS = {
+  BTC: 0.78,
+  WBTC: 0.78,
+  ETH: 0.83,
+  WETH: 0.83,
+  STETH: 0.79,
+  USDC: 0.87,
+  USDT: 0.86,
+  DAI: 0.87,
+  SOL: 0.65,
+};
+const DEFAULT_THRESHOLD = 0.50;
+
+function thresholdFor(sym) {
+  return THRESHOLDS[sym.toUpperCase()] ?? DEFAULT_THRESHOLD;
+}
+
+function healthFactorWithThresholds(collateral, debt) {
+  const totalDebt = debt.reduce((s, d) => s + Math.max(0, d.valueUsd), 0);
+  if (totalDebt <= 0) return null;
+  const effectiveCollateral = collateral.reduce(
+    (s, c) => s + Math.max(0, c.valueUsd) * thresholdFor(c.symbol),
+    0,
+  );
+  if (effectiveCollateral <= 0) return 0;
+  return effectiveCollateral / totalDebt;
+}
+
+test("HF con threshold: BTC $1000 colateral + USDC $500 deuda", () => {
+  // sin threshold daría 2.0; con threshold 0.78 → 1.56
+  const hf = healthFactorWithThresholds(
+    [{ symbol: "BTC", valueUsd: 1000 }],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  assert.equal(Number(hf.toFixed(4)), 1.56);
+});
+
+test("HF con threshold: ETH $1000 colateral + USDC $500 deuda", () => {
+  // threshold ETH 0.83 → HF = 830/500 = 1.66
+  const hf = healthFactorWithThresholds(
+    [{ symbol: "ETH", valueUsd: 1000 }],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  assert.equal(Number(hf.toFixed(4)), 1.66);
+});
+
+test("HF multi-token colateral: BTC $500 + ETH $500 + USDC deuda $500", () => {
+  // effective = 500*0.78 + 500*0.83 = 805 → HF = 805/500 = 1.61
+  const hf = healthFactorWithThresholds(
+    [
+      { symbol: "BTC", valueUsd: 500 },
+      { symbol: "ETH", valueUsd: 500 },
+    ],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  assert.equal(Number(hf.toFixed(4)), 1.61);
+});
+
+test("HF multi-token deuda: BTC $1000 colateral + USDC $250 + DAI $250", () => {
+  // effective = 1000*0.78 = 780; deuda total = 500 → HF = 1.56
+  const hf = healthFactorWithThresholds(
+    [{ symbol: "BTC", valueUsd: 1000 }],
+    [
+      { symbol: "USDC", valueUsd: 250 },
+      { symbol: "DAI", valueUsd: 250 },
+    ],
+  );
+  assert.equal(Number(hf.toFixed(4)), 1.56);
+});
+
+test("HF sin deuda devuelve null (HF infinito)", () => {
+  const hf = healthFactorWithThresholds(
+    [{ symbol: "BTC", valueUsd: 1000 }],
+    [],
+  );
+  assert.equal(hf, null);
+});
+
+test("HF con token desconocido usa fallback 0.50", () => {
+  const hf = healthFactorWithThresholds(
+    [{ symbol: "RANDOMSHITCOIN", valueUsd: 1000 }],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  assert.equal(Number(hf.toFixed(4)), 1); // 1000*0.5/500 = 1.0
+});
+
+test("HF threshold conservador vs simple: SOL es más volátil que BTC", () => {
+  // Simple (sin threshold): ambos darían el mismo HF si el USD es igual.
+  // Con thresholds: SOL (0.65) da peor HF que BTC (0.78).
+  const hfBtc = healthFactorWithThresholds(
+    [{ symbol: "BTC", valueUsd: 1000 }],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  const hfSol = healthFactorWithThresholds(
+    [{ symbol: "SOL", valueUsd: 1000 }],
+    [{ symbol: "USDC", valueUsd: 500 }],
+  );
+  assert.ok(hfSol < hfBtc, `SOL (${hfSol}) debería ser menos seguro que BTC (${hfBtc})`);
+});
+
