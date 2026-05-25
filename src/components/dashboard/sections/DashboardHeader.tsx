@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, Clock, FileDown, History, LogOut, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
+import { BadgeDollarSign, Camera, Clock, FileDown, History, LogOut, RefreshCw, TrendingUp, TrendingDown } from "lucide-react";
 import { useState } from "react";
 import { currency, currencyCompact, plainPercent, percent, signedCurrency, signedCurrencyCompact } from "../utils/formatters";
 
@@ -30,6 +30,42 @@ export function DashboardHeader({
   openModal,
 }: DashboardHeaderProps) {
   const [hoveredCompositionKey, setHoveredCompositionKey] = useState<string | null>(null);
+  const [isCapturingSnapshot, setIsCapturingSnapshot] = useState(false);
+  const [snapshotFeedback, setSnapshotFeedback] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  async function captureSnapshot() {
+    const portfolioId = portfolioContext?.portfolioId;
+    if (!portfolioId) {
+      setSnapshotFeedback({ kind: "err", text: "No hay portfolio seleccionado." });
+      return;
+    }
+    setIsCapturingSnapshot(true);
+    setSnapshotFeedback(null);
+    try {
+      const csrfToken =
+        typeof document !== "undefined"
+          ? (document.cookie.match(/csrf-token=([^;]+)/)?.[1] ?? "")
+          : "";
+      const res = await fetch("/api/snapshots/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify({ portfolioId, trigger: "manual" }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setSnapshotFeedback({ kind: "err", text: body.error ?? "No se pudo capturar el snapshot." });
+        return;
+      }
+      const totals = body.totals ?? {};
+      const formatted = currency(totals.totalValueUsd ?? 0);
+      setSnapshotFeedback({ kind: "ok", text: `Snapshot guardado · Valor: ${formatted}` });
+    } catch (e) {
+      setSnapshotFeedback({ kind: "err", text: e instanceof Error ? e.message : "Error inesperado." });
+    } finally {
+      setIsCapturingSnapshot(false);
+      window.setTimeout(() => setSnapshotFeedback(null), 5000);
+    }
+  }
 
   const donutOuterStroke = 28;
   const donutActiveStroke = 36;
@@ -189,6 +225,19 @@ export function DashboardHeader({
               <History className="h-3.5 w-3.5" />
               Historial
             </button>
+            {viewer.canRefreshPrices ? (
+              <button
+                type="button"
+                onClick={captureSnapshot}
+                disabled={isCapturingSnapshot}
+                className="btn-secondary px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Capturar snapshot del portfolio"
+                title="Guarda el estado actual del portfolio para series temporales (TWR, drawdown, gráficas)."
+              >
+                <Camera className={`h-3.5 w-3.5 ${isCapturingSnapshot ? "animate-pulse" : ""}`} />
+                {isCapturingSnapshot ? "Guardando..." : "Snapshot"}
+              </button>
+            ) : null}
             <a
               href="/api/auth/logout?redirectTo=/login"
               className="btn-secondary px-4 py-2 text-sm font-medium"
@@ -198,6 +247,17 @@ export function DashboardHeader({
               Salir
             </a>
           </div>
+          {snapshotFeedback ? (
+            <p
+              className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+                snapshotFeedback.kind === "ok"
+                  ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                  : "border-red-500/40 bg-red-500/10 text-red-200"
+              }`}
+            >
+              {snapshotFeedback.text}
+            </p>
+          ) : null}
         </div>
 
         {/* ══════════════════════════════════════════════════════════
