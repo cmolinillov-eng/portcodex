@@ -284,6 +284,42 @@ button, a {
   font-size: 0.75rem;
 }
 
+/* Icon-only button used in the slim header toolbar.
+   Pequeño, cuadrado-redondeado, hover sutil. WCAG: aria-label/title obligatorios. */
+.header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 0.625rem;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--muted);
+  backdrop-filter: blur(8px);
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  cursor: pointer;
+}
+
+.header-icon-btn:hover {
+  color: #A0D2FF;
+  border-color: rgba(160, 210, 255, 0.4);
+  background: rgba(160, 210, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.header-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.header-icon-btn-danger:hover {
+  color: #fda4af;
+  border-color: rgba(244, 114, 182, 0.4);
+  background: rgba(244, 63, 94, 0.08);
+}
+
 .page-shell {
   position: relative;
   min-height: 100vh;

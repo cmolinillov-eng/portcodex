@@ -1,125 +1,154 @@
 # Audit Report — Crypto Portfolio Tracker
 
 > Auditoría matemática y de coherencia contable realizada el 2026-05-25.
-> Cubre `src/lib/dashboard/get-dashboard-data.ts`, `src/app/api/transactions/route.ts`, `src/components/dashboard/dashboard-client.tsx` y todas las rutas API de operaciones.
+> **Última actualización:** 2026-05-25 (fin de sesión fase 20).
 
-## Veredicto general
+---
 
-La aplicación es **contablemente sólida en su núcleo** (~85%). Las fórmulas básicas son correctas, los rebalanceos preservan el Total Depositado global, los harvests reinvertidos se manejan bien y los soft-deletes capturan PnL realizado. Pero hay **4 bugs reales** que pueden hacer que los números mostrados al cliente no cuadren, y **un agujero contable serio** en la edición manual de posiciones.
+## Estado general
+
+| Área | Estado |
+|---|---|
+| Contabilidad núcleo | ✅ Sólida (~90%) |
+| Lending / Health Factor | ✅ Implementado con thresholds reales |
+| Multi-currency USD/EUR | ✅ Implementado (toggle en header) |
+| Position tags / estrategia | ✅ Implementado (SQL aplicado en Supabase) |
+| PDF reports | ✅ Implementado (A4 print-ready) |
+| Snapshots diarios | ✅ Implementado (cron Vercel) |
+| Tests suite | ✅ 41/41 pasando |
+| Gráficas de evolución / TWR | ⏳ En espera (necesita ≥7 snapshots acumulados) |
+| Bugs contables abiertos | ⚠️ 3 pendientes (ver abajo) |
+
+---
 
 ## Lo que funciona bien
 
 | Métrica | Implementación | Estado |
 |---|---|---|
-| Total Depositado | Acumulado con spot_price histórico, excluye movimientos internos | OK |
-| PnL ajustado (Valor + Realizado − Depositado) | get-dashboard-data.ts:1545 | OK (sin doble conteo) |
-| Impermanent Loss (fórmula clásica 2·√r/(1+r) − 1) | get-dashboard-data.ts:219-225 | OK |
-| Rebalance + depositado heredado (depositedDelta) | route.ts:1074-1125 | OK |
-| Harvest pending → descuento al reinvertir | get-dashboard-data.ts:1398 | OK |
-| Lending equity (colateral − deuda) en valor actual | get-dashboard-data.ts:1223 | OK |
-| Soft-delete + snapshot de cierre | positions/delete/route.ts:159 | OK (captura PnL realizado) |
+| Total Depositado | Acumulado con spot_price histórico, excluye movimientos internos | ✅ |
+| PnL ajustado (Valor + Realizado − Depositado) | get-dashboard-data.ts | ✅ |
+| Impermanent Loss (fórmula clásica 2·√r/(1+r) − 1) | get-dashboard-data.ts | ✅ |
+| Rebalance + depositado heredado (depositedDelta) | transactions/route.ts | ✅ |
+| Harvest pending → descuento al reinvertir | get-dashboard-data.ts | ✅ |
+| Lending equity + Health Factor con thresholds | lib/lending/thresholds.ts | ✅ NUEVO |
+| LTV, MaxLTV, distancia a liquidación por token | lib/lending/thresholds.ts | ✅ NUEVO |
+| LP costBasisUsd → ROI correcto (bug ROI=0 corregido) | get-dashboard-data.ts | ✅ NUEVO |
+| Soft-delete + snapshot de cierre | positions/delete/route.ts | ✅ |
+| Snapshots diarios (cron Vercel medianoche) | api/cron/snapshot/route.ts | ✅ NUEVO |
+| Position tags por estrategia | position_tags table + API endpoint | ✅ NUEVO |
+| Multi-currency USD ↔ EUR (Frankfurter/ECB, caché 30min) | lib/fx/usd-eur.ts + CurrencyContext | ✅ NUEVO |
+| PDF report A4 (print-optimized, todos los datos) | lib/reports/portfolio-report-html.ts | ✅ NUEVO |
+| HF Alert Banner (warning/critical con scroll-to) | HealthFactorAlertBanner.tsx | ✅ NUEVO |
+| Donut estrategia por tags | StrategyComposition.tsx | ✅ NUEVO |
 
-## Bugs críticos (afectan números visibles)
+---
 
-### C1. Average Entry Price se infla tras withdrawals parciales
-**Ubicación:** `src/lib/dashboard/get-dashboard-data.ts:879-882`
-**Problema:** Los withdrawals restan `balance` pero NO descuentan `costUsd` pro-rata. Ejemplo: depósito de 1 BTC a 60k, retiras 0.5 BTC → estado actual: balance=0.5, costUsd=60k, avgPrice=120k. Correcto: avgPrice=60k.
-**Impacto:** ROI individual sistemáticamente mal tras cualquier retirada parcial.
-**Fix sugerido:** En la rama de withdrawals, restar `(outAmount / (balance + outAmount)) × costUsd`.
+## Bugs abiertos (afectan números visibles)
 
-### C2. Health Factor sin liquidation thresholds
-**Ubicación:** `src/lib/dashboard/get-dashboard-data.ts:1246`
-**Problema:** Hace `collateralUsd / debtUsd` plano. La skill `skill-lending-health-factor.md` requiere `Σ(colateral_i × threshold_i) / Σ(deuda_j)`.
-**Impacto:** HF siempre mayor que el real → falsa sensación de seguridad ante liquidación.
-**Fix sugerido:** Tabla de thresholds por token (BTC≈0.75, ETH≈0.83, USDC≈0.85, memecoins≈0.50) editable por gestor.
+### 🔴 C1. Average Entry Price se infla tras withdrawals parciales
+**Ubicación:** `src/lib/dashboard/get-dashboard-data.ts` — rama withdrawal
+**Problema:** Los withdrawals restan `balance` pero NO descuentan `costUsd` pro-rata.
+Ejemplo: depósito 1 BTC@60k, retiras 0.5 → balance=0.5, costUsd=60k → avgPrice=**120k** (debería ser 60k).
+**Impacto:** ROI individual sistemáticamente incorrecto tras cualquier retirada parcial.
+**Fix:** En la rama de withdrawals, restar `(outAmount / (balance + outAmount)) × costUsd`.
+**Prioridad:** Alta.
 
-### C3. Edit-position destruye histórico
-**Ubicación:** `src/app/api/positions/edit/route.ts:88-144`
-**Problema:** Soft-delete de todas las transactions de la posición y crea una sola fila con los valores tecleados. Permite forzar cost basis sin trazabilidad.
-**Impacto:** Total Depositado del portfolio cambia sin que el cliente haya aportado capital. ROI se distorsiona. Viola la regla 8 del PROJECT_INITIAL_INSTRUCTIONS.
-**Fix sugerido:** Generar fila `manual_adjustment` con el delta exacto, manteniendo el histórico intacto. O marcar las originales como "superseded" en metadata.
+### 🟡 C3. Edit-position destruye histórico contable
+**Ubicación:** `src/app/api/positions/edit/route.ts`
+**Problema:** Soft-delete de todas las transactions y crea una sola fila con los valores tecleados.
+Permite forzar cost basis sin trazabilidad. Viola regla 8 del proyecto.
+**Impacto:** Total Depositado cambia sin que el cliente haya aportado capital.
+**Fix:** Generar fila `manual_adjustment` con el delta exacto, manteniendo histórico intacto.
+**Prioridad:** Media-alta.
 
-### C4. IL clampeado fuera de rango
-**Ubicación:** `src/lib/dashboard/get-dashboard-data.ts:993-994`
-**Problema:** Cuando un LP V3 sale de rango, el código clampea al límite del rango y sigue calculando IL. Pero la posición está 100% en un token y no hay IL real.
-**Impacto:** Número engañoso en LPs fuera de rango.
-**Fix sugerido:** Si `lpRangeStatus === "out_of_range"`, fijar `ilPercent = 0` y etiqueta "Fuera de rango — posición convertida a 1 token".
+### 🟡 C4. IL incorrecto en LPs fuera de rango
+**Ubicación:** `src/lib/dashboard/get-dashboard-data.ts` — cálculo IL
+**Problema:** Cuando un LP V3 sale de rango, la posición está 100% en un token → no hay IL real,
+pero el código sigue calculando y mostrando un número engañoso.
+**Fix:** Si `lpRangeStatus === "out_of_range"`, fijar `ilPercent = 0` + etiqueta "Fuera de rango".
+**Prioridad:** Media.
 
-## Importantes (ambigüedad o casos no cubiertos)
+---
 
-### I1. ROI engañoso en lending con borrow
-`currentValue = colateral − deuda` pero `costBasis = solo colateral`. Depósito $1000 + borrow $500 → ROI = (500−1000)/1000 = −50% pero el cliente no perdió nada. Sugerencia: separar *ROI del colateral* y *ROI neto del equity*, o no mostrar ROI y poner Health Factor + Net Equity.
+## Mejoras importantes (no críticas)
 
-### I2. Cierre completo sin rebalance no genera realizedPnl
-Solo los rebalances crean `position_closed`. Full withdrawals o deletes manuales pierden el realizedPnl del global. Fix: cuando una operación deja `balance ≤ 0`, generar `position_closed` automáticamente.
+### I2. realizedPnl en cierres no-rebalance
+Solo los rebalances crean `position_closed`. Full withdrawals manuales pierden el PnL.
+**Fix:** Cuando balance ≤ 0 tras operación, generar `position_closed` automáticamente.
 
-### I3. Total Depositado ambiguo en lending
-Si pides 500 prestado y los retiras a wallet personal, el sistema lo trata como deuda — pero el cliente puede leer "1000 depositado" pensando que es suyo. UI debería separar: *Capital aportado / Deuda / Equity neto*.
+### I1 + I3. Presentación lending
+`currentValue = colateral − deuda` pero `costBasis = solo colateral` → ROI visual confuso.
+El panel `LendingDetailsPanel` muestra ya Net Equity, LTV y distancias de liquidación,
+pero el ROI % del row principal sigue siendo engañoso si hay deuda.
+**Fix:** Ocultar ROI% en posiciones lending y mostrar solo Net Equity + HF.
 
-## Mejoras menores
+---
 
-- **LP sin costBasisUsd:** en algunos paths, LPs muestran ROI=0 por sincronización (get-dashboard-data.ts:1036).
-- **Precisión flotante:** cálculos críticos en `decimal.js` para evitar artefactos en sumas grandes.
-- **Tests faltantes:** cadenas de rebalanceos (A→B→C), full withdrawal tras rebalance.
+## Pendiente de configuración (acciones manuales)
 
-## Mejoras estratégicas (roadmap)
+| Tarea | Dónde | Estado |
+|---|---|---|
+| Aplicar `supabase/sql/phase20_position_tags.sql` | Supabase SQL Editor | ✅ APLICADO (2026-05-25) |
+| Añadir `SNAPSHOTS_CRON_SECRET` en Vercel env vars | Vercel → Settings → Env | ⚠️ PENDIENTE |
 
-### Métricas avanzadas
-- **Time-Weighted Return (TWR):** ROI estándar para gestores, descuenta timing de aportaciones.
-- **Sharpe Ratio:** requiere histórico de valor → ver snapshots.
-- **Max Drawdown:** pico-a-valle del portfolio.
+> **SNAPSHOTS_CRON_SECRET:** Sin esta variable, el cron de snapshots falla con 401. Ir a
+> Vercel → proyecto → Settings → Environment Variables → añadir con un string aleatorio largo.
+> El mismo valor debe estar en `vercel.json` como `CRON_SECRET` si se usa header de auth.
 
-### Snapshots periódicos
-Tabla `portfolio_snapshots` con valor diario. Cron que guarda `{date, portfolioId, valueUsd, depositedUsd, pendingHarvestUsd, realizedPnlUsd}`. Habilita gráficas de evolución, TWR/Sharpe/drawdown e inmunidad a cambios retroactivos de precios.
+---
 
-### Alertas configurables
-- HF < umbral (1.5 por defecto)
-- LP fuera de rango > N horas
-- IL > X%
-- Variación diaria > Y%
+## Features estratégicas pendientes
 
-### Reporting
-- **PDF snapshot actual** (en roadmap inicial, no implementado)
-- **CSV histórico** (implementado)
+### Lote siguiente recomendado (1-2 sesiones)
+1. **C1 avgPrice tras withdrawal** — fix de ~5 líneas + test (impacta ROI de muchos clientes)
+2. **C4 IL fuera de rango** — fix de ~3 líneas
+3. **C3 edit-position no destructivo** — cambio mayor pero necesario
 
-### Tax lots (FIFO/LIFO/Average)
-Reporte por lots con realized PnL clasificado para jurisdicciones que pagan impuestos sobre crypto (ES, US…).
+### Lote medio plazo
+4. **Gráficas de evolución / TWR / Max Drawdown** — ya hay arquitectura de snapshots,
+   esperar a tener ≥7 días de datos acumulados para que tenga sentido visual
+5. **Alertas configurables** — HF < umbral, LP fuera de rango > N horas, IL > X%, variación diaria > Y%
+6. **Audit log visible al cliente** — "el gestor X editó esta posición el día Y"
 
-### Tracker de objetivos
-En roadmap inicial. "Objetivo +30% anual" con barra de progreso vs tiempo restante.
+### Lote largo plazo
+7. **Tracker de objetivos** — "Objetivo +30% anual" con barra de progreso
+8. **Tax lots (FIFO/LIFO/Average)** — reporte PnL realizado para declaración fiscal ES/US
+9. **Fees / gas tracking** — campo `feeAmountUsd` por transaction, relevante en DeFi con rotación alta
+10. **Más monedas** — GBP, CHF… (la arquitectura CurrencyContext ya lo soporta, solo añadir Frankfurter pairs)
 
-### Fees / gas tracking
-Campo opcional `feeAmountUsd` por transaction. Relevante para portfolios DeFi con rotación alta.
+---
 
-### Multi-currency display
-Conversión a EUR/otras en tiempo real para clientes que piensan en su moneda local.
+## Tests suite
 
-### Audit log visible al cliente
-Hoy hay `admin-audit` solo para admin. Mostrar al cliente final "el gestor X editó esta posición el día Y" da confianza.
+```
+tests/math/financial-core.test.mjs — 41/41 ✅
 
-### Position tagging / estrategia
-Etiquetas tipo "Stablecoin yield", "Blue-chip long", "Memecoin gamble" para agrupar el donut por estrategia.
+Cobertura:
+- Cálculos básicos PnL, ROI, IL
+- Rebalanceos A→B→C (invariantes de capital)
+- Rebalance + full/partial withdrawal
+- Chains multi-depósito
+- LTV básico, LTV sin colateral, LTV sin deuda
+- MaxLTV BTC, MaxLTV mixto
+- Precio liquidación 1 BTC + deuda, colateral USDC, multi-colateral
+- LP costBasisUsd → ROI correcto
+```
 
-## Plan de prioridades
+---
 
-**Lote 1 — Bugs críticos** (1-2 sesiones)
-1. C1 (avgPrice tras withdrawal parcial) — fix de 5 líneas + test
-2. C4 (IL fuera de rango = 0) — fix de 3 líneas
-3. C3 (Edit-position no destructivo) — cambio mayor pero crítico
+## Archivos clave (referencia rápida)
 
-**Lote 2 — Mejoras importantes** (1 sesión)
-4. C2 (Health Factor con thresholds)
-5. I2 (realizedPnl en cierres no-rebalance)
-6. I1 + I3 (presentación lending)
-
-**Lote 3 — Features estratégicas** (escalonado)
-7. Snapshots diarios
-8. PDF reports
-9. Tracker de objetivos
-10. Alertas
-
-**Lote 4 — Refinamiento** (largo plazo)
-- TWR / Sharpe / Drawdown
-- Tax lots
-- Multi-currency
-- Fees / gas
+| Fichero | Qué hace |
+|---|---|
+| `src/lib/dashboard/get-dashboard-data.ts` | Fuente de verdad de todos los cálculos del dashboard |
+| `src/lib/lending/thresholds.ts` | HF, LTV, MaxLTV, liquidation prices |
+| `src/lib/fx/usd-eur.ts` | FX rate USD→EUR (Frankfurter, caché 30min) |
+| `src/lib/reports/portfolio-report-html.ts` | Generador PDF A4 |
+| `src/components/dashboard/utils/currency-context.tsx` | Provider USD/EUR + hook useMoneyFormatters() |
+| `src/components/dashboard/sections/HealthFactorAlertBanner.tsx` | Banner alertas HF |
+| `src/components/dashboard/sections/StrategyComposition.tsx` | Donut por estrategia |
+| `src/components/dashboard/sections/StrategyTagBadge.tsx` | Badge editable inline |
+| `src/app/api/positions/tag/route.ts` | API upsert/delete de tags |
+| `src/app/api/cron/snapshot/route.ts` | Cron snapshot diario |
+| `supabase/sql/phase20_position_tags.sql` | Migración tabla position_tags (ya aplicada) |
+| `tests/math/financial-core.test.mjs` | Suite de tests matemáticos (41 tests) |

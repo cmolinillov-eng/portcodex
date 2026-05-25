@@ -1129,6 +1129,25 @@ async function buildRows(
     if (sourceMapping.normalizedPositionType === "Liquidity Pool") {
       const sourcePriceA = spotPriceFor(sourceToken);
       const sourcePriceB = spotPriceFor(sourceTokenB);
+      // El trigger validate_transaction_integrity exige metadata.lp completa para
+      // lp_withdraw. Heredar del primer lp_deposit del origen para no perder
+      // información de rango / ratio de entrada.
+      const sourceLpMeta = await getLatestLpMetadata(client, portfolioId, sourceProtocol, sourcePositionId);
+      const sourceLp = (parseObject(sourceLpMeta)?.lp ?? null) as
+        | { tokenA?: string; tokenB?: string; rangeLower?: number; rangeUpper?: number; entryPriceRatio?: number; isCorrelated?: boolean }
+        | null;
+      const sourceEntryRatio = Number(sourceLp?.entryPriceRatio);
+      const fallbackEntryRatio = sourceAmount > 0 ? sourceAmountB / sourceAmount : 1;
+      const sourceLpMetadata = {
+        lp: {
+          tokenA: sourceLp?.tokenA ?? sourceToken,
+          tokenB: sourceLp?.tokenB ?? sourceTokenB,
+          rangeLower: Number(sourceLp?.rangeLower) > 0 ? Number(sourceLp?.rangeLower) : 0.0001,
+          rangeUpper: Number(sourceLp?.rangeUpper) > Number(sourceLp?.rangeLower ?? 0) ? Number(sourceLp?.rangeUpper) : Math.max(Number(sourceLp?.rangeLower ?? 0) * 1.2, 0.001),
+          entryPriceRatio: Number.isFinite(sourceEntryRatio) && sourceEntryRatio > 0 ? sourceEntryRatio : fallbackEntryRatio,
+          ...(sourceLp?.isCorrelated !== undefined ? { isCorrelated: sourceLp.isCorrelated } : {}),
+        },
+      };
       sourceRows.push(
         makeRow({
           portfolio_id: portfolioId,
@@ -1141,7 +1160,7 @@ async function buildRows(
           protocol: sourceProtocol,
           position_id: sourcePositionId,
           position_type: sourcePositionType,
-          metadata: { reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
+          metadata: { ...sourceLpMetadata, reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
           timestamp,
         }),
       );
@@ -1157,7 +1176,7 @@ async function buildRows(
           protocol: sourceProtocol,
           position_id: sourcePositionId,
           position_type: sourcePositionType,
-          metadata: { reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
+          metadata: { ...sourceLpMetadata, reason: "rebalance_transfer", depositedDelta: sourceDepositedDeltaPerRow },
           timestamp,
         }),
       );

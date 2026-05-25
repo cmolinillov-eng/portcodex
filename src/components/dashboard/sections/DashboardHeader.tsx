@@ -112,12 +112,109 @@ export function DashboardHeader({
         }}
       />
 
-      <div className="relative z-10 grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(300px,0.5fr)] xl:items-center">
+      {/* ── Slim icon toolbar (top-right) ─────────────────────────
+          Toda la barra de acciones secundarias condensada en iconos.
+          Saca presión visual de col 1 → header simétrico. */}
+      <div className="relative z-20 mb-5 flex flex-wrap items-center justify-end gap-1.5">
+        {viewer.canRefreshPrices ? (
+          <button
+            type="button"
+            onClick={() => refreshPricesNow()}
+            disabled={isRefreshingPrices}
+            className="header-icon-btn"
+            aria-label="Actualizar precios de mercado"
+            title="Actualizar precios"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshingPrices ? "animate-spin" : ""}`} />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={exportCurrentReportPdf}
+          className="header-icon-btn"
+          aria-label="Descargar reporte PDF"
+          title="Reporte PDF"
+        >
+          <FileDown className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={openHistoryModal}
+          className="header-icon-btn"
+          aria-label="Ver historial de transacciones"
+          title="Historial"
+        >
+          <History className="h-4 w-4" />
+        </button>
+        {viewer.canRefreshPrices ? (
+          <button
+            type="button"
+            onClick={captureSnapshot}
+            disabled={isCapturingSnapshot}
+            className="header-icon-btn"
+            aria-label="Capturar snapshot del portfolio"
+            title="Snapshot — guarda el estado actual del portfolio"
+          >
+            <Camera className={`h-4 w-4 ${isCapturingSnapshot ? "animate-pulse" : ""}`} />
+          </button>
+        ) : null}
+
+        {/* Separador */}
+        <span className="mx-1 h-5 w-px bg-[var(--line)] opacity-60" aria-hidden="true" />
+
+        {/* USD ↔ EUR toggle (compacto) */}
+        <div
+          className="inline-flex items-center rounded-full border border-[var(--line)] bg-black/40 p-0.5 text-[11px]"
+          role="group"
+          aria-label="Cambiar moneda"
+        >
+          <button
+            type="button"
+            onClick={() => setActiveCurrency("USD")}
+            className={`rounded-full px-2.5 py-1 font-semibold transition ${
+              activeCurrency === "USD"
+                ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+            aria-pressed={activeCurrency === "USD"}
+            title="Mostrar valores en dólares"
+          >
+            $
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCurrency("EUR")}
+            className={`rounded-full px-2.5 py-1 font-semibold transition ${
+              activeCurrency === "EUR"
+                ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                : "text-[var(--muted)] hover:text-[var(--foreground)]"
+            }`}
+            aria-pressed={activeCurrency === "EUR"}
+            title="Mostrar valores en euros"
+          >
+            €
+          </button>
+        </div>
+
+        {/* Separador */}
+        <span className="mx-1 h-5 w-px bg-[var(--line)] opacity-60" aria-hidden="true" />
+
+        <a
+          href="/api/auth/logout?redirectTo=/login"
+          className="header-icon-btn header-icon-btn-danger"
+          aria-label="Cerrar sesión"
+          title="Salir"
+        >
+          <LogOut className="h-4 w-4" />
+        </a>
+      </div>
+
+      <div className="relative z-10 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(300px,0.5fr)]">
 
         {/* ══════════════════════════════════════════════════════════
-            Col 1: Balance + Identity + Actions
+            Col 1: Balance + Identity (sin botones — toolbar arriba)
             ══════════════════════════════════════════════════════════ */}
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col justify-center gap-4">
           <div className="relative">
             {/* Pulsing glow behind balance */}
             <div
@@ -196,94 +293,9 @@ export function DashboardHeader({
             </span>
           </div>
 
-          {/* Action buttons */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Currency toggle USD ↔ EUR */}
-            <div
-              className="inline-flex items-center rounded-lg border border-[var(--line)] bg-black/30 p-0.5 text-xs"
-              role="group"
-              aria-label="Cambiar moneda"
-            >
-              <button
-                type="button"
-                onClick={() => setActiveCurrency("USD")}
-                className={`rounded-md px-2.5 py-1 font-medium transition ${
-                  activeCurrency === "USD"
-                    ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
-                aria-pressed={activeCurrency === "USD"}
-              >
-                $ USD
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveCurrency("EUR")}
-                className={`rounded-md px-2.5 py-1 font-medium transition ${
-                  activeCurrency === "EUR"
-                    ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
-                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
-                aria-pressed={activeCurrency === "EUR"}
-              >
-                € EUR
-              </button>
-            </div>
-            {viewer.canRefreshPrices ? (
-              <button
-                type="button"
-                onClick={() => refreshPricesNow()}
-                disabled={isRefreshingPrices}
-                className="btn-secondary px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Actualizar precios de mercado"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${isRefreshingPrices ? "animate-spin" : ""}`} />
-                {isRefreshingPrices ? "Actualizando..." : "Actualizar precios"}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={exportCurrentReportPdf}
-              className="btn-secondary px-4 py-2 text-sm font-medium"
-              aria-label="Descargar reporte PDF"
-            >
-              <FileDown className="h-3.5 w-3.5" />
-              Reporte PDF
-            </button>
-            <button
-              type="button"
-              onClick={openHistoryModal}
-              className="btn-secondary px-4 py-2 text-sm font-medium"
-              aria-label="Ver historial de transacciones"
-            >
-              <History className="h-3.5 w-3.5" />
-              Historial
-            </button>
-            {viewer.canRefreshPrices ? (
-              <button
-                type="button"
-                onClick={captureSnapshot}
-                disabled={isCapturingSnapshot}
-                className="btn-secondary px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Capturar snapshot del portfolio"
-                title="Guarda el estado actual del portfolio para series temporales (TWR, drawdown, gráficas)."
-              >
-                <Camera className={`h-3.5 w-3.5 ${isCapturingSnapshot ? "animate-pulse" : ""}`} />
-                {isCapturingSnapshot ? "Guardando..." : "Snapshot"}
-              </button>
-            ) : null}
-            <a
-              href="/api/auth/logout?redirectTo=/login"
-              className="btn-secondary px-4 py-2 text-sm font-medium"
-              aria-label="Cerrar sesión"
-            >
-              <LogOut className="h-3.5 w-3.5" />
-              Salir
-            </a>
-          </div>
           {snapshotFeedback ? (
             <p
-              className={`mt-2 rounded-lg border px-3 py-2 text-xs ${
+              className={`mt-1 rounded-lg border px-3 py-2 text-xs ${
                 snapshotFeedback.kind === "ok"
                   ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
                   : "border-red-500/40 bg-red-500/10 text-red-200"
@@ -496,7 +508,7 @@ export function DashboardHeader({
         {/* ══════════════════════════════════════════════════════════
             Col 3: Stats Panel (redesigned — left-accent bars)
             ══════════════════════════════════════════════════════════ */}
-        <div className="self-center animate-fade-up stagger-3 xl:justify-self-end w-full xl:max-w-[320px]">
+        <div className="flex flex-col justify-center animate-fade-up stagger-3 xl:justify-self-end w-full xl:max-w-[320px]">
           <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-4 space-y-3">
             {/* Depositado */}
             <div className="header-stat-row" style={{ "--stat-accent": "var(--accent-primary)" } as React.CSSProperties}>
