@@ -45,11 +45,11 @@ export async function GET(request: NextRequest) {
 
     const client = getClient();
 
-    // Listar portfolios activos
+    // Listar portfolios (la tabla no tiene deleted_at; si en el futuro se
+    // añade soft-delete, filtrar aquí).
     const { data: portfolios, error: portfolioError } = await client
       .from("portfolios")
-      .select("id")
-      .is("deleted_at", null);
+      .select("id");
 
     if (portfolioError) {
       return NextResponse.json({ error: `read portfolios: ${portfolioError.message}` }, { status: 500 });
