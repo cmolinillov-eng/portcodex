@@ -5,6 +5,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
+import { autoClosePositionIfEmpty } from "@/lib/positions/auto-close";
 
 type EditPositionPayload = {
   portfolioId?: string;
@@ -30,6 +31,68 @@ function getClient(): SupabaseClient {
   const serviceClient = getSupabaseServiceClient();
   if (serviceClient) return serviceClient;
   return getSupabaseServerClient();
+}
+
+function toNumber(value: string | number | null | undefined): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+const CAPITAL_IN = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+const CAPITAL_OUT = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+
+type TokenState = { balance: number; costUsd: number };
+
+function applyTxToState(state: Map<string, TokenState>, tx: {
+  type: string | null;
+  token_in_symbol: string | null;
+  token_in_amount: string | number | null;
+  token_out_symbol: string | null;
+  token_out_amount: string | number | null;
+  spot_price: string | number | null;
+}) {
+  const txType = (tx.type ?? "").trim();
+  const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
+  const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
+  const inAmount = toNumber(tx.token_in_amount);
+  const outAmount = toNumber(tx.token_out_amount);
+  const spotPrice = toNumber(tx.spot_price);
+
+  const isIn = CAPITAL_IN.has(txType);
+  const isOut = CAPITAL_OUT.has(txType);
+  if (!isIn && !isOut) return;
+
+  const symbol = isIn ? inSymbol : outSymbol;
+  if (!symbol) return;
+
+  if (!state.has(symbol)) state.set(symbol, { balance: 0, costUsd: 0 });
+  const entry = state.get(symbol)!;
+
+  if (isIn) {
+    entry.balance += inAmount;
+    entry.costUsd += inAmount * spotPrice;
+  } else {
+    if (entry.balance > 0 && outAmount > 0) {
+      const fraction = Math.min(1, outAmount / entry.balance);
+      entry.costUsd -= entry.costUsd * fraction;
+    }
+    entry.balance -= outAmount;
+    if (entry.balance < 0) entry.balance = 0;
+  }
+}
+
+function mapPositionTypeToTxType(positionType: string, side: "in" | "out"): string {
+  const normalized = positionType.toLowerCase();
+  if (normalized.includes("lending")) return side === "in" ? "lending_supply" : "lending_withdraw";
+  if (normalized.includes("staking")) return side === "in" ? "staking_deposit" : "staking_withdrawal";
+  if (normalized.includes("liquidity") || normalized.includes("pool")) {
+    return side === "in" ? "lp_deposit" : "lp_withdraw";
+  }
+  return side === "in" ? "deposit" : "withdrawal";
 }
 
 export async function POST(request: NextRequest) {
@@ -84,21 +147,28 @@ export async function POST(request: NextRequest) {
     const client = getClient();
     const now = new Date().toISOString();
 
-    // 1. Soft-delete all existing transactions for this position
-    const softDelete = await client
+    // 1. Leer estado actual de la posición desde transactions activas.
+    //    No borramos nada — el histórico se preserva. Lo que hacemos es emitir
+    //    un par atómico {withdrawal del estado actual, deposit del estado deseado}
+    //    por cada token relevante, marcado con reason="manual_edit".
+    const existingTxs = await client
       .from("transactions")
-      .update({ deleted_at: now })
+      .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
       .eq("portfolio_id", portfolioId)
       .eq("protocol", protocol)
       .eq("position_id", positionId)
-      .is("deleted_at", null)
-      .select("id");
+      .is("deleted_at", null);
 
-    if (softDelete.error) {
-      throw new Error(`No se pudieron archivar las transacciones anteriores: ${softDelete.error.message}`);
+    if (existingTxs.error) {
+      throw new Error(`No se pudo leer el estado actual: ${existingTxs.error.message}`);
     }
 
-    // 2. Build new transaction(s)
+    const currentState = new Map<string, TokenState>();
+    for (const tx of existingTxs.data ?? []) {
+      applyTxToState(currentState, tx);
+    }
+
+    // 2. Determinar el estado deseado (1 token Hold/Staking/Lending, 2 tokens LP).
     const isLp = positionType.toLowerCase().includes("liquidity") || positionType.toLowerCase().includes("pool");
     const lpTokenB = sanitize(payload.lpTokenSymbolB).toUpperCase();
     const lpAmountB = Number(payload.lpAmountB ?? 0);
@@ -106,89 +176,112 @@ export async function POST(request: NextRequest) {
     const lpRangeLower = Number(payload.lpRangeLower ?? 0);
     const lpRangeUpper = Number(payload.lpRangeUpper ?? 0);
 
-    const groupId = randomUUID();
-    const rows: Array<Record<string, unknown>> = [];
-
+    type TargetSpec = { symbol: string; amount: number; entryPrice: number };
+    const targets: TargetSpec[] = [{ symbol: tokenSymbol, amount, entryPrice }];
     if (isLp && lpTokenB) {
-      // LP position: two rows (one per token)
-      const entryPriceRatio = lpEntryPriceB > 0 && entryPrice > 0
-        ? entryPrice / lpEntryPriceB
-        : 0;
-
-      const metadata = {
-        lp: {
-          tokenA: tokenSymbol,
-          tokenB: lpTokenB,
-          rangeLower: lpRangeLower,
-          rangeUpper: lpRangeUpper,
-          entryPriceRatio,
-          isCorrelated: payload.isCorrelated === true,
-        },
-      };
-
-      rows.push({
-        portfolio_id: portfolioId,
-        type: "lp_deposit",
-        operation_group_id: groupId,
-        token_in_symbol: tokenSymbol,
-        token_in_amount: amount,
-        token_out_symbol: null,
-        token_out_amount: null,
-        spot_price: entryPrice,
-        fee_amount: 0,
-        notes: `[Editado] ${tokenSymbol}/${lpTokenB}`,
-        transaction_date: now,
-        protocol,
-        position_id: positionId,
-        position_type: "Liquidity Pool",
-        metadata,
-      });
-
-      rows.push({
-        portfolio_id: portfolioId,
-        type: "lp_deposit",
-        operation_group_id: groupId,
-        token_in_symbol: lpTokenB,
-        token_in_amount: lpAmountB,
-        token_out_symbol: null,
-        token_out_amount: null,
-        spot_price: lpEntryPriceB,
-        fee_amount: 0,
-        notes: `[Editado] ${tokenSymbol}/${lpTokenB}`,
-        transaction_date: now,
-        protocol,
-        position_id: positionId,
-        position_type: "Liquidity Pool",
-        metadata,
-      });
-    } else {
-      // Simple position: one row
-      const isLending = positionType.toLowerCase().includes("lending");
-      const isStaking = positionType.toLowerCase().includes("staking");
-      let type: string = "deposit";
-      if (isLending) type = "lending_supply";
-      else if (isStaking) type = "staking_deposit";
-
-      rows.push({
-        portfolio_id: portfolioId,
-        type,
-        operation_group_id: groupId,
-        token_in_symbol: tokenSymbol,
-        token_in_amount: amount,
-        token_out_symbol: null,
-        token_out_amount: null,
-        spot_price: entryPrice,
-        fee_amount: 0,
-        notes: `[Editado] ${tokenSymbol}`,
-        transaction_date: now,
-        protocol,
-        position_id: positionId,
-        position_type: positionType,
-        metadata: null,
-      });
+      targets.push({ symbol: lpTokenB, amount: lpAmountB, entryPrice: lpEntryPriceB });
     }
 
-    // 3. Insert new transaction(s)
+    // 3. Para cada token diana, comparar con estado actual y emitir filas si difiere.
+    const entryPriceRatio = isLp && entryPrice > 0 && lpEntryPriceB > 0
+      ? entryPrice / lpEntryPriceB
+      : 0;
+    const lpMetadata = isLp
+      ? {
+          lp: {
+            tokenA: tokenSymbol,
+            tokenB: lpTokenB,
+            rangeLower: lpRangeLower,
+            rangeUpper: lpRangeUpper,
+            entryPriceRatio,
+            isCorrelated: payload.isCorrelated === true,
+          },
+        }
+      : null;
+
+    const groupId = randomUUID();
+    const rows: Array<Record<string, unknown>> = [];
+    const inTxType = mapPositionTypeToTxType(positionType, "in");
+    const outTxType = mapPositionTypeToTxType(positionType, "out");
+
+    for (const target of targets) {
+      const existing = currentState.get(target.symbol) ?? { balance: 0, costUsd: 0 };
+      const currentAvgPrice = existing.balance > 0 ? existing.costUsd / existing.balance : 0;
+      const targetCostUsd = target.amount * target.entryPrice;
+
+      // No-op si no hay cambio significativo
+      const amountUnchanged = Math.abs(existing.balance - target.amount) < 1e-9;
+      const priceUnchanged = Math.abs(currentAvgPrice - target.entryPrice) < 1e-6 * Math.max(1, target.entryPrice);
+      if (amountUnchanged && priceUnchanged) continue;
+
+      const previousState = {
+        balance: existing.balance,
+        costUsd: existing.costUsd,
+        avgPrice: currentAvgPrice,
+      };
+      const newState = {
+        balance: target.amount,
+        costUsd: targetCostUsd,
+        avgPrice: target.entryPrice,
+      };
+      const editMetadata = {
+        reason: "manual_edit",
+        editedAt: now,
+        editedBy: access.userId ?? null,
+        previousState,
+        newState,
+        ...(lpMetadata ? lpMetadata : {}),
+      };
+
+      // 3a. Withdrawal de TODO el balance actual a su avgPrice histórico.
+      //     Esto saca exactamente el currentCostUsd, dejando la posición vacía.
+      if (existing.balance > 0) {
+        rows.push({
+          portfolio_id: portfolioId,
+          type: outTxType,
+          operation_group_id: groupId,
+          token_in_symbol: null,
+          token_in_amount: null,
+          token_out_symbol: target.symbol,
+          token_out_amount: existing.balance,
+          spot_price: currentAvgPrice,
+          fee_amount: 0,
+          notes: `[Edit] Reset ${target.symbol} balance previo`,
+          transaction_date: now,
+          protocol,
+          position_id: positionId,
+          position_type: positionType,
+          metadata: editMetadata,
+        });
+      }
+
+      // 3b. Deposit del nuevo estado al nuevo entryPrice.
+      if (target.amount > 0) {
+        rows.push({
+          portfolio_id: portfolioId,
+          type: inTxType,
+          operation_group_id: groupId,
+          token_in_symbol: target.symbol,
+          token_in_amount: target.amount,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: target.entryPrice,
+          fee_amount: 0,
+          notes: `[Edit] ${target.symbol} → ${target.amount} @ ${target.entryPrice}`,
+          transaction_date: now,
+          protocol,
+          position_id: positionId,
+          position_type: positionType,
+          metadata: editMetadata,
+        });
+      }
+    }
+
+    if (rows.length === 0) {
+      return NextResponse.json({ ok: true, insertedRows: 0, message: "Sin cambios respecto al estado actual." });
+    }
+
+    // 4. Insertar las filas de ajuste (atómicas vía operation_group_id).
     let insertError = (await client.from("transactions").insert(rows)).error;
     if (insertError && insertError.message.toLowerCase().includes("operation_group_id")) {
       const fallbackRows = rows.map((row) => {
@@ -200,12 +293,33 @@ export async function POST(request: NextRequest) {
     }
 
     if (insertError) {
-      throw new Error(`No se pudo guardar la posición editada: ${insertError.message}`);
+      throw new Error(`No se pudo guardar la edición: ${insertError.message}`);
+    }
+
+    // Auto-cierre: si la edición dejó la posición vacía (todos los targets a 0),
+    // emitir position_closed para capturar el realizedPnl en el dashboard.
+    try {
+      await autoClosePositionIfEmpty({
+        client,
+        portfolioId,
+        protocol,
+        positionId,
+        positionType,
+        spotPriceFor: (symbol: string) => {
+          // En edit usamos el spot_price tecleado por el usuario como referencia.
+          // Si no coincide con el símbolo objetivo, devolvemos 0 (no penaliza el cierre).
+          const upper = symbol.toUpperCase();
+          if (upper === tokenSymbol) return entryPrice;
+          if (upper === lpTokenB) return lpEntryPriceB;
+          return 0;
+        },
+      });
+    } catch {
+      // Auto-close no crítico
     }
 
     return NextResponse.json({
       ok: true,
-      archivedRows: (softDelete.data ?? []).length,
       insertedRows: rows.length,
     });
   } catch (error) {

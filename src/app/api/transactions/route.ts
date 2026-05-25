@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { autoClosePositionIfEmpty } from "@/lib/positions/auto-close";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
@@ -1490,6 +1491,38 @@ export async function POST(request: NextRequest) {
         }
       } else {
         insertedSnapshots = snapshotRows.length;
+      }
+    }
+
+    // Auto-cierre: si la operación dejó alguna posición con balance ≤ 0, emitir
+    // position_closed automáticamente (excepto si ya hay snapshot del rebalance).
+    // Solo intentamos en operaciones que pueden vaciar posiciones.
+    const opsThatCanEmpty = new Set(["lending_adjust", "rebalance"]);
+    if (opsThatCanEmpty.has(payload.operationType)) {
+      const touchedPositions = new Map<string, { protocol: string; positionId: string; positionType: string }>();
+      for (const row of mainRows) {
+        if (!row.position_id) continue;
+        const key = `${row.protocol ?? ""}::${row.position_id}`;
+        if (touchedPositions.has(key)) continue;
+        touchedPositions.set(key, {
+          protocol: row.protocol ?? "",
+          positionId: row.position_id ?? "",
+          positionType: row.position_type ?? "Hold",
+        });
+      }
+      for (const pos of touchedPositions.values()) {
+        try {
+          await autoClosePositionIfEmpty({
+            client,
+            portfolioId: payload.portfolioId,
+            protocol: pos.protocol,
+            positionId: pos.positionId,
+            positionType: pos.positionType,
+            spotPriceFor: (symbol: string) => pricesBySymbol.get(symbol.toUpperCase()) ?? 0,
+          });
+        } catch {
+          // Auto-close no es crítico: si falla, no rompemos la operación principal.
+        }
       }
     }
 
