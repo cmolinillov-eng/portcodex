@@ -25,6 +25,7 @@ import { ManualPriceModal } from "./modals/manual-price-modal";
 import { DashboardHeader } from "./sections/DashboardHeader";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
+import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
 
 type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
@@ -1029,161 +1030,18 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   }
 
   function exportCurrentReportPdf() {
-    const reportDate = new Date().toLocaleString("es-ES");
-    const tokenComposition = new Map<string, number>();
-    for (const section of sections) {
-      for (const position of section.positions) {
-        if (position.valueBreakdown.length > 0) {
-          for (const part of position.valueBreakdown) {
-            const symbol = part.tokenSymbol.trim().toUpperCase();
-            if (!symbol || part.valueUsd <= 0) continue;
-            tokenComposition.set(symbol, (tokenComposition.get(symbol) ?? 0) + part.valueUsd);
+    const html = buildPortfolioReportHtml({
+      summary,
+      sections,
+      recentActivity,
+      portfolioContext: portfolioContext
+        ? {
+            portfolioName: portfolioContext.portfolioName ?? null,
+            clientName: portfolioContext.ownerName ?? null,
           }
-          continue;
-        }
-        const fallbackSymbol = position.tokenSymbol.trim().toUpperCase();
-        if (!fallbackSymbol) continue;
-        tokenComposition.set(fallbackSymbol, (tokenComposition.get(fallbackSymbol) ?? 0) + position.currentValue);
-      }
-    }
-    const tokenRows = Array.from(tokenComposition.entries())
-      .sort((a, b) => b[1] - a[1])
-      .map(([token, value]) => ({
-        token,
-        value,
-        percent: summary.totalValueUsd > 0 ? (value / summary.totalValueUsd) * 100 : 0,
-      }));
-
-    const tokenPalette = ["#A0D2FF", "#B87EF5", "#4ECDC4", "#FFB347", "#D4E9FF", "#C084FC", "#60C8A8", "#FFA07A"];
-    let angleStart = 0;
-    const tokenSlices = tokenRows.map((row, index) => {
-      const angleSize = (row.percent / 100) * 360;
-      const angleEnd = angleStart + angleSize;
-      const slice = {
-        ...row,
-        color: tokenPalette[index % tokenPalette.length],
-        start: angleStart,
-        end: angleEnd,
-      };
-      angleStart = angleEnd;
-      return slice;
+        : null,
+      generatedAt: new Date(),
     });
-
-    const donutRadius = 46;
-    const donutCircumference = 2 * Math.PI * donutRadius;
-    let donutOffsetCursor = 0;
-    const donutSvgSegments =
-      tokenRows.length > 0
-        ? tokenRows
-            .map((row, index) => {
-              const ratio = Math.max(0, Math.min(1, row.percent / 100));
-              const segmentLength = donutCircumference * ratio;
-              const segmentGap = Math.max(0, donutCircumference - segmentLength);
-              const segment = `<circle cx="80" cy="80" r="${donutRadius}" fill="none" stroke="${
-                tokenPalette[index % tokenPalette.length]
-              }" stroke-width="24" stroke-linecap="butt" stroke-dasharray="${segmentLength} ${segmentGap}" stroke-dashoffset="${-donutOffsetCursor}" transform="rotate(-90 80 80)" />`;
-              donutOffsetCursor += segmentLength;
-              return segment;
-            })
-            .join("")
-        : `<circle cx="80" cy="80" r="${donutRadius}" fill="none" stroke="#9ca3af" stroke-width="24" />`;
-
-    const donutSvg = `
-      <svg width="160" height="160" viewBox="0 0 160 160" role="img" aria-label="Composición de la cartera">
-        <circle cx="80" cy="80" r="${donutRadius}" fill="none" stroke="#e5e7eb" stroke-width="24" />
-        ${donutSvgSegments}
-        <circle cx="80" cy="80" r="30" fill="#ffffff" />
-      </svg>
-    `;
-
-    const tokenTableRows = tokenRows
-      .map(
-        (row) =>
-          `<tr><td>${row.token}</td><td>${currency(row.value)}</td><td>${plainPercent(row.percent)}</td></tr>`,
-      )
-      .join("");
-
-    const positionsRows = sections
-      .flatMap((section) => section.positions)
-      .map((position) => {
-        const depositedInPosition =
-          position.costBasisUsd !== null && Number.isFinite(position.costBasisUsd)
-            ? position.costBasisUsd
-            : position.averageEntryPrice * position.currentBalance;
-        const pnlPosition = position.currentValue - depositedInPosition;
-        return `<tr>
-          <td>${position.tokenSymbol}</td>
-          <td>${position.protocol}</td>
-          <td>${position.positionType}</td>
-          <td>${currency(position.averageEntryPrice)}</td>
-          <td>${currency(depositedInPosition)}</td>
-          <td>${currency(position.currentValue)}</td>
-          <td>${signedCurrency(pnlPosition)} (${percent(position.roiPercent)})</td>
-        </tr>`;
-      })
-      .join("");
-
-    const html = `
-      <!doctype html>
-      <html lang="es">
-      <head>
-        <meta charset="utf-8" />
-        <title>Reporte Portfolio</title>
-        <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; padding: 24px; color: #111827; }
-          h1, h2 { margin: 0 0 8px; }
-          p { margin: 0 0 12px; color: #4b5563; }
-          .card { border: 1px solid #e5e7eb; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-          th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; text-align: left; }
-          th { background: #f9fafb; }
-        </style>
-      </head>
-      <body>
-        <h1>Reporte del Portfolio</h1>
-        <p>Snapshot generado el ${reportDate}</p>
-
-        <section class="card">
-          <h2>Resumen</h2>
-          <p>Valor total actual: ${currency(summary.totalValueUsd)}</p>
-          <p>Total depositado: ${currency(summary.totalDepositedUsd)}</p>
-          <p>P&L: ${signedCurrency(summary.pnlUsd)} (${percent(summary.pnlPercent)})</p>
-          <p>Harvest total: ${currency(summary.totalHarvestUsd)}</p>
-          <p>Posiciones activas: ${totalActivePositions}</p>
-        </section>
-
-        <section class="card">
-          <h2>Composición por Token</h2>
-          <div style="display:flex; gap:16px; align-items:center; margin-bottom:10px;">
-            <div>${donutSvg}</div>
-            <div style="display:grid; gap:6px;">
-              ${tokenSlices
-                .map(
-                  (slice) =>
-                    `<div style="display:flex; align-items:center; gap:8px; font-size:12px;">
-                      <span style="display:inline-block; width:10px; height:10px; border-radius:9999px; background:${slice.color};"></span>
-                      <span>${slice.token}: ${plainPercent(slice.percent)}</span>
-                    </div>`,
-                )
-                .join("")}
-            </div>
-          </div>
-          <table>
-            <thead><tr><th>Token</th><th>Valor</th><th>Distribución</th></tr></thead>
-            <tbody>${tokenTableRows || '<tr><td colspan="3">Sin posiciones activas.</td></tr>'}</tbody>
-          </table>
-        </section>
-
-        <section class="card">
-          <h2>Posiciones</h2>
-          <table>
-            <thead><tr><th>Posición</th><th>Protocolo</th><th>Tipo</th><th>Entrada (precio medio)</th><th>Depositado posición</th><th>Valor actual</th><th>Rentabilidad</th></tr></thead>
-            <tbody>${positionsRows}</tbody>
-          </table>
-        </section>
-      </body>
-      </html>
-    `;
 
     try {
       const iframe = document.createElement("iframe");
