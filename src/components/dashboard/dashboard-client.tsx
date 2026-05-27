@@ -26,6 +26,7 @@ import { DashboardHeader } from "./sections/DashboardHeader";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { StrategyComposition } from "./sections/StrategyComposition";
+import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
@@ -1655,6 +1656,8 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
         <HealthFactorAlertBanner sections={sections} />
 
         <StrategyComposition sections={sections} />
+
+        <PortfolioEvolutionChart portfolioId={portfolioContext?.portfolioId ?? ""} />
 
         {lastDeletedPosition ? (
           <section className="rounded-2xl border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-4 py-3 text-sm">
