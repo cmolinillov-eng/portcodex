@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Info, Wallet } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Download, Info, Wallet } from "lucide-react";
 import type { FiscalAnnotation, WalletKind } from "@/lib/tax/types";
 import {
   getCategoryLabel,
+  getIncomeTypeLabel,
   getWalletKindBadge,
   getWalletKindLabel,
 } from "@/lib/tax/human-language";
+import { getWalletProtocolMetaSync } from "@/lib/tax/wallet-classification";
 
 /* ──────────────────────────────────────────────────────────────────
    Trazabilidad por Wallet (versión compacta colapsable, al pie de la página)
@@ -245,21 +247,38 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
                 </table>
               </div>
 
-              {/* Footer + load more */}
+              {/* Footer + actions */}
               <div className="flex flex-wrap justify-between items-center gap-3 pt-1">
-                <p className="text-[10px] text-[var(--muted)] opacity-70">
+                <p className="text-[10px] text-[var(--muted)] opacity-70 max-w-[60%]">
                   Tipo de cambio aplicado: 1 USD ≈ {data.eurRate?.toFixed(4) ?? "0.92"} EUR ·{" "}
                   Las anotaciones <span className="text-amber-400">sugeridas</span> requieren validación del gestor.
                 </p>
-                {filteredEntries.length > visibleCount ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {filteredEntries.length > visibleCount ? (
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((c) => c + 15)}
+                      className="btn-secondary px-4 py-1.5 text-xs"
+                    >
+                      Ver más
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => setVisibleCount((c) => c + 15)}
+                    onClick={() => {
+                      const csv = buildCsv(filteredEntries, data.eurRate);
+                      const stamp = new Date().toISOString().slice(0, 10);
+                      const scope = activeWallet === "__all__" ? "todas" : activeWallet.split("::")[0].toLowerCase().replace(/\s+/g, "-");
+                      downloadCsv(`trazabilidad-${scope}-${stamp}.csv`, csv);
+                    }}
                     className="btn-secondary px-4 py-1.5 text-xs"
+                    aria-label="Exportar a CSV"
+                    title={`Descargar ${filteredEntries.length} movimientos en CSV (compatible Excel)`}
                   >
-                    Ver más
+                    <Download className="h-3 w-3" aria-hidden="true" />
+                    Exportar {filteredEntries.length} {filteredEntries.length === 1 ? "fila" : "filas"}
                   </button>
-                ) : null}
+                </div>
               </div>
             </>
           )}
@@ -540,4 +559,102 @@ function formatAmount(value: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 8,
   }).format(value);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   Export CSV
+   ──────────────────────────────────────────────────────────────────
+   Formato pensado para el asesor fiscal:
+   - UTF-8 con BOM (para que Excel español lo abra bien con acentos)
+   - Separador punto y coma (estándar Excel ES)
+   - Decimales con coma
+   - Una fila por movimiento con TODAS las columnas relevantes
+   - Encabezados claros en español
+   ────────────────────────────────────────────────────────────────── */
+
+function buildCsv(entries: Entry[], eurRate: number | null): string {
+  const headers = [
+    "Fecha",
+    "Hora",
+    "Wallet",
+    "Tipo de wallet",
+    "País custodio",
+    "Custodio extranjero",
+    "Categoría fiscal",
+    "Tipo de renta",
+    "Token entrada",
+    "Cantidad entrada",
+    "Token salida",
+    "Cantidad salida",
+    "Valor (EUR)",
+    "Coste FIFO (EUR)",
+    "Ganancia/Pérdida (EUR)",
+    "Sugerido (revisar)",
+    "Descripción",
+    "Notas internas",
+  ];
+
+  const lines: string[] = [headers.map(quote).join(";")];
+
+  for (const e of entries) {
+    const d = new Date(e.transactionDate);
+    const meta = getWalletProtocolMetaSync(e.protocol);
+    const row = [
+      d.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
+      d.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" }),
+      e.protocol,
+      getWalletKindLabel(e.fiscal.walletKind),
+      meta.countryCode ?? "—",
+      meta.isForeign ? "Sí" : "No",
+      getCategoryLabel(e.fiscal.category),
+      getIncomeTypeLabel(e.fiscal.incomeType),
+      e.tokenInSymbol ?? "",
+      e.tokenInAmount !== null ? formatNumberForCsv(e.tokenInAmount) : "",
+      e.tokenOutSymbol ?? "",
+      e.tokenOutAmount !== null ? formatNumberForCsv(e.tokenOutAmount) : "",
+      formatNumberForCsv(e.fiscal.valueEur),
+      e.fiscal.costBasisEur > 0 ? formatNumberForCsv(e.fiscal.costBasisEur) : "",
+      e.fiscal.realizedGainEur !== 0 ? formatNumberForCsv(e.fiscal.realizedGainEur) : "",
+      e.fiscal.inferred ? "Sí" : "No",
+      e.fiscal.humanDescription,
+      e.notes ?? "",
+    ];
+    lines.push(row.map(quote).join(";"));
+  }
+
+  // Footer: nota explicativa
+  lines.push("");
+  lines.push(quote(`Generado: ${new Date().toLocaleString("es-ES")}`));
+  if (eurRate) lines.push(quote(`Tipo de cambio aplicado: 1 USD = ${formatNumberForCsv(eurRate)} EUR`));
+  lines.push(quote("IMPORTANTE: Este informe es orientativo. Para tu declaración fiscal definitiva consulta a un asesor profesional."));
+
+  return lines.join("\r\n");
+}
+
+/** Escapa un campo CSV: si contiene `;`, `"`, salto de línea → encierra entre comillas y duplica las internas. */
+function quote(value: string): string {
+  const s = String(value ?? "");
+  if (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
+    return `"${s.replace(/"/g, '""')}"`;
+  }
+  return s;
+}
+
+/** Número con coma decimal (formato Excel español, sin separador de miles para evitar ambigüedades). */
+function formatNumberForCsv(n: number): string {
+  if (!Number.isFinite(n)) return "";
+  return n.toString().replace(".", ",");
+}
+
+function downloadCsv(filename: string, content: string): void {
+  // BOM UTF-8 para que Excel reconozca acentos
+  const blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
