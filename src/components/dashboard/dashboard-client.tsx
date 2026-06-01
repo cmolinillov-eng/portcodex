@@ -28,6 +28,7 @@ import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { StrategyComposition } from "./sections/StrategyComposition";
 import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
 import { WalletTraceability } from "./sections/WalletTraceability";
+import { getWalletProtocolMetaSync } from "@/lib/tax/wallet-classification";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
@@ -684,6 +685,21 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     () => recentActivity.slice(0, visibleRecentActivityCount),
     [recentActivity, visibleRecentActivityCount],
   );
+
+  // Suma de USD en exchanges centralizados extranjeros (Binance, Coinbase, etc.)
+  // — base para el aviso del Modelo 721 (umbral 50.000 €).
+  const foreignCexValueUsd = useMemo(() => {
+    let total = 0;
+    for (const section of sections) {
+      for (const pos of section.positions) {
+        const meta = getWalletProtocolMetaSync(pos.protocol);
+        if (meta.walletKind === "cex_foreign" || meta.walletKind === "broker_foreign") {
+          total += Math.max(0, pos.currentValue);
+        }
+      }
+    }
+    return total;
+  }, [sections]);
 
   useEffect(() => {
     setVisibleRecentActivityCount(10);
@@ -1660,8 +1676,6 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
         <PortfolioEvolutionChart portfolioId={portfolioContext?.portfolioId ?? ""} />
 
-        <WalletTraceability portfolioId={portfolioContext?.portfolioId ?? ""} />
-
         {lastDeletedPosition ? (
           <section className="rounded-2xl border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-4 py-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1714,6 +1728,11 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           visibleRecentActivityCount={visibleRecentActivityCount}
           setIsCsvModalOpen={setIsCsvModalOpen}
           setVisibleRecentActivityCount={setVisibleRecentActivityCount}
+        />
+
+        <WalletTraceability
+          portfolioId={portfolioContext?.portfolioId ?? ""}
+          foreignCexValueUsd={foreignCexValueUsd}
         />
       </section>
 

@@ -68,17 +68,17 @@ export function getCategoryLabel(category: FiscalCategory): string {
 // =============================================================================
 
 const WALLET_KIND_LABEL: Record<WalletKind, string> = {
-  cex_es: "Exchange España",
-  cex_foreign: "Exchange Extranjero",
-  dex: "Protocolo Descentralizado",
-  hot_wallet: "Wallet Caliente",
-  cold_wallet: "Wallet Fría (Hardware)",
-  paper_wallet: "Wallet en Papel",
-  smart_contract_wallet: "Smart Contract Wallet",
-  broker_es: "Broker España",
-  broker_foreign: "Broker Extranjero",
-  payment_app: "App de Pagos",
-  other: "Otro",
+  cex_es: "Exchange centralizado (España)",
+  cex_foreign: "Exchange centralizado (extranjero)",
+  dex: "Protocolo descentralizado",
+  hot_wallet: "Wallet descentralizada caliente",
+  cold_wallet: "Wallet descentralizada fría",
+  paper_wallet: "Wallet en papel (frío)",
+  smart_contract_wallet: "Smart contract wallet",
+  broker_es: "Broker (España)",
+  broker_foreign: "Broker (extranjero)",
+  payment_app: "App de pagos",
+  other: "Sin clasificar",
 };
 
 export function getWalletKindLabel(kind: WalletKind | null): string {
@@ -86,14 +86,14 @@ export function getWalletKindLabel(kind: WalletKind | null): string {
   return WALLET_KIND_LABEL[kind] ?? "Otro";
 }
 
-/** Devuelve etiqueta corta para badges. Ej: "Cold Wallet", "CEX" */
+/** Devuelve etiqueta corta para badges. Ej: "Cold", "CEX" */
 const WALLET_KIND_BADGE: Record<WalletKind, string> = {
   cex_es: "CEX",
   cex_foreign: "CEX",
   dex: "DEX",
   hot_wallet: "Hot",
   cold_wallet: "Cold",
-  paper_wallet: "Paper",
+  paper_wallet: "Cold",
   smart_contract_wallet: "Smart",
   broker_es: "Broker",
   broker_foreign: "Broker",
