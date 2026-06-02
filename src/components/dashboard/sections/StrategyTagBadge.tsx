@@ -98,7 +98,18 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
   // Editor abierto
   return (
     <div ref={ref} className="relative inline-block">
-      <div className="absolute z-30 mt-1 w-60 rounded-xl border border-[var(--glass-border)] bg-[var(--void-deep)] p-3 shadow-xl backdrop-blur-xl">
+      <div
+        className="absolute mt-1.5 w-72 rounded-xl border p-3.5"
+        style={{
+          zIndex: 1000,
+          background: "rgba(6, 12, 24, 0.98)",
+          backdropFilter: "blur(24px)",
+          WebkitBackdropFilter: "blur(24px)",
+          borderColor: "rgba(186, 160, 255, 0.3)",
+          boxShadow:
+            "0 24px 60px rgba(0, 0, 0, 0.75), 0 0 0 1px rgba(186, 160, 255, 0.08), 0 0 30px rgba(186, 160, 255, 0.08)",
+        }}
+      >
         <p className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">
           Etiqueta estratégica
         </p>
@@ -113,21 +124,28 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
           }}
           maxLength={60}
           placeholder="ej. Stablecoin yield"
-          className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-2 py-1.5 text-xs text-[var(--foreground)] focus:border-[rgba(186,160,255,0.55)] focus:outline-none"
+          className="w-full rounded-lg border border-[var(--line)] bg-black/40 px-2.5 py-2 text-xs text-[var(--foreground)] focus:border-[rgba(186,160,255,0.55)] focus:outline-none"
         />
-        <div className="mt-2 flex flex-wrap gap-1">
+        <p className="mt-2.5 mb-1.5 text-[9px] uppercase tracking-[0.12em] text-[var(--muted)] opacity-70">
+          Sugerencias
+        </p>
+        <div className="flex flex-wrap gap-1">
           {SUGGESTED_STRATEGY_TAGS.map((suggestion) => (
             <button
               key={suggestion}
               type="button"
               onClick={() => setValue(suggestion)}
-              className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)] hover:border-[rgba(186,160,255,0.45)] hover:text-[#D4C5FF]"
+              className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
+                value === suggestion
+                  ? "border-[rgba(186,160,255,0.55)] bg-[rgba(186,160,255,0.18)] text-[#D4C5FF]"
+                  : "border-[var(--line)] text-[var(--muted)] hover:border-[rgba(186,160,255,0.45)] hover:text-[#D4C5FF]"
+              }`}
             >
               {suggestion}
             </button>
           ))}
         </div>
-        <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="mt-3.5 flex items-center justify-between gap-2 pt-2.5 border-t border-white/5">
           <button
             type="button"
             onClick={() => setEditing(false)}
@@ -150,7 +168,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
               type="button"
               onClick={() => commit(value.trim() || null)}
               disabled={saving}
-              className="rounded-md border border-[rgba(186,160,255,0.55)] bg-[rgba(186,160,255,0.15)] px-2 py-1 text-[10px] font-medium text-[#D4C5FF] hover:bg-[rgba(186,160,255,0.25)] disabled:opacity-50"
+              className="rounded-md border border-[rgba(186,160,255,0.55)] bg-[rgba(186,160,255,0.15)] px-2.5 py-1 text-[10px] font-medium text-[#D4C5FF] hover:bg-[rgba(186,160,255,0.25)] disabled:opacity-50"
             >
               {saving ? "Guardando…" : "Guardar"}
             </button>
