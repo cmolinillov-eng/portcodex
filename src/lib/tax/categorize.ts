@@ -497,9 +497,24 @@ function handleLendingBorrow(
   return emptyResult("non_taxable_transfer", "none", notes, humanDescription, walletKind);
 }
 
+/**
+ * LP DEPOSIT — Trazabilidad pura, SIN ganancia/pérdida realizada.
+ *
+ * Decisión de diseño: aunque la DGT considera la provisión de liquidez como
+ * una permuta tributable, NO calculamos aquí la ganancia ficticia porque:
+ *   1. No se ha vendido nada — el usuario no entiende ver +200€ de ganancia
+ *      cuando solo ha depositado tokens
+ *   2. Esta app es de TRAZABILIDAD, no fiscal — el asesor decidirá si aplica
+ *      el criterio permuta y cómo
+ *   3. La ganancia/pérdida real se materializa cuando se RETIRA del pool
+ *      (con su impermanent loss correspondiente)
+ *
+ * Mantenemos el lote FIFO sin consumir, así el cost basis viaja con los
+ * tokens al pool. Cuando se retire (lp_withdraw), ahí sí calculamos resultado.
+ */
 function handleLpDeposit(
   tx: CategorizeInput,
-  currentLots: TaxLot[],
+  _currentLots: TaxLot[],
   rate: number,
   walletKind: WalletKind | null,
   walletName: string,
@@ -519,12 +534,8 @@ function handleLpDeposit(
   }
 
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
-  const fifo = applyFifo(symbol, amount, currentLots);
-  const realizedGainEur = calculateRealizedGain(valueEur, fifo.consumedCostEur);
 
-  const notes = fifo.insufficientLots
-    ? `LP provide ${amount} ${symbol} en ${walletName}. ⚠️ Lotes FIFO insuficientes (${fifo.consumedAmount.toFixed(8)}/${amount}).`
-    : `LP provide ${amount} ${symbol} en ${walletName}. Criterio DGT: permuta. Ganancia ${realizedGainEur} €.`;
+  const notes = `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). No se materializa ganancia/pérdida hasta retirar la liquidez. Si tu asesor aplica criterio DGT de permuta, deberá calcularse aparte.`;
 
   const description = buildHumanDescription({
     category: "lp_provide",
@@ -533,40 +544,25 @@ function handleLpDeposit(
     tokenSymbol: symbol,
     amount,
     valueEur,
-    costBasisEur: fifo.consumedCostEur,
-    realizedGainEur,
   });
 
   return {
     annotation: {
       category: "lp_provide",
-      incomeType: realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
+      incomeType: "none",
       valueEur,
-      costBasisEur: fifo.consumedCostEur,
-      realizedGainEur,
+      costBasisEur: 0,
+      realizedGainEur: 0,
       notes,
-      taxable: true,
+      taxable: false,
       humanLabel: getCategoryLabel("lp_provide"),
       humanDescription: description,
       inferred: true,
       walletKind,
     },
     newLots: [],
-    taxEvents: [
-      buildTaxEvent({
-        tx,
-        eventType: "lp_provide",
-        proceedsEur: valueEur,
-        costBasisEur: fifo.consumedCostEur,
-        realizedGainEur,
-        incomeType: "ganancia_patrimonial",
-        tokenSymbol: symbol,
-        tokenAmount: amount,
-        lotsConsumed: fifo.lotsConsumed,
-        notes,
-      }),
-    ],
-    consumedLotUpdates: fifo.lotUpdates,
+    taxEvents: [],
+    consumedLotUpdates: [],
   };
 }
 
@@ -629,6 +625,17 @@ function handleLpWithdraw(
   };
 }
 
+/**
+ * HARVEST — distinción crítica según positionType:
+ *   - Lending → `lending_interest` (Aave, Compound, Kamino lending side)
+ *   - Liquidity Pool → `lp_reward` (Orca farms, Raydium, Uniswap farms, PancakeSwap)
+ *     → NUNCA "staking_reward": Orca no tiene staking, tiene LP rewards
+ *   - Staking → `staking_reward` (validador PoS nativo: ETH, ADA, SOL stake,
+ *     Lido / Marinade / Jito harvests)
+ *
+ * Todos son rendimiento de capital mobiliario fiscalmente, pero la etiqueta
+ * que ve el usuario en la UI debe ser correcta semánticamente.
+ */
 function handleHarvest(
   tx: CategorizeInput,
   positionType: string,
@@ -642,7 +649,7 @@ function handleHarvest(
 
   if (!symbol || amount <= 0 || spotUsd <= 0) {
     return emptyResult(
-      "staking_reward",
+      "lp_reward",
       "none",
       "Harvest con datos incompletos.",
       `Harvest en ${walletName} sin datos suficientes.`,
@@ -650,11 +657,29 @@ function handleHarvest(
     );
   }
 
-  const isLending = positionType.includes("lending");
-  const category: FiscalCategory = isLending ? "lending_interest" : "staking_reward";
+  // Decidir el tipo correcto según el positionType
+  let category: FiscalCategory;
+  let originEvent: "lending_interest" | "lp_reward" | "staking_reward";
+  if (positionType.includes("lending")) {
+    category = "lending_interest";
+    originEvent = "lending_interest";
+  } else if (positionType.includes("liquidity") || positionType.includes("pool") || positionType.includes("lp")) {
+    category = "lp_reward";
+    originEvent = "lp_reward";
+  } else {
+    category = "staking_reward";
+    originEvent = "staking_reward";
+  }
+
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
-  const notes = `${isLending ? "Interés lending" : "Recompensa staking"}: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Rendimiento de capital mobiliario.`;
+  const label =
+    category === "lending_interest"
+      ? "Interés lending"
+      : category === "lp_reward"
+        ? "Recompensa farming / LP"
+        : "Recompensa staking nativo";
+  const notes = `${label}: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Rendimiento de capital mobiliario.`;
   const description = buildHumanDescription({
     category,
     walletKind,
@@ -684,7 +709,7 @@ function handleHarvest(
         amount,
         costBasisEur: valueEur,
         acquiredAt: tx.transactionDate,
-        acquiredViaEvent: isLending ? "lending_interest" : "staking_reward",
+        acquiredViaEvent: originEvent,
         acquiredViaTransactionId: tx.id ?? null,
       },
     ],

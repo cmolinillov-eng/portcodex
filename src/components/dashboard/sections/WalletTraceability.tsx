@@ -136,6 +136,10 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
   const filteredEntries = useMemo(() => {
     if (!data) return [];
     if (activeWallet === "__all__") return data.entries;
+    if (activeWallet.startsWith("group::")) {
+      const group = activeWallet.replace("group::", "") as "cold" | "hot" | "cex" | "dex" | "other";
+      return data.entries.filter((e) => groupOfKind(e.walletKind) === group);
+    }
     const [name, kind] = activeWallet.split("::");
     return data.entries.filter((e) => e.protocol === name && (e.walletKind ?? "other") === kind);
   }, [data, activeWallet]);
@@ -238,34 +242,54 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
             </p>
           ) : (
             <>
-              {/* Filtros por wallet */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <FilterPill
-                  label="Todas"
-                  count={data.meta.total}
-                  active={activeWallet === "__all__"}
-                  onClick={() => {
-                    setActiveWallet("__all__");
-                    setVisibleCount(15);
-                  }}
-                />
-                {data.walletSummary.map((w) => {
-                  const key = `${w.name}::${w.kind ?? "other"}`;
-                  return (
+              {/* Filtros por tipo de wallet (grupos) + filtros individuales */}
+              <div className="space-y-2">
+                {/* Grupos */}
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <FilterPill
+                    label="Todas"
+                    count={data.meta.total}
+                    active={activeWallet === "__all__"}
+                    onClick={() => {
+                      setActiveWallet("__all__");
+                      setVisibleCount(15);
+                    }}
+                  />
+                  {buildGroupFilters(data.walletSummary).map((g) => (
                     <FilterPill
-                      key={key}
-                      label={w.name}
-                      badge={getWalletKindBadge(w.kind)}
-                      kind={w.kind}
-                      count={w.count}
-                      active={activeWallet === key}
+                      key={`group::${g.key}`}
+                      label={g.label}
+                      badge={g.badge}
+                      kind={g.kind}
+                      count={g.count}
+                      active={activeWallet === `group::${g.key}`}
                       onClick={() => {
-                        setActiveWallet(key);
+                        setActiveWallet(`group::${g.key}`);
                         setVisibleCount(15);
                       }}
                     />
-                  );
-                })}
+                  ))}
+                </div>
+                {/* Individuales */}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-white/5">
+                  {data.walletSummary.map((w) => {
+                    const key = `${w.name}::${w.kind ?? "other"}`;
+                    return (
+                      <FilterPill
+                        key={key}
+                        label={w.name}
+                        badge={getWalletKindBadge(w.kind)}
+                        kind={w.kind}
+                        count={w.count}
+                        active={activeWallet === key}
+                        onClick={() => {
+                          setActiveWallet(key);
+                          setVisibleCount(15);
+                        }}
+                      />
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Tabla */}
@@ -274,7 +298,7 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
                   <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
                     <tr>
                       <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)]">FECHA</th>
-                      <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)]">WALLET</th>
+                      <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)]">ORIGEN / PROTOCOLO</th>
                       <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)]">CATEGORÍA</th>
                       <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)]">CONCEPTO</th>
                       <th scope="col" className="px-3 py-2.5 text-[10px] font-medium tracking-[0.18em] text-[var(--muted)] text-right">CANTIDAD</th>
@@ -599,11 +623,57 @@ function FilterPill({
    ────────────────────────────────────────────────────────────────── */
 
 function classifyTone(fiscal: FiscalAnnotation): "neutral" | "gain" | "loss" | "income" | "transfer" {
-  if (fiscal.realizedGainEur > 0 && fiscal.category !== "staking_reward" && fiscal.category !== "lending_interest") return "gain";
+  if (
+    fiscal.realizedGainEur > 0 &&
+    fiscal.category !== "staking_reward" &&
+    fiscal.category !== "lp_reward" &&
+    fiscal.category !== "lending_interest"
+  )
+    return "gain";
   if (fiscal.realizedGainEur < 0) return "loss";
-  if (fiscal.category === "staking_reward" || fiscal.category === "lending_interest") return "income";
+  if (
+    fiscal.category === "staking_reward" ||
+    fiscal.category === "lp_reward" ||
+    fiscal.category === "lending_interest"
+  )
+    return "income";
   if (fiscal.category === "non_taxable_transfer") return "transfer";
   return "neutral";
+}
+
+type WalletGroup = "cold" | "hot" | "cex" | "dex" | "other";
+
+function groupOfKind(kind: WalletKind | null): WalletGroup {
+  if (!kind) return "other";
+  if (kind === "cold_wallet" || kind === "paper_wallet") return "cold";
+  if (kind === "hot_wallet") return "hot";
+  if (
+    kind === "cex_es" ||
+    kind === "cex_foreign" ||
+    kind === "broker_es" ||
+    kind === "broker_foreign" ||
+    kind === "payment_app"
+  )
+    return "cex";
+  if (kind === "dex" || kind === "smart_contract_wallet") return "dex";
+  return "other";
+}
+
+function buildGroupFilters(
+  walletSummary: WalletSummary[],
+): Array<{ key: WalletGroup; label: string; badge: string; kind: WalletKind | null; count: number }> {
+  const groups: Record<WalletGroup, number> = { cold: 0, hot: 0, cex: 0, dex: 0, other: 0 };
+  for (const w of walletSummary) {
+    groups[groupOfKind(w.kind)] += w.count;
+  }
+  const config: Array<{ key: WalletGroup; label: string; badge: string; kind: WalletKind | null }> = [
+    { key: "cold", label: "Wallets frías", badge: "Cold", kind: "cold_wallet" },
+    { key: "hot", label: "Wallets calientes", badge: "Hot", kind: "hot_wallet" },
+    { key: "cex", label: "Exchanges (CEX)", badge: "CEX", kind: "cex_foreign" },
+    { key: "dex", label: "Protocolos DeFi", badge: "DEX", kind: "dex" },
+    { key: "other", label: "Sin clasificar", badge: "?", kind: null },
+  ];
+  return config.filter((c) => groups[c.key] > 0).map((c) => ({ ...c, count: groups[c.key] }));
 }
 
 function formatEur(value: number): string {

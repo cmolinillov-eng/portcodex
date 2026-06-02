@@ -27,7 +27,8 @@ export type FiscalCategory =
   | "card_cashback"            // cashback en cripto
 
   // ─── Rendimiento pasivo ─────────────────────────────────────────────────
-  | "staking_reward"           // recompensa staking PoS
+  | "staking_reward"           // recompensa staking PoS NATIVO (validador blockchain)
+  | "lp_reward"                // recompensa de farming/yield sobre LP (Orca, Raydium, Uniswap farms)
   | "restaking_reward"         // recompensa EigenLayer / LRTs
   | "slashing_loss"            // penalización slashing
 
@@ -117,6 +118,7 @@ export type LotOriginEvent =
   | "buy"
   | "swap_in"
   | "staking_reward"
+  | "lp_reward"
   | "restaking_reward"
   | "lending_interest"
   | "airdrop"

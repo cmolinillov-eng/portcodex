@@ -158,18 +158,19 @@ function categorize(tx, { rate, lots, walletKind }) {
   }
 
   if (t === "lp_deposit") {
+    // NUEVO COMPORTAMIENTO: LP deposit es solo trazabilidad.
+    // NO calculamos ganancia/pérdida — el usuario no entiende ver +200€ sobre
+    // un simple depósito. Se materializa en lp_withdraw.
     const symbol = tx.tokenInSymbol?.toUpperCase();
     const amount = tx.tokenInAmount ?? 0;
     const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const fifo = applyFifo(symbol, amount, lots);
-    const gain = roundEur(valueEur - fifo.consumedCostEur);
     return {
       category: "lp_provide",
-      incomeType: gain >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
-      taxable: true,
+      incomeType: "none",
+      taxable: false,
       valueEur,
-      costBasisEur: fifo.consumedCostEur,
-      realizedGainEur: gain,
+      costBasisEur: 0,
+      realizedGainEur: 0,
       inferred: true,
       walletKind,
     };
@@ -194,10 +195,14 @@ function categorize(tx, { rate, lots, walletKind }) {
   if (t === "harvest") {
     const symbol = tx.tokenInSymbol?.toUpperCase();
     const amount = tx.tokenInAmount ?? 0;
-    const isLending = positionType.includes("lending");
+    let category;
+    if (positionType.includes("lending")) category = "lending_interest";
+    else if (positionType.includes("liquidity") || positionType.includes("pool") || positionType.includes("lp"))
+      category = "lp_reward";
+    else category = "staking_reward";
     const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
     return {
-      category: isLending ? "lending_interest" : "staking_reward",
+      category,
       incomeType: "rendimiento_capital_mobiliario",
       taxable: true,
       valueEur,
@@ -332,15 +337,36 @@ test("Harvest en posición lending → lending_interest", () => {
   assert.equal(r.valueEur, 92);
 });
 
-test("LP deposit (Uniswap) → lp_provide, permuta tributable", () => {
+test("LP deposit → lp_provide, SOLO trazabilidad (sin ganancia ficticia)", () => {
+  // Decisión: aunque DGT considera permuta, NO calculamos ganancia ficticia
+  // sobre un simple depósito. Se materializa al hacer lp_withdraw.
   const lots = [makeLot("L1", "ETH", 1.0, 1500, "2024-01-01")];
   const r = categorize(
     { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2200, positionType: "Liquidity Pool" },
     { rate: 0.92, lots, walletKind: "dex" },
   );
   assert.equal(r.category, "lp_provide");
-  assert.equal(r.taxable, true);
-  assert.equal(r.realizedGainEur, 524);
+  assert.equal(r.taxable, false, "LP deposit NO tributa en el momento del depósito");
+  assert.equal(r.realizedGainEur, 0, "NO debe mostrarse ganancia patrimonial sobre un simple depósito");
+  assert.equal(r.valueEur, 2024, "El valor EUR sí se informa");
+});
+
+test("Harvest sobre LP → lp_reward (NO staking_reward)", () => {
+  // Orca, Uniswap farms, Raydium no tienen staking — tienen LP rewards.
+  const r = categorize(
+    { type: "harvest", tokenInSymbol: "ORCA", tokenInAmount: 10, spotPriceUsd: 1.5, positionType: "Liquidity Pool" },
+    { rate: 0.92, lots: [], walletKind: "dex" },
+  );
+  assert.equal(r.category, "lp_reward", "Harvest sobre LP debe ser lp_reward, NO staking_reward");
+  assert.equal(r.incomeType, "rendimiento_capital_mobiliario");
+});
+
+test("Harvest sobre Staking nativo → staking_reward", () => {
+  const r = categorize(
+    { type: "harvest", tokenInSymbol: "SOL", tokenInAmount: 2, spotPriceUsd: 100, positionType: "Staking" },
+    { rate: 0.92, lots: [], walletKind: "dex" },
+  );
+  assert.equal(r.category, "staking_reward");
 });
 
 test("LP withdraw → lp_remove, crea lote nuevo con FMV", () => {

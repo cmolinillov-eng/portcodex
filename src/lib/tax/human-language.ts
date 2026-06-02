@@ -26,7 +26,8 @@ const CATEGORY_LABEL: Record<FiscalCategory, string> = {
   card_spend: "Gasto con tarjeta cripto",
   card_cashback: "Cashback en cripto",
   // Rendimiento pasivo
-  staking_reward: "Recompensa de staking",
+  staking_reward: "Recompensa de staking nativo",
+  lp_reward: "Recompensa de farming / LP",
   restaking_reward: "Recompensa de restaking",
   slashing_loss: "Pérdida por slashing",
   // LP / DeFi
@@ -175,7 +176,9 @@ export function buildHumanDescription(ctx: DescriptionContext): string {
     case "lp_remove":
       return `Retiraste ${amt}${where} de una pool de liquidez (FMV ${eur(valueEur)}).`;
     case "staking_reward":
-      return `Recibiste ${amt}${where} como recompensa de staking (FMV ${eur(valueEur)}). Rendimiento de capital mobiliario.`;
+      return `Recibiste ${amt}${where} como recompensa de staking nativo (FMV ${eur(valueEur)}). Rendimiento de capital mobiliario.`;
+    case "lp_reward":
+      return `Recibiste ${amt}${where} como recompensa por aportar liquidez (FMV ${eur(valueEur)}). Rendimiento de capital mobiliario.`;
     case "restaking_reward":
       return `Recibiste ${amt}${where} como recompensa de restaking (FMV ${eur(valueEur)}).`;
     case "lending_interest":
