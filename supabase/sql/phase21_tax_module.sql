@@ -221,9 +221,12 @@ CREATE INDEX IF NOT EXISTS transactions_fiscal_category_idx
   ON transactions(fiscal_category)
   WHERE fiscal_category IS NOT NULL;
 
--- Índice para filtrar por año fiscal en reportes anuales
+-- Índice para filtrar por año fiscal en reportes anuales.
+-- Nota: no usamos date_part(year, ...) en el índice porque no es IMMUTABLE en
+-- columnas TIMESTAMPTZ. Indexamos por (portfolio_id, transaction_date) y
+-- filtramos con rango en las queries (WHERE transaction_date >= '2026-01-01' AND ...).
 CREATE INDEX IF NOT EXISTS transactions_fiscal_year_idx
-  ON transactions(portfolio_id, (date_part('year', transaction_date)))
+  ON transactions(portfolio_id, transaction_date)
   WHERE fiscal_realized_gain_eur IS NOT NULL;
 
 -- =============================================================================
