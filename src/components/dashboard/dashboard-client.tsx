@@ -558,6 +558,11 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     return map;
   }, [pricesBySymbol, sections]);
 
+  // Mapa rápido para buscar harvest pendiente por (portfolioId::protocol::positionId)
+  const harvestByPositionKey = useMemo(() => {
+    return new Map(harvestByPosition.map((h) => [h.key, h]));
+  }, [harvestByPosition]);
+
   const rebalancePreview = useMemo(() => {
     const sourceTarget = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
     const targetTarget = baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey);
@@ -567,17 +572,42 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
       : (targetTarget?.positionType ?? "");
     const targetType = targetTypeRaw.toLowerCase();
 
-    let usd = 0;
+    let lpUsd = 0;
     const sourcePriceA = tokenPriceMap.get(form.rebalanceSourceTokenSymbol.toUpperCase()) ?? 0;
     const sourceAmountA = Number(form.rebalanceSourceAmount);
-    if (sourceType.includes("liquidity") || sourceType.includes("lp")) {
+    const isSourceLp = sourceType.includes("liquidity") || sourceType.includes("lp");
+    if (isSourceLp) {
       const sourcePriceB = tokenPriceMap.get(form.rebalanceSourceLpTokenSymbolB.toUpperCase()) ?? 0;
       const sourceAmountB = Number(form.rebalanceSourceLpAmountB);
-      if (Number.isFinite(sourceAmountA) && sourceAmountA > 0) usd += sourceAmountA * sourcePriceA;
-      if (Number.isFinite(sourceAmountB) && sourceAmountB > 0) usd += sourceAmountB * sourcePriceB;
+      if (Number.isFinite(sourceAmountA) && sourceAmountA > 0) lpUsd += sourceAmountA * sourcePriceA;
+      if (Number.isFinite(sourceAmountB) && sourceAmountB > 0) lpUsd += sourceAmountB * sourcePriceB;
     } else {
-      if (Number.isFinite(sourceAmountA) && sourceAmountA > 0) usd = sourceAmountA * sourcePriceA;
+      if (Number.isFinite(sourceAmountA) && sourceAmountA > 0) lpUsd = sourceAmountA * sourcePriceA;
     }
+
+    // ── Incluir el harvest pendiente cuando el origen es un LP ──────────────
+    // Cuando deshacemos un LP a (típicamente) USDC, el USDC final debe incluir:
+    //   · el valor actual de los 2 tokens del pool (lpUsd)
+    //   · el valor actual del harvest pendiente acumulado por ese pool
+    // De este modo el total del portfolio no varía: el harvest ya estaba
+    // contabilizado y simplemente se materializa en el activo destino.
+    let harvestPendingUsd = 0;
+    let harvestPendingTokens: Array<{ tokenSymbol: string; amount: number; priceUsd: number; usdValue: number }> = [];
+    if (isSourceLp && sourceTarget) {
+      const harvestEntry = harvestByPositionKey.get(form.rebalanceSourceKey);
+      if (harvestEntry && harvestEntry.pendingByToken.length > 0) {
+        for (const item of harvestEntry.pendingByToken) {
+          const sym = item.tokenSymbol.toUpperCase();
+          const priceUsd = tokenPriceMap.get(sym) ?? 0;
+          const usdValue = Math.max(0, item.amount) * priceUsd;
+          if (usdValue > 0) {
+            harvestPendingTokens.push({ tokenSymbol: sym, amount: item.amount, priceUsd, usdValue });
+            harvestPendingUsd += usdValue;
+          }
+        }
+      }
+    }
+    const usd = lpUsd + harvestPendingUsd;
 
     const isTargetLp = targetType.includes("liquidity") || targetType.includes("lp");
     const targetPriceA = tokenPriceMap.get(form.rebalanceTargetTokenSymbol.toUpperCase()) ?? 0;
@@ -604,7 +634,19 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
       suggestedAmountA = targetAmountAuto;
     }
 
-    return { usd, targetAmount, suggestedAmountA, suggestedAmountB, isTargetLp, targetPriceA, targetPriceB, targetAmountManualB };
+    return {
+      usd,
+      lpUsd,
+      harvestPendingUsd,
+      harvestPendingTokens,
+      targetAmount,
+      suggestedAmountA,
+      suggestedAmountB,
+      isTargetLp,
+      targetPriceA,
+      targetPriceB,
+      targetAmountManualB,
+    };
   }, [
     baseDepositTargets,
     form.rebalanceSourceAmount,
@@ -621,6 +663,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     form.rebalanceTargetIsNew,
     form.rebalanceTargetNewPositionType,
     tokenPriceMap,
+    harvestByPositionKey,
   ]);
 
   const compositionStyles = useMemo(() => {
@@ -1622,6 +1665,16 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
             Number(form.rebalanceTargetLpAmountB) > 0
               ? Number(form.rebalanceTargetLpAmountB)
               : (rebalancePreview.isTargetLp ? rebalancePreview.suggestedAmountB : 0),
+          // Harvest pendiente del LP origen — se incluye en el destino para
+          // preservar el total del portfolio (ya estaba contabilizado).
+          rebalanceSourceHarvestTokens:
+            rebalancePreview.harvestPendingUsd > 0
+              ? rebalancePreview.harvestPendingTokens.map((h) => ({
+                  tokenSymbol: h.tokenSymbol,
+                  amount: h.amount,
+                  spotPriceUsd: h.priceUsd,
+                }))
+              : undefined,
           lendingCollateralToken: form.lendingCollateralToken,
           lendingCollateralAmount: Number(form.lendingCollateralAmount || 0),
           lendingDebtToken: form.lendingDebtToken,
@@ -2868,6 +2921,21 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                   <div className="rounded-lg border border-[var(--line)] bg-black/20 px-3 py-2 text-sm">
                     <p className="text-[var(--muted)]">Valor estimado</p>
                     <p className="font-semibold">{currency(rebalancePreview.usd)}</p>
+                    {rebalancePreview.harvestPendingUsd > 0 ? (
+                      <div className="mt-1.5 space-y-0.5 text-[11px] text-[var(--muted)] border-t border-white/5 pt-1.5">
+                        <p className="flex justify-between gap-2">
+                          <span>Valor LP a precio actual</span>
+                          <span className="tabular-nums">{currency(rebalancePreview.lpUsd)}</span>
+                        </p>
+                        <p className="flex justify-between gap-2 text-emerald-300/80">
+                          <span>+ Harvest pendiente ({rebalancePreview.harvestPendingTokens.map((h) => `${h.amount.toFixed(4)} ${h.tokenSymbol}`).join(", ")})</span>
+                          <span className="tabular-nums">{currency(rebalancePreview.harvestPendingUsd)}</span>
+                        </p>
+                        <p className="text-[10px] opacity-70 mt-1 italic">
+                          Al deshacer este LP el harvest se incluye en el destino — el total del portfolio se conserva.
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

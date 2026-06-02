@@ -88,6 +88,16 @@ type OperationPayload = {
   rebalanceTargetLpTokenSymbolB?: string;
   rebalanceTargetLpAmountB?: number;
   rebalanceTargetIsNew?: boolean;
+  /**
+   * Tokens de harvest pendiente del LP origen que se materializan en el destino
+   * al deshacer el LP. Cada token se emite como harvest claim (token_in nulo,
+   * token_out con el reward) para que salga del balance pendiente.
+   */
+  rebalanceSourceHarvestTokens?: Array<{
+    tokenSymbol: string;
+    amount: number;
+    spotPriceUsd?: number;
+  }>;
   harvestTargetPositionId?: string;
   harvestTargetProtocol?: string;
   lendingCollateralToken?: string;
@@ -1078,6 +1088,27 @@ async function buildRows(
       }
       rebalanceUsd = sourceAmount * spotPriceFor(sourceToken);
     }
+
+    // Si vienen harvest tokens del LP origen, sumamos su valor al rebalanceUsd
+    // y los convertiremos en el destino para no perder el harvest al deshacer.
+    // El total del portfolio queda invariante porque ese valor ya estaba contado.
+    const sourceHarvestTokens = (payload.rebalanceSourceHarvestTokens ?? []).filter(
+      (h) => h && typeof h.tokenSymbol === "string" && Number.isFinite(h.amount) && h.amount > 0,
+    );
+    let sourceHarvestUsd = 0;
+    if (sourceHarvestTokens.length > 0) {
+      if (sourceMapping.normalizedPositionType !== "Liquidity Pool") {
+        throw new Error("Solo se puede incluir harvest pendiente cuando el origen es un LP.");
+      }
+      for (const h of sourceHarvestTokens) {
+        const sym = sanitizeUppercase(h.tokenSymbol);
+        if (!sym) continue;
+        const price = h.spotPriceUsd && h.spotPriceUsd > 0 ? h.spotPriceUsd : spotPriceFor(sym);
+        sourceHarvestUsd += Math.max(0, h.amount) * price;
+      }
+      rebalanceUsd += sourceHarvestUsd;
+    }
+
     if (rebalanceUsd <= 0) {
       throw new Error("No se pudo calcular el valor USD del rebalanceo.");
     }
@@ -1194,6 +1225,40 @@ async function buildRows(
           timestamp,
         }),
       );
+
+      // Salida del harvest pendiente del LP origen, si se incluye en el rebalance.
+      // Cada fila consume el balance pendiente del token de harvest. La metadata
+      // marca reason="rebalance_harvest_out" para que el dashboard reconozca
+      // que NO debe restar al Total Depositado (ya estaba contabilizado al
+      // recibir el harvest original como rendimiento).
+      for (const h of sourceHarvestTokens) {
+        const sym = sanitizeUppercase(h.tokenSymbol);
+        if (!sym) continue;
+        const harvestAmount = Math.max(0, h.amount);
+        if (harvestAmount <= 0) continue;
+        const harvestPrice = h.spotPriceUsd && h.spotPriceUsd > 0 ? h.spotPriceUsd : spotPriceFor(sym);
+        sourceRows.push(
+          makeRow({
+            portfolio_id: portfolioId,
+            type: sourceOutType,
+            token_in_symbol: null,
+            token_in_amount: null,
+            token_out_symbol: sym,
+            token_out_amount: harvestAmount,
+            spot_price: harvestPrice,
+            protocol: sourceProtocol,
+            position_id: sourcePositionId,
+            position_type: sourcePositionType,
+            metadata: {
+              ...sourceLpMetadata,
+              reason: "rebalance_harvest_out",
+              depositedDelta: 0, // el harvest no aporta cost basis al destino
+              note: "Harvest pendiente convertido en el destino del rebalance",
+            },
+            timestamp,
+          }),
+        );
+      }
     } else {
       const sourcePrice = spotPriceFor(sourceToken);
       sourceRows.push(
