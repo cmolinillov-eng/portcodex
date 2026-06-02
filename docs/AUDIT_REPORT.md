@@ -1,6 +1,32 @@
 # Audit Report — Crypto Portfolio Tracker
 
-> **Última actualización:** 2026-05-27 (Trazabilidad por Wallet desplegada).
+> **Última actualización:** 2026-05-27 (pausamos fiscal, investigando bug LP 3 tokens).
+
+## 📌 Punto de retomada — Módulo fiscal/trazabilidad
+
+**Estado al pausar (commit `5ef1a54`):**
+
+✅ Completado:
+- Fase 0 — Skill `spanish-crypto-tax-expert`
+- Fase 1 — Schema BD (`phase21_tax_module.sql` aplicado en Supabase)
+- Fase 2 — Motor categorización + walletProtocol + humanLabel + inferred
+- Fase 4 — UI tabla compacta colapsable al pie del dashboard
+- A — Exportar CSV con 18 columnas para asesor fiscal
+- E — Backfill persistente con botón Recalcular
+- Skill `defi-protocol-expert` con 60+ protocolos
+- LP deposit ya NO calcula ganancia ficticia
+- Harvest sobre LP → `lp_reward` (no staking_reward)
+- Filtros agrupados por tipo: Cold / Hot / CEX / DEX
+- Catálogo ampliado: ProjectX, Variational, Kamino, Drift, Jito, Marinade, Pendle, Ethena, Spark, etc.
+
+⏳ Pendiente cuando retomemos:
+- **B — Override manual del gestor**: click en fila → modal para reclasificar categoría, marca `fiscal_inferred=false`
+- **Separación real wallet/protocolo en BD**: añadir campo `wallet` independiente de `protocol` para casos como "BTC en Ledger pero opero desde Rabby"
+- Click en badge "?" para clasificar manualmente protocolo desconocido
+- Resumen anual por tipo de renta para Modelo 100
+- Tests adicionales por edge cases (datos null, precisión, mismo token harvested 2 veces el mismo día)
+
+
 
 ---
 

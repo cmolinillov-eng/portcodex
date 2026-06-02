@@ -277,6 +277,42 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 3c. LIMPIEZA DE TOKENS HUÉRFANOS.
+    //     Si la posición tiene tokens ANTERIORES que NO están en `targets`
+    //     (caso típico: LP que tuvo cambio de par y quedó con 3+ tokens),
+    //     emitimos una withdrawal a balance 0 para cada uno.
+    //     Esto evita el bug de "LP con 3 tokens" reportado en producción.
+    const targetSymbols = new Set(targets.map((t) => t.symbol));
+    const editMetadataCleanup = {
+      reason: "manual_edit_cleanup_orphan",
+      editedAt: now,
+      editedBy: access.userId ?? null,
+      ...(lpMetadata ? lpMetadata : {}),
+    };
+    for (const [symbol, state] of currentState.entries()) {
+      if (targetSymbols.has(symbol)) continue;
+      if (state.balance <= 1e-9) continue;
+      // Token presente con balance pero NO en los targets → es huérfano. Limpiar.
+      const orphanAvgPrice = state.balance > 0 ? state.costUsd / state.balance : 0;
+      rows.push({
+        portfolio_id: portfolioId,
+        type: outTxType,
+        operation_group_id: groupId,
+        token_in_symbol: null,
+        token_in_amount: null,
+        token_out_symbol: symbol,
+        token_out_amount: state.balance,
+        spot_price: orphanAvgPrice,
+        fee_amount: 0,
+        notes: `[Edit] Limpieza token huérfano ${symbol} (no estaba en los targets del edit)`,
+        transaction_date: now,
+        protocol,
+        position_id: positionId,
+        position_type: positionType,
+        metadata: editMetadataCleanup,
+      });
+    }
+
     if (rows.length === 0) {
       return NextResponse.json({ ok: true, insertedRows: 0, message: "Sin cambios respecto al estado actual." });
     }

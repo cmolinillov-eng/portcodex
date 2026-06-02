@@ -1139,7 +1139,20 @@ export async function getDashboardData(options?: {
     const sample = group[0];
     const lpKey = positionCompositeKey(sample.portfolioId, sample.protocol, sample.positionId);
     const lpEntry = lpMetadataByPosition[lpKey];
-    const tokenSymbols = Array.from(new Set(group.map((item) => item.tokenSymbol))).join("/");
+
+    // Detección de LP corrupto: un LP NO puede tener más de 2 tokens distintos
+    // con balance > 0. Si pasa, marcar como dataQualityIssue para que la UI
+    // muestre el aviso y permita modificar/limpiar.
+    const tokensWithBalance = group.filter((item) => item.currentBalance > 1e-9);
+    const distinctTokensWithBalance = Array.from(new Set(tokensWithBalance.map((i) => i.tokenSymbol)));
+    const hasCorruptedTokenCount = distinctTokensWithBalance.length > 2;
+
+    // El nombre mostrado usa solo tokens con balance > 0 (esconde residuales a 0).
+    // Si hay corrupción (>2 con balance), mostramos los tokens y dejamos el aviso.
+    const tokenSymbols =
+      distinctTokensWithBalance.length > 0
+        ? distinctTokensWithBalance.join("/")
+        : Array.from(new Set(group.map((item) => item.tokenSymbol))).join("/");
     const currentValue = group.reduce((sum, item) => sum + item.currentValue, 0);
     const costBasisUsd = group.reduce((sum, item) => sum + ((item.costBasisUsd ?? 0) > 0 ? (item.costBasisUsd ?? 0) : 0), 0);
     const roiPercent =
@@ -1261,7 +1274,9 @@ export async function getDashboardData(options?: {
       lpRangeStatus,
       lpRangeLabel,
       currentPriceLabel,
-      dataQualityIssue: null,
+      dataQualityIssue: hasCorruptedTokenCount
+        ? `LP corrupto: ${distinctTokensWithBalance.length} tokens en una misma posición (${distinctTokensWithBalance.join(", ")}). Un pool solo puede tener 2 tokens. Modifica la posición indicando solo los 2 correctos — los huérfanos se limpiarán automáticamente.`
+        : null,
       isAggregatePosition: true,
       balanceLabel,
       costBasisUsd: costBasisUsd > 0 ? costBasisUsd : null,

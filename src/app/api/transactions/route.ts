@@ -513,6 +513,20 @@ async function buildRows(
       throw new Error("Rango LP inválido.");
     }
 
+    // VALIDACIÓN: si la posición existe y el par cambia, no permitir que se
+    // mezclen tokens distintos en un mismo position_id (bug LP de 3 tokens).
+    if (existingLp?.tokenA && existingLp?.tokenB) {
+      const existingPair = [existingLp.tokenA.toUpperCase(), existingLp.tokenB.toUpperCase()]
+        .sort()
+        .join("/");
+      const newPair = [tokenA.toUpperCase(), tokenB.toUpperCase()].sort().join("/");
+      if (existingPair !== newPair) {
+        throw new Error(
+          `Esta posición LP ya tiene par ${existingLp.tokenA}/${existingLp.tokenB}. No se puede mezclar con ${tokenA}/${tokenB} en la misma posición. Crea una posición nueva.`,
+        );
+      }
+    }
+
     const entryPriceRatio = existingLp?.entryPriceRatio && Number(existingLp.entryPriceRatio) > 0
       ? Number(existingLp.entryPriceRatio)
       : amountB / amountA;
@@ -1242,13 +1256,42 @@ async function buildRows(
         throw new Error("Rango LP inválido: no se pudo inferir un rango válido para el destino.");
       }
 
+      // VALIDACIÓN CRÍTICA: si el target ya existe y los tokens del LP cambian,
+      // estaríamos creando un LP con 3+ tokens distintos (bug reportado en
+      // producción). En ese caso, exigimos crear una posición nueva.
+      if (latestLp?.tokenA && latestLp?.tokenB) {
+        const existingPair = new Set([
+          (latestLp.tokenA ?? "").toUpperCase(),
+          (latestLp.tokenB ?? "").toUpperCase(),
+        ]);
+        const newPair = new Set([targetToken.toUpperCase(), targetTokenB.toUpperCase()]);
+        const pairsMatch =
+          existingPair.size === newPair.size &&
+          Array.from(existingPair).every((t) => newPair.has(t));
+        if (!pairsMatch && !targetIsNew) {
+          throw new Error(
+            `El LP destino existente tiene tokens ${latestLp.tokenA}/${latestLp.tokenB} pero estás aportando ${targetToken}/${targetTokenB}. Para cambiar el par, marca "Crear nueva posición" — no se puede mezclar pares distintos en un mismo LP.`,
+          );
+        }
+      }
+
+      // La metadata.lp.tokenA/tokenB DEBE coincidir con los tokens que estamos
+      // insertando en token_in_symbol. Si latestLp tiene un par distinto al
+      // que estamos depositando, NO heredamos (sería inconsistente).
+      const inheritedTokensCoincide =
+        latestLp?.tokenA && latestLp?.tokenB
+          ? [latestLp.tokenA.toUpperCase(), latestLp.tokenB.toUpperCase()].sort().join("/") ===
+            [targetToken.toUpperCase(), targetTokenB.toUpperCase()].sort().join("/")
+          : false;
       const targetMeta = {
         lp: {
-          tokenA: latestLp?.tokenA ?? targetToken,
-          tokenB: latestLp?.tokenB ?? targetTokenB,
+          tokenA: inheritedTokensCoincide ? (latestLp?.tokenA ?? targetToken) : targetToken,
+          tokenB: inheritedTokensCoincide ? (latestLp?.tokenB ?? targetTokenB) : targetTokenB,
           rangeLower: resolvedRangeLower,
           rangeUpper: resolvedRangeUpper,
-          entryPriceRatio: Number.isFinite(latestLp?.entryPriceRatio ?? 0) && Number(latestLp?.entryPriceRatio) > 0
+          entryPriceRatio: inheritedTokensCoincide &&
+            Number.isFinite(latestLp?.entryPriceRatio ?? 0) &&
+            Number(latestLp?.entryPriceRatio) > 0
             ? Number(latestLp?.entryPriceRatio)
             : entryPriceRatio,
         },
