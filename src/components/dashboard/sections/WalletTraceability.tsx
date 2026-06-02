@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Download, Info, Wallet } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Download, Info, RefreshCw, Wallet } from "lucide-react";
 import type { FiscalAnnotation, WalletKind } from "@/lib/tax/types";
 import {
   getCategoryLabel,
@@ -61,6 +61,8 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [activeWallet, setActiveWallet] = useState<string>("__all__");
   const [visibleCount, setVisibleCount] = useState(15);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   // Solo cargamos cuando el usuario abre la sección (lazy)
   useEffect(() => {
@@ -89,6 +91,47 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
       cancelled = true;
     };
   }, [open, data, portfolioId]);
+
+  async function runBackfill() {
+    if (!portfolioId || backfilling) return;
+    setBackfilling(true);
+    setBackfillMsg(null);
+    try {
+      const csrfToken =
+        typeof document !== "undefined"
+          ? (document.cookie.match(/csrf-token=([^;]+)/)?.[1] ?? "")
+          : "";
+      const res = await fetch("/api/transactions/traceability/backfill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-csrf-token": csrfToken },
+        body: JSON.stringify({ portfolioId }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        throw new Error((body as { error?: string; hint?: string }).error ?? "Error al backfillar.");
+      }
+      const stats = (body as { stats: { transactions: number; lots: number; events: number } }).stats;
+      setBackfillMsg({
+        kind: "ok",
+        text: `Procesadas ${stats.transactions} transacciones · ${stats.lots} lotes FIFO · ${stats.events} eventos fiscales.`,
+      });
+      // Recargar datos de la tabla
+      setData(null);
+      // Forzar refresh efectivo del useEffect
+      const refetch = await fetch(`/api/transactions/traceability?portfolioId=${encodeURIComponent(portfolioId)}`);
+      if (refetch.ok) {
+        setData((await refetch.json()) as ApiResponse);
+      }
+    } catch (e) {
+      setBackfillMsg({
+        kind: "err",
+        text: e instanceof Error ? e.message : "Error inesperado al backfillar.",
+      });
+    } finally {
+      setBackfilling(false);
+      window.setTimeout(() => setBackfillMsg(null), 8000);
+    }
+  }
 
   const filteredEntries = useMemo(() => {
     if (!data) return [];
@@ -265,6 +308,17 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
                   ) : null}
                   <button
                     type="button"
+                    onClick={runBackfill}
+                    disabled={backfilling}
+                    className="btn-secondary px-4 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Recalcular y persistir trazabilidad fiscal"
+                    title="Reprocesa todas las transacciones y guarda las categorías en la base de datos para acceso rápido y override manual."
+                  >
+                    <RefreshCw className={`h-3 w-3 ${backfilling ? "animate-spin" : ""}`} aria-hidden="true" />
+                    {backfilling ? "Recalculando…" : "Recalcular"}
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => {
                       const csv = buildCsv(filteredEntries, data.eurRate);
                       const stamp = new Date().toISOString().slice(0, 10);
@@ -280,6 +334,19 @@ export function WalletTraceability({ portfolioId, foreignCexValueUsd }: Props) {
                   </button>
                 </div>
               </div>
+
+              {/* Feedback del backfill */}
+              {backfillMsg ? (
+                <p
+                  className={`text-[11px] rounded-lg border px-3 py-2 ${
+                    backfillMsg.kind === "ok"
+                      ? "border-emerald-400/40 bg-emerald-400/8 text-emerald-200"
+                      : "border-red-500/40 bg-red-500/8 text-red-200"
+                  }`}
+                >
+                  {backfillMsg.text}
+                </p>
+              ) : null}
             </>
           )}
         </div>
