@@ -1513,7 +1513,12 @@ export async function getDashboardData(options?: {
     const isHarvestReinvestInternal = reason === "harvest_reinvest" || source === "harvest_reinvest";
     // Rebalanceo: movimiento interno entre posiciones; no altera el total depositado.
     const isRebalanceTransfer = reason === "rebalance_transfer" || source === "rebalance_transfer";
-    const isInternalMovement = isHarvestReinvestInternal || isRebalanceTransfer;
+    // Salida del harvest pendiente que se arrastra en un rebalance. Esos tokens
+    // entraron como rendimiento (totalHarvestUsd), NUNCA como capital depositado,
+    // así que su salida tampoco debe restar al Total Depositado ni al cost basis
+    // de la posición origen. Se trata como movimiento interno.
+    const isRebalanceHarvestOut = reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
+    const isInternalMovement = isHarvestReinvestInternal || isRebalanceTransfer || isRebalanceHarvestOut;
 
     if (txType === "harvest") {
       totalHarvestUsd += inAmount * spotPrice;

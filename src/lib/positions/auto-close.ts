@@ -143,7 +143,17 @@ export async function autoClosePositionIfEmpty({
   if (totalAbsBalance > TOLERANCE) return { closed: false, reason: "still_open" };
 
   // Emitimos position_closed. Si el enum no acepta el tipo, ignoramos.
-  const realizedPnl = valueAtClose - totalDeposited;
+  //
+  // IMPORTANTE — por qué realizedPnl que se guarda es 0:
+  // El auto-cierre NO borra las transacciones de la posición (a diferencia del
+  // borrado manual en /api/positions/delete, que sí las soft-borra). Como las
+  // filas de depósito/retirada siguen activas, el dashboard ya captura el P&L
+  // realizado a través de `totalDepositedUsd` (netDeposited = depósitos − retiradas
+  // a precio de salida). Si además sumáramos realizedPnl en el snapshot, el
+  // resultado se DUPLICARÍA (mismo patrón que el snapshot de rebalanceo, que
+  // también usa realizedPnl = 0). Guardamos el valor bruto solo como referencia.
+  const realizedPnlGross = valueAtClose - totalDeposited;
+  const realizedPnl = 0;
   const closureRow = {
     portfolio_id: portfolioId,
     type: "position_closed",
@@ -164,6 +174,7 @@ export async function autoClosePositionIfEmpty({
         totalDeposited,
         valueAtClose,
         realizedPnl,
+        realizedPnlGross,
         reason: "auto_closed",
         closedAt: new Date().toISOString(),
         balances,
@@ -181,5 +192,5 @@ export async function autoClosePositionIfEmpty({
     return { closed: false, reason: isEnumIssue ? "enum_unsupported" : "insert_error" };
   }
 
-  return { closed: true, realizedPnl };
+  return { closed: true, realizedPnl: realizedPnlGross };
 }

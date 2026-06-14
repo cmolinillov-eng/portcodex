@@ -143,7 +143,10 @@ export async function capturePortfolioSnapshot({
     const source = readFlag(tx.metadata, tx.notes, "source");
     const isInternal =
       reason === "harvest_reinvest" || source === "harvest_reinvest" ||
-      reason === "rebalance_transfer" || source === "rebalance_transfer";
+      reason === "rebalance_transfer" || source === "rebalance_transfer" ||
+      // La salida del harvest arrastrado en un rebalance entró como rendimiento,
+      // nunca como capital depositado: no debe restar al total depositado.
+      reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
 
     // Capital in/out → ajustan balance y totalDeposited (si no es internal)
     if (CAPITAL_IN.has(txType)) {

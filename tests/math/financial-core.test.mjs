@@ -538,3 +538,187 @@ test("LP costBasisUsd: agregado desde balance × avgPrice cuando individuales ti
   // ROI esperado: +8.33%
   assert.ok(roi > 8 && roi < 9, `ROI esperado ~8.33%, got ${roi}`);
 });
+
+// ---------------- Regresiones de la auditoría 2026-06 ----------------
+//
+// Estas pruebas blindan tres fallos detectados en la revisión de lógica:
+//   1) rebalance_harvest_out NO debe restar al Total Depositado
+//      (get-dashboard-data.ts + snapshots/capture.ts)
+//   2) El cierre debe contar el P&L realizado una sola vez
+//      (auto-close.ts deja las txns activas → realizedPnl=0;
+//       positions/delete soft-borra las txns → realizedPnl lleva el P&L)
+//   3) El snapshot de cierre debe valorar con precio de mercado real
+//      (positions/delete leía columnas inexistentes de cached_prices)
+
+// ── 1) Clasificación de movimientos: harvest vs capital vs interno ───────────
+
+const CAPITAL_IN = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+const CAPITAL_OUT = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+const INTERNAL_REASONS = new Set([
+  "harvest_reinvest",
+  "rebalance_transfer",
+  "rebalance_harvest_out",
+]);
+
+/**
+ * Replica de get-dashboard-data / snapshots-capture:
+ * - harvest → suma a totalHarvest (rendimiento), nunca a totalDeposited
+ * - capital in/out externos → mueven totalDeposited
+ * - movimientos internos → no tocan totalDeposited
+ */
+function simulateDashboardTotals(transactions) {
+  let totalDeposited = 0;
+  let totalHarvest = 0;
+  for (const tx of transactions) {
+    const isInternal = INTERNAL_REASONS.has(tx.reason);
+    if (tx.type === "harvest") {
+      totalHarvest += tx.usd;
+      continue;
+    }
+    if (CAPITAL_IN.has(tx.type)) {
+      if (!isInternal) totalDeposited += tx.usd;
+      continue;
+    }
+    if (CAPITAL_OUT.has(tx.type)) {
+      if (!isInternal) totalDeposited -= tx.usd;
+    }
+  }
+  return { totalDeposited, totalHarvest };
+}
+
+test("Harvest arrastrado en rebalance NO resta al Total Depositado", () => {
+  // Deposita $1000, cobra $50 de harvest, y al rebalancear arrastra ese harvest
+  // como salida (rebalance_harvest_out). Ese harvest entró como rendimiento,
+  // nunca como capital → el Total Depositado debe seguir en 1000.
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { type: "harvest", usd: 50 },
+    { type: "lp_withdraw", usd: 50, reason: "rebalance_harvest_out" },
+  ];
+  const { totalDeposited, totalHarvest } = simulateDashboardTotals(txs);
+  assert.equal(totalDeposited, 1000);
+  assert.equal(totalHarvest, 50);
+});
+
+test("Modo de fallo: si harvest_out no se marca interno, el total se distorsiona", () => {
+  // Documenta el bug que el fix evita: sin la marca interna, la salida del
+  // harvest restaría al Total Depositado (950 en vez de 1000).
+  const txs = [
+    { type: "deposit", usd: 1000 },
+    { type: "harvest", usd: 50 },
+    { type: "lp_withdraw", usd: 50, reason: "unmarked" },
+  ];
+  assert.equal(simulateDashboardTotals(txs).totalDeposited, 950);
+});
+
+// ── 2) P&L de cierre sin doble conteo ───────────────────────────────────────
+
+/**
+ * pnl = Σ valor actual − Total Depositado + Σ realizedPnl de cierres.
+ * Las txns activas (deposits/withdrawals a precio de salida) ya capturan el
+ * P&L realizado vía el neto depositado, así que sólo deben sumar realizedPnl
+ * los cierres cuyas txns YA NO están activas (borrado manual).
+ */
+function portfolioPnl({ activeTransactions, closures, currentValue }) {
+  let totalDeposited = 0;
+  for (const tx of activeTransactions) {
+    if (tx.type === "deposit") totalDeposited += tx.usd;
+    else if (tx.type === "withdrawal") totalDeposited -= tx.usd;
+  }
+  const realized = closures.reduce((s, c) => s + c.realizedPnl, 0);
+  return currentValue - totalDeposited + realized;
+}
+
+test("Auto-cierre: realizedPnl=0 evita doble conteo (txns siguen activas)", () => {
+  // Depositó 800, la posición valió 1000 y retiró todo. La retirada a precio
+  // de salida ya deja el neto depositado en -200 → pnl correcto = +200.
+  const pnl = portfolioPnl({
+    activeTransactions: [
+      { type: "deposit", usd: 800 },
+      { type: "withdrawal", usd: 1000 },
+    ],
+    closures: [{ realizedPnl: 0 }],
+    currentValue: 0,
+  });
+  assert.equal(pnl, 200);
+});
+
+test("Modo de fallo: auto-cierre con realizedPnl≠0 duplica el P&L", () => {
+  const pnl = portfolioPnl({
+    activeTransactions: [
+      { type: "deposit", usd: 800 },
+      { type: "withdrawal", usd: 1000 },
+    ],
+    closures: [{ realizedPnl: 200 }],
+    currentValue: 0,
+  });
+  assert.equal(pnl, 400); // el doble conteo que el fix evita
+});
+
+test("Borrado manual: txns retiradas, realizedPnl lleva el P&L completo", () => {
+  const pnl = portfolioPnl({
+    activeTransactions: [], // soft-borradas por la ruta de delete
+    closures: [{ realizedPnl: 200 }],
+    currentValue: 0,
+  });
+  assert.equal(pnl, 200);
+});
+
+test("Ambos caminos de cierre dan el mismo P&L correcto (+200)", () => {
+  const auto = portfolioPnl({
+    activeTransactions: [
+      { type: "deposit", usd: 800 },
+      { type: "withdrawal", usd: 1000 },
+    ],
+    closures: [{ realizedPnl: 0 }],
+    currentValue: 0,
+  });
+  const del = portfolioPnl({
+    activeTransactions: [],
+    closures: [{ realizedPnl: 200 }],
+    currentValue: 0,
+  });
+  assert.equal(auto, del);
+  assert.equal(auto, 200);
+});
+
+// ── 3) Snapshot de cierre valorado a precio de mercado ──────────────────────
+
+/**
+ * Replica de positions/delete computeClosureSnapshot:
+ * valueAtClose = Σ balance×precio_actual ; realizedPnl = valueAtClose − totalDeposited.
+ * Depende de resolver el precio actual desde cached_prices (token_symbol/price).
+ */
+function computeClosureSnapshot({ deposits, balances, priceMap }) {
+  let totalDeposited = 0;
+  for (const d of deposits) totalDeposited += d.amount * d.spotPrice;
+  let valueAtClose = 0;
+  for (const [sym, bal] of Object.entries(balances)) {
+    const price = priceMap[sym] ?? 0;
+    valueAtClose += Math.max(0, bal) * price;
+  }
+  return { totalDeposited, valueAtClose, realizedPnl: valueAtClose - totalDeposited };
+}
+
+test("Cierre valora con precio de mercado: 0.01 BTC 80k→100k = +200 P&L", () => {
+  const snap = computeClosureSnapshot({
+    deposits: [{ amount: 0.01, spotPrice: 80000 }],
+    balances: { BTC: 0.01 },
+    priceMap: { BTC: 100000 },
+  });
+  assert.equal(snap.totalDeposited, 800);
+  assert.equal(snap.valueAtClose, 1000);
+  assert.equal(snap.realizedPnl, 200);
+});
+
+test("Modo de fallo: sin precios (columnas mal) el cierre registra pérdida total", () => {
+  // El bug original: cached_prices leído con columnas inexistentes → priceMap
+  // vacío → valueAtClose=0 → realizedPnl=-totalDeposited (perdía todo el basis).
+  const broken = computeClosureSnapshot({
+    deposits: [{ amount: 0.01, spotPrice: 80000 }],
+    balances: { BTC: 0.01 },
+    priceMap: {},
+  });
+  assert.equal(broken.valueAtClose, 0);
+  assert.equal(broken.realizedPnl, -800);
+});

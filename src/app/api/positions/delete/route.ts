@@ -91,14 +91,19 @@ async function computeClosureSnapshot(
   const symbols = Object.keys(balances).filter((s) => (balances[s] ?? 0) > 0);
   if (symbols.length === 0) return null;
 
+  // La tabla cached_prices usa las columnas token_symbol/price (uppercase),
+  // igual que el dashboard y la captura de snapshots. Antes se consultaba
+  // symbol/price_usd en minúsculas: columnas inexistentes → la query fallaba,
+  // priceMap quedaba vacío y valueAtClose=0, lo que registraba un realizedPnl
+  // = -totalDeposited (pérdida total del cost basis) al borrar una posición.
   const { data: priceRows } = await client
     .from("cached_prices")
-    .select("symbol, price_usd")
-    .in("symbol", symbols.map((s) => s.toLowerCase()));
+    .select("token_symbol, price")
+    .in("token_symbol", symbols.map((s) => s.toUpperCase()));
 
   const priceMap = new Map<string, number>();
   for (const row of priceRows ?? []) {
-    priceMap.set(((row.symbol ?? "") as string).toUpperCase(), toNumber(row.price_usd));
+    priceMap.set(((row.token_symbol ?? "") as string).toUpperCase(), toNumber(row.price));
   }
 
   // 3. Calculate value at close
