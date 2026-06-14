@@ -7,6 +7,8 @@ import {
   History,
   Layers,
   Pencil,
+  Scale,
+  ChevronRight,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 import type { DefiPosition, PositionSection } from "@/types/portfolio";
 import { HistoryModal } from "./modals/history-modal";
@@ -27,8 +30,6 @@ import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { StrategyComposition } from "./sections/StrategyComposition";
 import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
-import { WalletTraceability } from "./sections/WalletTraceability";
-import { getWalletProtocolMetaSync } from "@/lib/tax/wallet-classification";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity } from "./sections/RecentActivity";
@@ -728,21 +729,6 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     () => recentActivity.slice(0, visibleRecentActivityCount),
     [recentActivity, visibleRecentActivityCount],
   );
-
-  // Suma de USD en exchanges centralizados extranjeros (Binance, Coinbase, etc.)
-  // — base para el aviso del Modelo 721 (umbral 50.000 €).
-  const foreignCexValueUsd = useMemo(() => {
-    let total = 0;
-    for (const section of sections) {
-      for (const pos of section.positions) {
-        const meta = getWalletProtocolMetaSync(pos.protocol);
-        if (meta.walletKind === "cex_foreign" || meta.walletKind === "broker_foreign") {
-          total += Math.max(0, pos.currentValue);
-        }
-      }
-    }
-    return total;
-  }, [sections]);
 
   useEffect(() => {
     setVisibleRecentActivityCount(10);
@@ -1783,10 +1769,26 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           setVisibleRecentActivityCount={setVisibleRecentActivityCount}
         />
 
-        <WalletTraceability
-          portfolioId={portfolioContext?.portfolioId ?? ""}
-          foreignCexValueUsd={foreignCexValueUsd}
-        />
+        <Link
+          href={`/fiscal${portfolioContext?.portfolioId ? `?portfolio=${portfolioContext.portfolioId}` : ""}`}
+          className="group flex items-center justify-between gap-4 rounded-2xl border border-[rgba(160,210,255,0.28)] bg-[rgba(160,210,255,0.06)] px-5 py-4 transition-colors hover:border-[rgba(160,210,255,0.5)] hover:bg-[rgba(160,210,255,0.1)]"
+        >
+          <div className="flex items-center gap-3.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(160,210,255,0.3)] bg-[rgba(160,210,255,0.1)] text-[#A0D2FF]">
+              <Scale className="h-5 w-5" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-[var(--foreground)]">Trazabilidad fiscal</p>
+              <p className="mt-0.5 text-xs text-[var(--muted)]">
+                Operaciones por casilla AEAT, base del ahorro/general, Modelo 721 y exportación CSV.
+              </p>
+            </div>
+          </div>
+          <span className="flex items-center gap-1 text-xs font-medium text-[#A0D2FF]">
+            Abrir
+            <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+          </span>
+        </Link>
       </section>
 
       {isModalOpen ? (
@@ -2495,28 +2497,19 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       onChange={(event) => {
                         const key = event.target.value;
                         const source = baseDepositTargets.find((item) => item.key === key);
-                        const sourcePos = positionByKey.get(key);
                         const sourceType = (source?.positionType ?? "").toLowerCase();
                         const isLpSrc = sourceType.includes("liquidity") || sourceType.includes("lp");
-                        // Auto-fill balances from current position data
-                        let autoAmountA = "";
-                        let autoAmountB = "";
-                        if (sourcePos) {
-                          if (isLpSrc) {
-                            const parts = (sourcePos.balanceLabel ?? "").split("+");
-                            autoAmountA = parts[0]?.replace(/[^0-9.]/g, "").trim() ?? "";
-                            autoAmountB = parts[1]?.replace(/[^0-9.]/g, "").trim() ?? "";
-                          } else {
-                            autoAmountA = sourcePos.currentBalance > 0 ? String(sourcePos.currentBalance) : "";
-                          }
-                        }
+                        // NO auto-rellenamos con el saldo completo: en un rebalanceo
+                        // parcial eso obligaba a borrar y reescribir. El usuario indica
+                        // cuánto quiere mover; el botón "Usar saldo completo" cubre el
+                        // caso de cerrar la posición en un clic.
                         setForm((prev) => ({
                           ...prev,
                           rebalanceSourceKey: key,
                           rebalanceSourceTokenSymbol: source?.availableTokens[0] ?? "",
                           rebalanceSourceLpTokenSymbolB: isLpSrc ? source?.availableTokens[1] ?? "" : "",
-                          rebalanceSourceAmount: autoAmountA,
-                          rebalanceSourceLpAmountB: autoAmountB,
+                          rebalanceSourceAmount: "",
+                          rebalanceSourceLpAmountB: "",
                           portfolioId: source?.portfolioId ?? prev.portfolioId,
                         }));
                       }}
@@ -2530,20 +2523,48 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       ))}
                     </select>
                   </label>
-                  {/* Capital disponible de la posición origen */}
+                  {/* Capital disponible de la posición origen + atajo "Usar saldo completo" */}
                   {form.rebalanceSourceKey ? (() => {
                     const srcPos = positionByKey.get(form.rebalanceSourceKey);
                     if (!srcPos) return null;
+                    const src = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
+                    const sourceType = (src?.positionType ?? "").toLowerCase();
+                    const isLpSrc = sourceType.includes("liquidity") || sourceType.includes("lp");
                     const availableUsd = srcPos.currentValue;
+                    const fillFullBalance = () => {
+                      let autoAmountA = "";
+                      let autoAmountB = "";
+                      if (isLpSrc) {
+                        const parts = (srcPos.balanceLabel ?? "").split("+");
+                        autoAmountA = parts[0]?.replace(/[^0-9.]/g, "").trim() ?? "";
+                        autoAmountB = parts[1]?.replace(/[^0-9.]/g, "").trim() ?? "";
+                      } else {
+                        autoAmountA = srcPos.currentBalance > 0 ? String(srcPos.currentBalance) : "";
+                      }
+                      setForm((prev) => ({
+                        ...prev,
+                        rebalanceSourceAmount: autoAmountA,
+                        rebalanceSourceLpAmountB: autoAmountB,
+                      }));
+                    };
                     return (
-                      <div className="col-span-full rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm">
-                        <span className="text-[var(--muted)]">Capital disponible: </span>
-                        <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
-                        {srcPos.balanceLabel ? (
-                          <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.balanceLabel})</span>
-                        ) : srcPos.currentBalance > 0 ? (
-                          <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.currentBalance} {srcPos.tokenSymbol})</span>
-                        ) : null}
+                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm">
+                        <div>
+                          <span className="text-[var(--muted)]">Capital disponible: </span>
+                          <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
+                          {srcPos.balanceLabel ? (
+                            <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.balanceLabel})</span>
+                          ) : srcPos.currentBalance > 0 ? (
+                            <span className="ml-2 text-xs text-[var(--muted)]">({srcPos.currentBalance} {srcPos.tokenSymbol})</span>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={fillFullBalance}
+                          className="rounded-md border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-2.5 py-1 text-xs text-[#A0D2FF] transition-colors hover:bg-[rgba(160,210,255,0.18)]"
+                        >
+                          Usar saldo completo
+                        </button>
                       </div>
                     );
                   })() : null}

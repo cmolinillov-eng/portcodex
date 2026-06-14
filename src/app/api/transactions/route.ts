@@ -1113,15 +1113,18 @@ async function buildRows(
       throw new Error("No se pudo calcular el valor USD del rebalanceo.");
     }
 
-    // Cost basis pro-rata del origen: la fracción del "Total Depositado" del source
-    // que viaja con el rebalanceo. Se inyecta en las metadatas de source/target rows
-    // y el dashboard lo usa para que la posición destino arrastre su depositado heredado
-    // y la posición origen restante lo descuente. El total global queda intacto.
+    // Cost basis y balances ACTUALES del origen, computados EXACTAMENTE como el
+    // dashboard (get-dashboard-data.ts) para que la cuenta cuadre al rebalancear:
+    //   • Total Depositado = depósitos − retiradas (cost basis), EXCLUYENDO los
+    //     movimientos internos (rebalance/harvest_reinvest) pero SUMANDO el
+    //     `depositedDelta` heredado de rebalanceos previos.
+    //   • Balances por token = depósitos − retiradas de TODAS las filas (incl.
+    //     internas): un token que ya salió por un rebalanceo anterior no cuenta.
     const sourceCostBasis = await (async () => {
       try {
         const { data: srcTxs } = await client
           .from("transactions")
-          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
+          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
           .eq("portfolio_id", portfolioId)
           .eq("protocol", sourceProtocol)
           .eq("position_id", sourcePositionId)
@@ -1140,28 +1143,71 @@ async function buildRows(
           const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
           const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
           const sp = toNumber(tx.spot_price);
+          const meta = parseObject(tx.metadata) ?? parseObject(tx.notes);
+          const reasonFlag = typeof meta?.reason === "string" ? (meta.reason as string) : null;
+          const sourceFlag = typeof meta?.source === "string" ? (meta.source as string) : null;
+          const isRebalanceRow = reasonFlag === "rebalance_transfer" || sourceFlag === "rebalance_transfer";
+          const isInternal =
+            isRebalanceRow || reasonFlag === "harvest_reinvest" || sourceFlag === "harvest_reinvest";
+          const depositedDelta = typeof meta?.depositedDelta === "number" ? (meta.depositedDelta as number) : null;
           if (inSet.has(t)) {
-            totalDeposited += inAmt * sp;
             if (inSym) balances[inSym] = (balances[inSym] ?? 0) + inAmt;
+            if (!isInternal) totalDeposited += inAmt * sp;
+            if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
           } else if (outSet.has(t)) {
-            totalDeposited -= outAmt * sp;
             if (outSym) balances[outSym] = (balances[outSym] ?? 0) - outAmt;
+            if (!isInternal) totalDeposited -= outAmt * sp;
+            if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
           }
         }
         for (const sym of Object.keys(balances)) {
           const bal = Math.max(0, balances[sym] ?? 0);
           totalValue += bal * spotPriceFor(sym);
         }
-        return { totalDeposited, totalValue, balances };
+        return { totalDeposited: Math.max(0, totalDeposited), totalValue, balances };
       } catch {
         return { totalDeposited: 0, totalValue: 0, balances: {} as Record<string, number> };
       }
     })();
 
-    const transferFraction = sourceCostBasis.totalValue > 0
-      ? Math.min(1, rebalanceUsd / sourceCostBasis.totalValue)
-      : 1;
+    // Fracción del origen que se mueve, MEDIDA POR CANTIDAD DE TOKEN (no por valor).
+    // Es la forma robusta y consistente con cómo el dashboard reduce el cost basis
+    // en una retirada normal (pro-rata sobre el balance del token). Para un LP usamos
+    // la media de las fracciones de ambos tokens (retirada proporcional). Así, sacar
+    // 300 de un LP de 1.800 transfiere ~1/6 del depositado, no el 100%.
+    const tokenFraction = (() => {
+      const fr: number[] = [];
+      const balA = sourceCostBasis.balances[sourceToken] ?? 0;
+      if (balA > 0) fr.push(sourceAmount / balA);
+      if (sourceMapping.normalizedPositionType === "Liquidity Pool") {
+        const balB = sourceCostBasis.balances[sourceTokenB] ?? 0;
+        if (balB > 0) fr.push(sourceAmountB / balB);
+      }
+      if (fr.length === 0) {
+        // Sin balances fiables → caer al método por valor; si tampoco, asumir todo.
+        return sourceCostBasis.totalValue > 0 ? rebalanceUsd / sourceCostBasis.totalValue : 1;
+      }
+      return fr.reduce((a, b) => a + b, 0) / fr.length;
+    })();
+
+    const transferFraction = Math.min(1, Math.max(0, tokenFraction));
     const proratedDeposited = sourceCostBasis.totalDeposited * transferFraction;
+
+    // ¿El rebalanceo vacía POR COMPLETO la posición de origen? Solo en ese caso
+    // emitimos el snapshot `position_closed`. En un rebalanceo PARCIAL la posición
+    // de origen DEBE permanecer abierta con su balance y su depositado restantes.
+    const isFullClose =
+      transferFraction >= 1 - 1e-4 ||
+      (() => {
+        let remaining = 0;
+        for (const sym of Object.keys(sourceCostBasis.balances)) {
+          let bal = Math.max(0, sourceCostBasis.balances[sym] ?? 0);
+          if (sym === sourceToken) bal -= sourceAmount;
+          if (sourceTokenB && sym === sourceTokenB) bal -= sourceAmountB;
+          remaining += Math.max(0, bal);
+        }
+        return remaining <= 1e-6;
+      })();
 
     // Número de filas que vamos a emitir por lado, para dividir el depositedDelta
     // de forma equitativa y evitar doble conteo cuando son LPs (2 rows).
@@ -1404,6 +1450,20 @@ async function buildRows(
       if (!Number.isFinite(targetAmount) || targetAmount <= 0) {
         throw new Error("No se pudo calcular la cantidad destino del rebalanceo.");
       }
+      // CONSERVACIÓN DE VALOR: lo que entra al destino debe igualar lo que sale del
+      // origen. Sin esto, indicar un origen (p.ej. el LP entero) y un destino menor
+      // (p.ej. solo 300 $ en BTC) destruía silenciosamente la diferencia y disparaba
+      // el cost basis heredado. Si no cuadra, abortamos y pedimos corregir cantidades.
+      if (targetAmountManual > 0) {
+        const targetUsd = targetAmount * targetPrice;
+        const usdDelta = Math.abs(targetUsd - rebalanceUsd);
+        const maxAllowedDelta = Math.max(0.01, rebalanceUsd * 0.01); // tolerancia 1%
+        if (usdDelta > maxAllowedDelta) {
+          throw new Error(
+            `El valor que entra al destino (${targetUsd.toFixed(2)} $) no coincide con el que sale del origen (${rebalanceUsd.toFixed(2)} $). Ajusta las cantidades de origen para mover solo lo que quieres rebalancear.`,
+          );
+        }
+      }
       targetRows.push(
         makeRow({
           portfolio_id: portfolioId,
@@ -1430,42 +1490,46 @@ async function buildRows(
       );
     }
 
-    // Snapshot opcional de cierre. Reusa el cost basis ya calculado arriba.
-    const snapshotRow = (() => {
-      try {
-        const realizedPnl = rebalanceUsd - proratedDeposited;
-        const tokenLabel = sourceTokenB ? `${sourceToken}/${sourceTokenB}` : sourceToken;
-        return createRow({
-          portfolio_id: portfolioId,
-          type: "position_closed" as TransactionType,
-          token_in_symbol: tokenLabel,
-          token_in_amount: 0,
-          token_out_symbol: null,
-          token_out_amount: null,
-          spot_price: 0,
-          protocol: sourceProtocol,
-          position_id: sourcePositionId,
-          position_type: sourcePositionType,
-          metadata: {
-            closure: {
-              totalDeposited: proratedDeposited,
-              valueAtClose: rebalanceUsd,
-              realizedPnl,
-              reason: "rebalanced",
-              closedAt: timestamp,
-              balances: sourceCostBasis.balances,
-              destPositionId: targetPositionId,
-              destProtocol: targetProtocol,
-              destToken: targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken,
-            },
-          },
-          timestamp,
-          notes: `Rebalanceo → ${targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken}`,
-        });
-      } catch {
-        return null;
-      }
-    })();
+    // Snapshot de cierre SOLO si el rebalanceo vacía la posición de origen.
+    // En un rebalanceo el cost basis VIAJA con la posición (vía depositedDelta),
+    // así que el PnL realizado es 0: no es una venta a fiat. Registrar aquí un
+    // realizedPnl duplicaría el resultado en el total del portfolio.
+    const snapshotRow = isFullClose
+      ? (() => {
+          try {
+            const tokenLabel = sourceTokenB ? `${sourceToken}/${sourceTokenB}` : sourceToken;
+            return createRow({
+              portfolio_id: portfolioId,
+              type: "position_closed" as TransactionType,
+              token_in_symbol: tokenLabel,
+              token_in_amount: 0,
+              token_out_symbol: null,
+              token_out_amount: null,
+              spot_price: 0,
+              protocol: sourceProtocol,
+              position_id: sourcePositionId,
+              position_type: sourcePositionType,
+              metadata: {
+                closure: {
+                  totalDeposited: proratedDeposited,
+                  valueAtClose: rebalanceUsd,
+                  realizedPnl: 0,
+                  reason: "rebalanced",
+                  closedAt: timestamp,
+                  balances: sourceCostBasis.balances,
+                  destPositionId: targetPositionId,
+                  destProtocol: targetProtocol,
+                  destToken: targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken,
+                },
+              },
+              timestamp,
+              notes: `Rebalanceo → ${targetTokenB ? `${targetToken}/${targetTokenB}` : targetToken}`,
+            });
+          } catch {
+            return null;
+          }
+        })()
+      : null;
 
     const allRows = [...sourceRows, ...targetRows];
     if (snapshotRow) allRows.push(snapshotRow);

@@ -256,6 +256,59 @@ function handleDeposit(
   const category = decideDepositCategory(walletKind);
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
+  // ─── CASO ESPECIAL: Destino de un rebalanceo ───────────────────────────
+  // Si la fila viene marcada con `metadata.source === "rebalance_transfer"`,
+  // el activo se MATERIALIZA aquí por un rebalanceo. La app trata el
+  // rebalanceo como movimiento interno (la base viaja vía `depositedDelta`
+  // en USD), así que creamos un lote FIFO con esa base — convertida a EUR —
+  // para que una venta futura tenga lotes suficientes. Si no hay
+  // `depositedDelta`, caemos al FMV de recepción.
+  const meta = tx.metadata ?? {};
+  const rebalanceSource = typeof meta.source === "string" ? meta.source : null;
+  if (rebalanceSource === "rebalance_transfer") {
+    const depositedDeltaUsd =
+      typeof meta.depositedDelta === "number" ? (meta.depositedDelta as number) : null;
+    const costBasisEur =
+      depositedDeltaUsd !== null && depositedDeltaUsd > 0
+        ? roundEur(usdToEur(depositedDeltaUsd, rate))
+        : valueEur;
+    const description = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur,
+    });
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur,
+        realizedGainEur: 0,
+        notes: `Destino de rebalanceo: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Base trasladada del origen: ${costBasisEur} €.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: description,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [
+        {
+          tokenSymbol: symbol,
+          amount,
+          costBasisEur,
+          acquiredAt: tx.transactionDate,
+          acquiredViaEvent: "swap_in",
+          acquiredViaTransactionId: tx.id ?? null,
+        },
+      ],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   // ─── CASO A: Compra real (CEX, broker, payment app) ─────────────────────
   if (category === "buy") {
     const description = buildHumanDescription({
@@ -535,6 +588,43 @@ function handleLpDeposit(
 
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
+  // ─── CASO ESPECIAL: Destino de un rebalanceo a LP ──────────────────────
+  // Si la fila viene marcada con `metadata.source === "rebalance_transfer"`,
+  // los tokens entran al pool como parte de un movimiento interno. NO es una
+  // aportación nueva de capital; la base ya estaba en la posición de origen y
+  // viaja vía `depositedDelta`. No emitimos lp_provide ni evento permuta —
+  // categoría `non_taxable_transfer`, sin lote (el LP no genera lotes activos;
+  // cuando salga, `handleLpWithdraw` creará el lote con FMV).
+  const lpMeta = tx.metadata ?? {};
+  if (typeof lpMeta.source === "string" && lpMeta.source === "rebalance_transfer") {
+    const description = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur,
+    });
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `Aportación al LP recibida vía rebalanceo (${amount} ${symbol} en ${walletName}, FMV ${valueEur} €). Movimiento interno; la base viaja con el LP.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: description,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   const notes = `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). No se materializa ganancia/pérdida hasta retirar la liquidez. Si tu asesor aplica criterio DGT de permuta, deberá calcularse aparte.`;
 
   const description = buildHumanDescription({
@@ -572,6 +662,62 @@ function handleLpWithdraw(
   walletKind: WalletKind | null,
   walletName: string,
 ): CategorizationResult {
+  // En un lp_withdraw normal los tokens VUELVEN al cliente → van en token_in.
+  // Pero en un rebalanceo, esta misma fila representa la SALIDA del LP hacia
+  // el destino → la app guarda los tokens en token_out. Si vemos esa señal,
+  // leemos de token_out y marcamos como movimiento interno (sin evento fiscal,
+  // la base viaja al destino vía `depositedDelta`).
+  const withdrawMeta = tx.metadata ?? {};
+  const withdrawReason = typeof withdrawMeta.reason === "string" ? withdrawMeta.reason : null;
+  const isRebalanceOut =
+    withdrawReason === "rebalance_transfer" || withdrawReason === "rebalance_harvest_out";
+
+  if (isRebalanceOut) {
+    const outSym = (tx.tokenOutSymbol ?? "").toUpperCase();
+    const outAmt = Number(tx.tokenOutAmount ?? 0);
+    const sp = Number(tx.spotPriceUsd ?? 0);
+    if (!outSym || outAmt <= 0 || sp <= 0) {
+      return emptyResult(
+        "non_taxable_transfer",
+        "none",
+        "Salida de rebalanceo con datos incompletos.",
+        `Rebalanceo desde ${walletName} sin datos suficientes.`,
+        walletKind,
+      );
+    }
+    const valueEur = roundEur(usdToEur(outAmt * sp, rate));
+    const description = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: outSym,
+      amount: outAmt,
+      valueEur,
+    });
+    const noteSuffix =
+      withdrawReason === "rebalance_harvest_out"
+        ? "Harvest pendiente materializado en el destino."
+        : "La base se traslada al destino del rebalanceo.";
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `Salida de LP por rebalanceo: ${outAmt} ${outSym} desde ${walletName} (FMV ${valueEur} €). ${noteSuffix}`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: description,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   const symbol = (tx.tokenInSymbol ?? "").toUpperCase();
   const amount = Number(tx.tokenInAmount ?? 0);
   const spotUsd = Number(tx.spotPriceUsd ?? 0);
