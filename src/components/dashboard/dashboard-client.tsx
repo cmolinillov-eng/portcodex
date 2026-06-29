@@ -32,7 +32,7 @@ import { StrategyComposition } from "./sections/StrategyComposition";
 import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
-import { RecentActivity } from "./sections/RecentActivity";
+import { RecentActivity, undoKeyFor } from "./sections/RecentActivity";
 
 type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
 type BaseDepositLendingMode = "collateral" | "debt" | "both";
@@ -311,6 +311,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
   const [manualPriceInputs, setManualPriceInputs] = useState<Record<string, string>>({});
   const [isManualPriceModalOpen, setIsManualPriceModalOpen] = useState(false);
   const [lastDeletedPosition, setLastDeletedPosition] = useState<DeletedPositionState | null>(null);
+  const [undoingKey, setUndoingKey] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedPosition, setSelectedPosition] = useState<DefiPosition | null>(null);
   const [form, setForm] = useState<FormState>(createEmptyForm);
@@ -848,6 +849,48 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Error desconocido al restaurar la posición.";
       setErrorMessage(message);
+    }
+  }
+
+  // Deshacer una operación reciente (añadir/rebalanceo/harvest = soft-delete del
+  // grupo; borrado de posición = restaurar). Solo gestores con permiso.
+  async function undoOperation(
+    item: DashboardData["recentActivity"][number],
+    mode: "operation" | "restore",
+  ) {
+    if (!viewer.canDeletePosition) return;
+    const label =
+      mode === "restore"
+        ? `restaurar la posición ${item.positionId} (${item.protocol})`
+        : `deshacer esta operación (${item.type})`;
+    const confirmed = window.confirm(`Vas a ${label}.\n\n¿Quieres continuar?`);
+    if (!confirmed) return;
+
+    const key = undoKeyFor(item, mode);
+    try {
+      setErrorMessage("");
+      setUndoingKey(key);
+      const response = await fetch("/api/transactions/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioId: item.portfolioId,
+          mode,
+          operationGroupId: item.operationGroupId,
+          protocol: item.protocol,
+          positionId: item.positionId,
+        }),
+      });
+      const body = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(body.error ?? "No se pudo deshacer la operación.");
+      }
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Error desconocido al deshacer.";
+      setErrorMessage(message);
+    } finally {
+      setUndoingKey("");
     }
   }
 
@@ -1767,6 +1810,9 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           visibleRecentActivityCount={visibleRecentActivityCount}
           setIsCsvModalOpen={setIsCsvModalOpen}
           setVisibleRecentActivityCount={setVisibleRecentActivityCount}
+          canUndo={viewer.canDeletePosition}
+          undoingKey={undoingKey}
+          onUndo={undoOperation}
         />
 
         <Link

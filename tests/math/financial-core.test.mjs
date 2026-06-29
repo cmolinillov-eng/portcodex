@@ -722,3 +722,129 @@ test("Modo de fallo: sin precios (columnas mal) el cierre registra pérdida tota
   assert.equal(broken.valueAtClose, 0);
   assert.equal(broken.realizedPnl, -800);
 });
+
+// ── 4) Composición de tokens de un LP: residuales de harvest no son principal ──
+
+/**
+ * Replica de get-dashboard-data: selección de balance por token-posición.
+ * - Si el token tiene capital-in/out (txData) → usa ese balance transaccional.
+ * - Si NO lo tiene pero la posición SÍ tiene cobertura transaccional → 0
+ *   (token residual de harvest que la vista suma como token_in).
+ * - Si la posición no tiene ninguna cobertura → fallback al balance de la vista.
+ */
+function resolveTokenBalance({ tokenTxBalance, positionHasTxCoverage, viewBalance }) {
+  if (tokenTxBalance != null) return Math.max(0, tokenTxBalance);
+  return positionHasTxCoverage ? 0 : viewBalance;
+}
+
+function lpTokenComposition(tokens) {
+  return tokens
+    .filter((t) => resolveTokenBalance(t) > 1e-9)
+    .map((t) => t.symbol);
+}
+
+test("LP con harvest USDC no muestra un tercer token (BTC/ETH, no USDC)", () => {
+  // BTC y ETH tienen lp_deposit (txData); USDC solo viene de harvest (sin txData)
+  // en una posición con cobertura → debe quedar fuera de la composición.
+  const composition = lpTokenComposition([
+    { symbol: "BTC", tokenTxBalance: 0.0001, positionHasTxCoverage: true, viewBalance: 0.0001 },
+    { symbol: "ETH", tokenTxBalance: 0.2109, positionHasTxCoverage: true, viewBalance: 0.2109 },
+    { symbol: "USDC", tokenTxBalance: null, positionHasTxCoverage: true, viewBalance: 8.56 },
+  ]);
+  assert.deepEqual(composition, ["BTC", "ETH"]);
+});
+
+test("Modo de fallo: sin el guard, el harvest USDC inflaba el LP a 3 tokens", () => {
+  // Comportamiento antiguo: token sin txData caía al viewBalance contaminado.
+  const oldResolve = ({ tokenTxBalance, viewBalance }) =>
+    tokenTxBalance != null ? Math.max(0, tokenTxBalance) : viewBalance;
+  const tokens = [
+    { symbol: "BTC", tokenTxBalance: 0.0001, viewBalance: 0.0001 },
+    { symbol: "ETH", tokenTxBalance: 0.2109, viewBalance: 0.2109 },
+    { symbol: "USDC", tokenTxBalance: null, viewBalance: 8.56 },
+  ];
+  const composition = tokens.filter((t) => oldResolve(t) > 1e-9).map((t) => t.symbol);
+  assert.deepEqual(composition, ["BTC", "ETH", "USDC"]);
+});
+
+test("Posición legacy sin transacciones conserva el balance de la vista", () => {
+  // Sin cobertura transaccional, el fallback a la vista se mantiene.
+  const composition = lpTokenComposition([
+    { symbol: "SOL", tokenTxBalance: null, positionHasTxCoverage: false, viewBalance: 10 },
+    { symbol: "USDC", tokenTxBalance: null, positionHasTxCoverage: false, viewBalance: 5 },
+  ]);
+  assert.deepEqual(composition, ["SOL", "USDC"]);
+});
+
+// ── 5) Shape del snapshot de cierre cumple los CHECK de la tabla ─────────────
+
+/**
+ * La tabla transactions impone CHECK: token_in_amount > 0, spot_price > 0 y
+ * "cada movimiento debe tener token_in_symbol o token_out_symbol". Un snapshot
+ * position_closed con 0/0/null fallaba SIEMPRE → el cierre nunca se guardaba y
+ * el P&L realizado de la posición desaparecía del portfolio.
+ */
+function closureRowIsValid(row) {
+  const hasSymbol = Boolean(row.token_in_symbol) || Boolean(row.token_out_symbol);
+  return Number(row.token_in_amount) > 0 && Number(row.spot_price) > 0 && hasSymbol;
+}
+
+test("Snapshot de cierre (delete route) cumple los constraints de la BD", () => {
+  const row = { token_in_symbol: "BTC/ETH", token_in_amount: 1, spot_price: 1, token_out_symbol: null };
+  assert.equal(closureRowIsValid(row), true);
+});
+
+test("Snapshot de auto-cierre cumple los constraints (símbolo no nulo)", () => {
+  const row = { token_in_symbol: "SOL/ETH", token_in_amount: 1, spot_price: 1, token_out_symbol: null };
+  assert.equal(closureRowIsValid(row), true);
+});
+
+test("Modo de fallo: el shape antiguo (0/0/null) viola los constraints", () => {
+  const oldDelete = { token_in_symbol: "BTC/ETH", token_in_amount: 0, spot_price: 0, token_out_symbol: null };
+  const oldAuto = { token_in_symbol: null, token_in_amount: 0, spot_price: 0, token_out_symbol: null };
+  assert.equal(closureRowIsValid(oldDelete), false); // spot_price/token_in_amount = 0
+  assert.equal(closureRowIsValid(oldAuto), false);   // además sin símbolo
+});
+
+// ── 6) Deshacer: qué operaciones son deshacibles y con qué modo ──────────────
+
+/**
+ * Replica de undoModeFor (RecentActivity): decide si una fila de actividad se
+ * puede deshacer y cómo:
+ *  - "restore": borrado de posición (position_closed con reason "deleted").
+ *  - "operation": operación de usuario con grupo (alta, rebalanceo, harvest…).
+ *  - null: no deshacible (auto-cierre, o sin grupo).
+ */
+function undoModeFor(item) {
+  if (item.type === "position_closed") {
+    return item.reason === "deleted" ? "restore" : null;
+  }
+  if (item.reason === "auto_closed") return null;
+  if (item.operationGroupId) return "operation";
+  return null;
+}
+
+test("Alta de posición (con grupo) es deshacible en modo operation", () => {
+  assert.equal(undoModeFor({ type: "deposit", operationGroupId: "g1", reason: "" }), "operation");
+  assert.equal(undoModeFor({ type: "lp_deposit", operationGroupId: "g2", reason: "" }), "operation");
+});
+
+test("Borrado de posición es deshacible en modo restore", () => {
+  assert.equal(undoModeFor({ type: "position_closed", operationGroupId: "", reason: "deleted" }), "restore");
+});
+
+test("Rebalanceo (cierre con reason rebalanced) NO se restaura como borrado", () => {
+  // El cierre del rebalanceo se deshace vía su grupo (modo operation en las
+  // filas source/target), no como restauración. La propia fila position_closed
+  // con reason rebalanced no ofrece restore.
+  assert.equal(undoModeFor({ type: "position_closed", operationGroupId: "g3", reason: "rebalanced" }), null);
+});
+
+test("Auto-cierre NO es deshacible (no es acción del gestor)", () => {
+  assert.equal(undoModeFor({ type: "position_closed", operationGroupId: "g4", reason: "auto_closed" }), null);
+  assert.equal(undoModeFor({ type: "deposit", operationGroupId: "g4", reason: "auto_closed" }), null);
+});
+
+test("Operación legacy sin grupo no ofrece deshacer (evita borrados amplios)", () => {
+  assert.equal(undoModeFor({ type: "deposit", operationGroupId: "", reason: "" }), null);
+});

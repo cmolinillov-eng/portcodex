@@ -59,21 +59,43 @@ export async function POST(request: NextRequest) {
     }
 
     const client = getRestoreClient();
+    const now = new Date().toISOString();
+
+    // 1. Re-activar las transacciones de capital (todo menos el snapshot de cierre).
     const { data, error } = await client
       .from("transactions")
       .update({ deleted_at: null })
       .eq("portfolio_id", portfolioId)
       .eq("protocol", protocol)
       .eq("position_id", positionId)
+      .neq("type", "position_closed")
       .select("id");
 
     if (error) {
       throw new Error(error.message);
     }
 
+    // 2. Soft-borrar el snapshot position_closed creado por el borrado. Si no, al
+    //    restaurar la posición su realizedPnl seguiría sumando en el dashboard
+    //    (doble conteo: posición activa de nuevo + su cierre).
+    const closed = await client
+      .from("transactions")
+      .update({ deleted_at: now })
+      .eq("portfolio_id", portfolioId)
+      .eq("protocol", protocol)
+      .eq("position_id", positionId)
+      .eq("type", "position_closed")
+      .is("deleted_at", null)
+      .select("id");
+
+    if (closed.error) {
+      throw new Error(closed.error.message);
+    }
+
     return NextResponse.json({
       ok: true,
       restoredRows: (data ?? []).length,
+      removedSnapshots: (closed.data ?? []).length,
     });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Restore position error:", error);

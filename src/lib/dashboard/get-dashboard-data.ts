@@ -57,6 +57,10 @@ export type RecentActivityItem = {
   type: string;
   movementOrigin: "harvest_reinvest" | "standard";
   operationGroupId: string;
+  /** Portfolio dueño de la operación; necesario para deshacerla con permisos. */
+  portfolioId: string;
+  /** reason de metadata (deleted/rebalanced/auto_closed/manual_edit…) para decidir si es deshacible. */
+  reason: string;
   protocol: string;
   positionId: string;
   positionType: string;
@@ -653,7 +657,7 @@ async function fetchRecentActivityRows(allowedPortfolioIds: string[], limit = 10
   const publicQuery = await publicClient
     .from("transactions")
     .select(
-      "portfolio_id, transaction_date, type, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
+      "portfolio_id, transaction_date, type, operation_group_id, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
     )
     .in("portfolio_id", allowedPortfolioIds)
     .is("deleted_at", null)
@@ -686,7 +690,7 @@ async function fetchRecentActivityRows(allowedPortfolioIds: string[], limit = 10
   const serviceQuery = await serviceClient
     .from("transactions")
     .select(
-      "portfolio_id, transaction_date, type, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
+      "portfolio_id, transaction_date, type, operation_group_id, metadata, notes, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price",
     )
     .in("portfolio_id", allowedPortfolioIds)
     .is("deleted_at", null)
@@ -806,9 +810,14 @@ export async function getDashboardData(options?: {
     .filter((id) => access.isSuperAdmin || allowedPortfolioIds.includes(id));
   const portfolioTransactions = await fetchPortfolioTransactions(portfolioIds);
 
-  // Build set of position keys that have at least one active (non-deleted) transaction
+  // Build set of position keys that have at least one active (non-deleted) transaction.
+  // Excluimos los marcadores position_closed: una posición cuya única transacción
+  // activa es su propio snapshot de cierre está CERRADA, no activa. Si la contáramos
+  // aquí, el borrado manual (que soft-borra las txns y deja solo el position_closed)
+  // haría "revivir" la posición en el dashboard con sus balances de la vista.
   const activePositionKeys = new Set<string>();
   for (const tx of portfolioTransactions) {
+    if ((tx.type ?? "").trim() === "position_closed") continue;
     if (tx.portfolio_id && tx.position_id) {
       activePositionKeys.add(positionCompositeKey(tx.portfolio_id, tx.protocol ?? "Wallet", tx.position_id));
     }
@@ -961,6 +970,17 @@ export async function getDashboardData(options?: {
     }
   }
 
+  // Posiciones que tienen al menos una transacción de capital (in/out): para
+  // ellas el balance es 100% transaccional. Si una posición está aquí pero un
+  // token concreto NO tiene txData, ese token no es principal (típicamente un
+  // residual de harvest que la vista defi_positions_analytics suma como
+  // token_in). En ese caso su balance debe ser 0, no caer al viewBalance
+  // contaminado — eso es lo que hacía aparecer LPs con un tercer token (USDC).
+  const positionsWithTxCoverage = new Set<string>();
+  for (const key of txBalanceByTokenPosition.keys()) {
+    positionsWithTxCoverage.add(key.split("::")[0]!);
+  }
+
   let positions: DefiPosition[] = filteredRows
     .filter((row) => row.is_active === true)
     .map<DefiPosition>((row) => {
@@ -970,9 +990,14 @@ export async function getDashboardData(options?: {
       const viewAvgPrice = toNumber(row.average_entry_price);
 
       // Use transaction-computed balance if available, otherwise fall back to view
-      const tpKey = `${positionCompositeKey(row.portfolio_id ?? "", row.protocol ?? "Wallet", row.position_id ?? "")}::${tokenSymbol}`;
+      const positionKey = positionCompositeKey(row.portfolio_id ?? "", row.protocol ?? "Wallet", row.position_id ?? "");
+      const tpKey = `${positionKey}::${tokenSymbol}`;
       const txData = txBalanceByTokenPosition.get(tpKey);
-      const currentBalance = txData ? Math.max(0, txData.balance) : viewBalance;
+      const currentBalance = txData
+        ? Math.max(0, txData.balance)
+        : positionsWithTxCoverage.has(positionKey)
+          ? 0
+          : viewBalance;
       const averageEntryPrice = txData && txData.depositedAmount > 0
         ? txData.costUsd / txData.depositedAmount
         : viewAvgPrice;
@@ -1754,6 +1779,8 @@ export async function getDashboardData(options?: {
       type: (tx.type ?? "").trim(),
       movementOrigin: getMetadataFlag(tx.metadata, tx.notes, "source") === "harvest_reinvest" ? "harvest_reinvest" : "standard",
       operationGroupId: (tx.operation_group_id ?? "").trim(),
+      portfolioId: (tx.portfolio_id ?? "").trim(),
+      reason: (getMetadataFlag(tx.metadata, tx.notes, "reason") ?? "").trim(),
       protocol: (tx.protocol ?? "Wallet").trim(),
       positionId: tx.position_id ?? "",
       positionType: normalizePositionType(tx.position_type),

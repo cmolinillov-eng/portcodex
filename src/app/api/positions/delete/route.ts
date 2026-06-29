@@ -182,11 +182,19 @@ export async function POST(request: NextRequest) {
       const snapshotRow = {
         portfolio_id: portfolioId,
         type: "position_closed",
-        token_in_symbol: snapshot.tokenSymbol,
-        token_in_amount: 0,
+        token_in_symbol: snapshot.tokenSymbol || "CLOSED",
+        // La tabla transactions tiene CHECK token_in_amount > 0 y spot_price > 0
+        // (transactions_token_in_amount_positive_chk / _spot_price_positive_chk).
+        // El snapshot es un marcador: las cifras reales viven en metadata.closure
+        // y ninguna lógica contable lee estos dos campos para position_closed
+        // (el dashboard solo suma metadata.closure.realizedPnl). Usamos 1/1 como
+        // sentinela positiva para satisfacer los constraints. Antes eran 0/0, lo
+        // que hacía fallar SIEMPRE el insert → el cierre nunca se guardaba y el
+        // P&L realizado de la posición borrada desaparecía del portfolio.
+        token_in_amount: 1,
         token_out_symbol: null,
         token_out_amount: null,
-        spot_price: 0,
+        spot_price: 1,
         fee_amount: 0,
         notes: `Posición cerrada — eliminada`,
         transaction_date: now,
@@ -206,10 +214,11 @@ export async function POST(request: NextRequest) {
       };
 
       const { error: snapshotError } = await client.from("transactions").insert(snapshotRow);
-      if (snapshotError) {
-        // If position_closed type is rejected by DB constraint, try with "withdrawal" type
-        const fallbackRow = { ...snapshotRow, type: "withdrawal" };
-        await client.from("transactions").insert(fallbackRow);
+      if (snapshotError && process.env.NODE_ENV !== "production") {
+        // No usamos un fallback type="withdrawal": el dashboard solo cuenta el
+        // P&L realizado de filas position_closed, así que un withdrawal perdería
+        // el cierre igualmente. Si esto falla, lo registramos para diagnóstico.
+        console.error("Closure snapshot insert failed:", snapshotError.message);
       }
     }
 

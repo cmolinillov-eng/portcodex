@@ -5,12 +5,42 @@ import { FileSpreadsheet } from "lucide-react";
 import { currency } from "../utils/formatters";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 
+type RecentActivityEntry = DashboardData["recentActivity"][number];
+
 interface RecentActivityProps {
   recentActivity: DashboardData["recentActivity"];
   visibleRecentActivity: DashboardData["recentActivity"];
   visibleRecentActivityCount: number;
   setIsCsvModalOpen: (open: boolean) => void;
   setVisibleRecentActivityCount: React.Dispatch<React.SetStateAction<number>>;
+  /** El gestor puede deshacer operaciones. */
+  canUndo?: boolean;
+  /** Clave de la operación que se está deshaciendo (loading). */
+  undoingKey?: string;
+  onUndo?: (item: RecentActivityEntry, mode: "operation" | "restore") => void;
+}
+
+/**
+ * Decide si una fila de actividad se puede deshacer y con qué modo:
+ *  - "restore": un borrado de posición (snapshot position_closed con reason "deleted").
+ *  - "operation": cualquier operación de usuario con grupo (añadir, rebalanceo,
+ *    harvest, edición). Se excluyen los cierres automáticos (no son acciones del gestor).
+ */
+export function undoModeFor(item: RecentActivityEntry): "operation" | "restore" | null {
+  if (item.type === "position_closed") {
+    return item.reason === "deleted" ? "restore" : null;
+  }
+  if (item.reason === "auto_closed") return null;
+  if (item.operationGroupId) return "operation";
+  // Caso legacy sin grupo: permitir deshacer una alta simple por posición… no es
+  // seguro sin grupo, así que solo ofrecemos undo cuando hay operationGroupId.
+  return null;
+}
+
+export function undoKeyFor(item: RecentActivityEntry, mode: "operation" | "restore"): string {
+  return mode === "restore"
+    ? `restore:${item.portfolioId}:${item.protocol}:${item.positionId}`
+    : `op:${item.portfolioId}:${item.operationGroupId}`;
 }
 
 // Human-readable labels + badge class per transaction type
@@ -40,7 +70,12 @@ export function RecentActivity({
   visibleRecentActivityCount,
   setIsCsvModalOpen,
   setVisibleRecentActivityCount,
+  canUndo = false,
+  undoingKey = "",
+  onUndo,
 }: RecentActivityProps) {
+  const showUndoCol = canUndo && typeof onUndo === "function";
+  const colCount = showUndoCol ? 7 : 6;
   return (
     <section
       className="glass-panel page-section-card p-5 md:p-6 mb-6 animate-fade-up stagger-4"
@@ -73,12 +108,15 @@ export function RecentActivity({
               <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TOKENS</th>
               <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">DETALLE</th>
               <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PRECIO</th>
+              {showUndoCol ? (
+                <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACCIÓN</th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {recentActivity.length === 0 ? (
               <tr>
-                <td className="px-6 py-10 text-center" colSpan={6}>
+                <td className="px-6 py-10 text-center" colSpan={colCount}>
                   <div className="flex flex-col items-center gap-2 text-[var(--muted)]">
                     <div
                       className="h-10 w-10 rounded-full border border-[var(--line)] bg-[rgba(160,210,255,0.05)] flex items-center justify-center"
@@ -162,6 +200,32 @@ export function RecentActivity({
                   <td className="px-4 py-3.5 text-sm font-mono text-[var(--muted)]">
                     {item.spotPrice > 0 ? currency(item.spotPrice) : "—"}
                   </td>
+
+                  {/* Acción: deshacer (solo gestor) */}
+                  {showUndoCol ? (
+                    (() => {
+                      const mode = undoModeFor(item);
+                      if (!mode) {
+                        return <td className="px-4 py-3.5" />;
+                      }
+                      const key = undoKeyFor(item, mode);
+                      const busy = undoingKey === key;
+                      return (
+                        <td className="px-4 py-3.5">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onUndo?.(item, mode)}
+                            className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+                            aria-label={mode === "restore" ? "Deshacer borrado de posición" : "Deshacer operación"}
+                            title={mode === "restore" ? "Restaurar la posición borrada" : "Deshacer esta operación"}
+                          >
+                            {busy ? "Deshaciendo…" : "Deshacer"}
+                          </button>
+                        </td>
+                      );
+                    })()
+                  ) : null}
                 </tr>
               ))
             )}

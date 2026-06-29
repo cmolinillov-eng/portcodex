@@ -154,15 +154,21 @@ export async function autoClosePositionIfEmpty({
   // también usa realizedPnl = 0). Guardamos el valor bruto solo como referencia.
   const realizedPnlGross = valueAtClose - totalDeposited;
   const realizedPnl = 0;
+  // La tabla transactions exige token_in_amount > 0, spot_price > 0 y un símbolo
+  // no nulo (CHECK constraints). El snapshot es solo un marcador: las cifras
+  // reales viven en metadata.closure y ninguna lógica contable lee estos campos
+  // para position_closed. Antes se insertaba con 0/0/null → fallaba SIEMPRE el
+  // insert y el auto-cierre nunca se registraba.
+  const closureSymbol = Object.keys(balances).join("/") || "CLOSED";
   const closureRow = {
     portfolio_id: portfolioId,
     type: "position_closed",
     operation_group_id: randomUUID(),
-    token_in_symbol: null,
-    token_in_amount: 0,
+    token_in_symbol: closureSymbol,
+    token_in_amount: 1,
     token_out_symbol: null,
     token_out_amount: null,
-    spot_price: 0,
+    spot_price: 1,
     fee_amount: 0,
     notes: `Cierre automático (balance = 0)`,
     transaction_date: new Date().toISOString(),

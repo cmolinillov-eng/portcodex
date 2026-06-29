@@ -1498,14 +1498,20 @@ async function buildRows(
       ? (() => {
           try {
             const tokenLabel = sourceTokenB ? `${sourceToken}/${sourceTokenB}` : sourceToken;
-            return createRow({
+            // makeRow (no createRow) para que el snapshot comparta operationGroupId
+            // con las filas del rebalanceo y se deshaga junto con ellas.
+            return makeRow({
               portfolio_id: portfolioId,
               type: "position_closed" as TransactionType,
-              token_in_symbol: tokenLabel,
-              token_in_amount: 0,
+              token_in_symbol: tokenLabel || "CLOSED",
+              // CHECK token_in_amount > 0 y spot_price > 0: el snapshot es un
+              // marcador (las cifras reales van en metadata.closure). Con 0/0
+              // el insert fallaba siempre y el cierre del rebalanceo no se
+              // registraba. Sentinela positiva 1/1.
+              token_in_amount: 1,
               token_out_symbol: null,
               token_out_amount: null,
-              spot_price: 0,
+              spot_price: 1,
               protocol: sourceProtocol,
               position_id: sourcePositionId,
               position_type: sourcePositionType,
