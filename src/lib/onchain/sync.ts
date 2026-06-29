@@ -1,6 +1,7 @@
 import { getActiveWallets } from "./wallets";
 import { fetchZerionPositions, type ZerionPosition } from "./discovery/zerion";
 import { enrichPancakeV3 } from "./evm/pancakeswap-v3";
+import { enrichUniswapV3 } from "./evm/uniswap-v3";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
 
 /**
@@ -49,10 +50,13 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
   positions.push(...holdsToPositions(zerion, w));
 
   // Adaptadores por protocolo (cada uno filtra lo suyo del descubrimiento):
-  const pancake = await enrichPancakeV3(zerion, { portfolioId: w.portfolioId, address: w.address });
-  positions.push(...pancake.positions);
-  warnings.push(...pancake.warnings);
-  // TODO: enrichUniswapV3, enrichAave, enrichProjectX… (se añaden aquí)
+  const ctx = { portfolioId: w.portfolioId, address: w.address };
+  for (const enrich of [enrichPancakeV3, enrichUniswapV3]) {
+    const r = await enrich(zerion, ctx);
+    positions.push(...r.positions);
+    warnings.push(...r.warnings);
+  }
+  // TODO: enrichAave, enrichProjectX, Solana… (se añaden a la lista de arriba)
 
   return { positions, warnings };
 }
