@@ -33,6 +33,7 @@ import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
 import { buildPortfolioReportHtml } from "@/lib/reports/portfolio-report-html";
 import { RecentActivity, undoKeyFor } from "./sections/RecentActivity";
+import { OnchainLivePanel } from "./sections/OnchainLivePanel";
 
 type OperationType = "base_deposit" | "harvest" | "staking" | "lending_borrow" | "liquidity_pool" | "rebalance";
 type BaseDepositLendingMode = "collateral" | "debt" | "both";
@@ -1803,6 +1804,8 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
             />
           ))
         )}
+
+        <OnchainLivePanel portfolioId={(portfolioContext?.portfolioId ?? "").trim()} />
 
         <RecentActivity
           recentActivity={recentActivity}
