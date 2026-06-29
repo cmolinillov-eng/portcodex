@@ -1566,6 +1566,25 @@ export async function getDashboardData(options?: {
       continue;
     }
 
+    if (txType === "lending_borrow") {
+      // Pedir prestado = extraer capital: reduce el Total Depositado en el
+      // principal recibido (token_in), igual que una retirada. Repagar
+      // (token_out) lo restituye. Así pedir prestado es P&L-neutro por
+      // construcción: el valor de la posición ya resta la deuda (a precio
+      // actual) y el cost basis resta el principal (a precio de la operación).
+      // Si la deuda es un token volátil que se aprecia, la diferencia entre
+      // ambos precios aflora como pérdida real (correcto).
+      const net = (outAmount - inAmount) * spotPrice; // <0 al pedir, >0 al repagar
+      if (positionId) {
+        const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
+        const fallbackKey = positionCompositeKey("", protocol, positionId);
+        depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + net);
+        depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + net);
+      }
+      totalDepositedUsd += net;
+      continue;
+    }
+
     if (capitalInTypes.has(txType)) {
       if (!isInternalMovement && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);

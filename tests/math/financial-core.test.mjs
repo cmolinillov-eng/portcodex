@@ -848,3 +848,41 @@ test("Auto-cierre NO es deshacible (no es acción del gestor)", () => {
 test("Operación legacy sin grupo no ofrece deshacer (evita borrados amplios)", () => {
   assert.equal(undoModeFor({ type: "deposit", operationGroupId: "", reason: "" }), null);
 });
+
+// ── 7) Lending: pedir prestado es P&L-neutro ────────────────────────────────
+
+/**
+ * Replica del modelo del dashboard tras el fix: el préstamo reduce el cost
+ * basis (como una extracción de capital) y la deuda reduce el valor. Así el
+ * acto de pedir prestado no genera P&L por sí mismo.
+ *   deposited = colateralAportado − principalPrestado
+ *   value     = colateralActual   − deudaActual
+ */
+function lendingPnl({ collateralSupplied, collateralValueNow, borrowedPrincipal, debtValueNow }) {
+  const deposited = collateralSupplied - borrowedPrincipal;
+  const value = collateralValueNow - debtValueNow;
+  return value - deposited;
+}
+
+test("Pedir prestado (stablecoin, sin cambio de precio) da P&L = 0", () => {
+  const pnl = lendingPnl({ collateralSupplied: 1000, collateralValueNow: 1000, borrowedPrincipal: 500, debtValueNow: 500 });
+  assert.equal(pnl, 0);
+});
+
+test("Colateral que se aprecia: la ganancia es del colateral, no de la deuda", () => {
+  const pnl = lendingPnl({ collateralSupplied: 1000, collateralValueNow: 1200, borrowedPrincipal: 500, debtValueNow: 500 });
+  assert.equal(pnl, 200);
+});
+
+test("Deuda en token volátil que se aprecia genera pérdida real", () => {
+  // Pediste 500 prestado, ahora vale 600 → tu deuda se encareció 100.
+  const pnl = lendingPnl({ collateralSupplied: 1000, collateralValueNow: 1000, borrowedPrincipal: 500, debtValueNow: 600 });
+  assert.equal(pnl, -100);
+});
+
+test("Modo de fallo: sin restar el préstamo del depositado, pedir prestado parecía pérdida", () => {
+  // Modelo antiguo: deposited = colateral aportado (no resta el préstamo).
+  const depositedOld = 1000;
+  const value = 1000 - 500; // valor resta la deuda
+  assert.equal(value - depositedOld, -500); // -500 ficticio (la deuda contada como pérdida)
+});
