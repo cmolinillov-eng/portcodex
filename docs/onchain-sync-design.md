@@ -74,6 +74,45 @@ Ningún proveedor cubre bien Solana DeFi **y** EVM DeFi a la vez. Se combinan:
 > Decisión abierta D1: ¿Jupiter Portfolio beta o auto-hospedar SonarWatch
 > open-source para Solana? Depende de la riqueza/estabilidad de la beta.
 
+### ⚠️ Realidad de cobertura descubierta en pruebas (2026-06-29)
+Probando Zerion con la wallet real de mfita: **autentica y lee balances OK**
+(~574 € en la address EVM), pero la mayor parte está en **Hyperliquid / HyperEVM**
+(USDC + HYPE) y Zerion **NO decodifica las posiciones DeFi de ProjectX
+(Hyperliquid) ni de Solana** — solo muestra los tokens sueltos, no la estructura
+(rango LP, lending). Conclusión: además de Zerion (balances + DeFi en cadenas
+mayores) harán falta **adaptadores específicos por protocolo**:
+- **Hyperliquid / HyperEVM (ProjectX):** API propia de Hyperliquid.
+- **Solana (Kamino, Orca, Jupiter):** Jupiter Portfolio / SonarWatch.
+
+Nota importante: los holdings on-chain de esta wallet **no coinciden a simple
+vista** con las posiciones manuales del portfolio M Fita (que listan Pancake/Orca)
+— hay que reconciliar qué wallet tiene qué, o las entradas manuales están
+desactualizadas. Justo el problema que la automatización viene a resolver.
+
+### Conclusión tras probar agregadores (2026-06-29, con keys reales)
+Probado contra la wallet real de mfita:
+- **Zerion (free):** descubre DeFi en EVM (encontró la posición PancakeSwap V3,
+  ~307€) + valor + balances. Pero **NO da rango, dentro/fuera de rango ni fees
+  acumuladas** (los campos no existen en su respuesta). No da DeFi en Solana.
+- **Moralis (free):** 0 posiciones DeFi en EVM para esta wallet; y su **API de
+  Solana NO expone endpoint de DeFi** (solo balances/portfolio), pese al
+  marketing. Tampoco da rangos/fees.
+
+**Veredicto:** ningún agregador (gratis NI de pago) da de forma fiable el detalle
+de liquidez concentrada (**rango, dentro/fuera, fees**) que el usuario necesita.
+Ese detalle vive a nivel de **protocolo / on-chain**. Por tanto:
+- **Agregador (Zerion):** capa barata de "qué tengo + cuánto vale" (descubrimiento).
+- **Lectores on-chain por protocolo (GRATIS vía RPC):** la única fuente real de
+  rango + dentro/fuera + fees. Uno por tipo de protocolo:
+  - Kamino → API REST pública (api.kamino.finance), gratis.
+  - Orca → SDK/whirlpools, gratis (tick range + fees).
+  - PancakeSwap V3 → lectura on-chain del NFT + pool (free RPC).
+  - Hyperliquid/ProjectX → API Hyperliquid + lecturas HyperEVM.
+
+Coste: construir un adaptador por protocolo (requiere añadir viem para EVM y
+SDK de Solana — ahora mismo NO hay libs web3 instaladas). Es la única vía
+completa, y es gratis.
+
 ---
 
 ## 4. Arquitectura por capas
@@ -169,6 +208,18 @@ hoy**. Tres opciones (no excluyentes):
   existente una sola vez.
 
 Recomendado: **A** para arrancar, **B** como mejora posterior por wallet.
+
+**Decisión del usuario (2026-06-29) — precios de entrada:**
+- Para posiciones **ya existentes**: la app las trae on-chain automáticamente y
+  ofrece un campo **opcional** para que el usuario teclee el precio de entrada al
+  que entró. Con eso se calcula si gana/pierde. Si no lo rellena, se muestra solo
+  valor actual (sin P&L fiable).
+- Para posiciones **nuevas** (creadas ya con el sistema funcionando): el precio
+  de entrada = el **precio del momento de creación** (automático, sellado). No
+  hace falta teclear nada.
+
+Esto es exactamente el invariante de §1: el depositado se fija al abrir y no se
+toca; solo flota el valor de mercado.
 
 ---
 
