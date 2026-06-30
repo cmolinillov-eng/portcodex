@@ -3,7 +3,12 @@ import { fetchZerionPositions, type ZerionPosition } from "./discovery/zerion";
 import { enrichPancakeV3 } from "./evm/pancakeswap-v3";
 import { enrichUniswapV3 } from "./evm/uniswap-v3";
 import { enrichAave } from "./evm/aave";
+import { enrichKamino } from "./solana/kamino";
+import { enrichOrca } from "./solana/orca";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
+
+type SolanaAdapter = (ctx: { portfolioId: string; address: string }) => Promise<{ positions: LivePosition[]; warnings: string[] }>;
+const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichOrca];
 
 /**
  * Orquestador de la lectura on-chain de un portfolio. Genérico: recorre las
@@ -14,7 +19,7 @@ import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
  * Diseñado para que cualquier portfolio/address nueva entre sin tocar nada.
  */
 
-/** Tokens sueltos (hold) → LivePosition kind "wallet". */
+/** Tokens sueltos (hold) → LivePosition kind "wallet". Sirve para EVM y Solana. */
 function holdsToPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[] {
   return zerion
     .filter((z) => z.positionType === "wallet" && (z.valueUsd ?? 0) > 0)
@@ -22,8 +27,8 @@ function holdsToPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[
       id: `${z.chain}:hold:${z.tokenAddress ?? z.symbol}`,
       portfolioId: w.portfolioId,
       walletAddress: w.address,
-      chainKind: "evm" as const,
-      chain: z.chain,
+      chainKind: w.chainKind,
+      chain: z.chain || (w.chainKind === "solana" ? "solana" : "evm"),
       protocol: null,
       kind: "wallet" as const,
       label: z.symbol ?? "?",
@@ -42,7 +47,7 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
 
   let zerion: ZerionPosition[];
   try {
-    zerion = await fetchZerionPositions(w.address, { complex: false }); // no_filter = todo
+    zerion = await fetchZerionPositions(w.address, { filter: "no_filter" }); // balances + DeFi
   } catch (e) {
     return { positions, warnings: [`Zerion falló para ${w.address}: ${(e as Error).message}`.slice(0, 160)] };
   }
@@ -62,6 +67,32 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
   return { positions, warnings };
 }
 
+async function syncSolanaWallet(w: WalletRef): Promise<{ positions: LivePosition[]; warnings: string[] }> {
+  const positions: LivePosition[] = [];
+  const warnings: string[] = [];
+
+  // Hold (tokens sueltos con valor) vía Zerion (Solana solo admite only_simple).
+  try {
+    const zerion = await fetchZerionPositions(w.address, { filter: "only_simple" });
+    positions.push(...holdsToPositions(zerion, w));
+  } catch (e) {
+    warnings.push(`Zerion Solana falló para ${w.address}: ${(e as Error).message}`.slice(0, 160));
+  }
+
+  // Adaptadores DeFi de Solana (cada uno consulta la API pública del protocolo):
+  const ctx = { portfolioId: w.portfolioId, address: w.address };
+  for (const enrich of SOLANA_ADAPTERS) {
+    try {
+      const r = await enrich(ctx);
+      positions.push(...r.positions);
+      warnings.push(...r.warnings);
+    } catch (e) {
+      warnings.push(`Adaptador Solana falló: ${(e as Error).message}`.slice(0, 160));
+    }
+  }
+  return { positions, warnings };
+}
+
 export async function syncPortfolioLive(portfolioId: string): Promise<LiveSyncResult> {
   const wallets = await getActiveWallets(portfolioId);
   const positions: LivePosition[] = [];
@@ -73,7 +104,9 @@ export async function syncPortfolioLive(portfolioId: string): Promise<LiveSyncRe
       positions.push(...r.positions);
       warnings.push(...r.warnings);
     } else {
-      warnings.push(`Solana aún no integrado para ${w.address} (Kamino/Orca/Jupiter pendientes).`);
+      const r = await syncSolanaWallet(w);
+      positions.push(...r.positions);
+      warnings.push(...r.warnings);
     }
   }
 
