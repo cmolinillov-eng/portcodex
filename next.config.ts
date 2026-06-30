@@ -106,6 +106,11 @@ const nextConfig: NextConfig = {
     "@orca-so/whirlpools-core",
     "@orca-so/whirlpools",
   ],
+  // Forzar que el binario .wasm de whirlpools-core se incluya en la función
+  // serverless de /api/wallet/live (si no, peta en runtime al cargar Kamino).
+  outputFileTracingIncludes: {
+    "/api/wallet/live": ["./node_modules/@orca-so/whirlpools-core/**/*.wasm"],
+  },
   async headers() {
     return [
       {

@@ -1,8 +1,12 @@
 import { address } from "@solana/kit";
-import { Kamino } from "@kamino-finance/kliquidity-sdk";
-import { Farms, WAD, fetchFarmState } from "@kamino-finance/farms-sdk";
 import { getSolanaRpc } from "./rpc";
 import type { LivePosition } from "../types";
+
+// Los SDKs de Kamino arrastran WASM (@orca-so/whirlpools-core). Se importan de
+// forma DINÁMICA dentro de la función: si el WASM falla en serverless, solo se
+// pierde Kamino (capturado abajo), no tumba todo el panel.
+type KaminoMod = typeof import("@kamino-finance/kliquidity-sdk");
+type FarmsMod = typeof import("@kamino-finance/farms-sdk");
 
 /**
  * Adaptador Kamino (Liquidez/strategies en Solana). Las posiciones de "Liquidity"
@@ -40,6 +44,9 @@ export async function enrichKamino(
 
   let userStrats: Array<{ strategy: unknown; shareMint: unknown; strategyDex?: string }> = [];
   try {
+    const { Kamino } = (await import("@kamino-finance/kliquidity-sdk")) as KaminoMod;
+    const { Farms, WAD, fetchFarmState } = (await import("@kamino-finance/farms-sdk")) as FarmsMod;
+
     const kamino = new Kamino("mainnet-beta", rpc);
     userStrats = (await kamino.getUserPositions(address(ctx.address))) as typeof userStrats;
     if (userStrats.length === 0) return { positions, warnings };
@@ -65,14 +72,15 @@ export async function enrichKamino(
     }
 
     const labels = await strategyLabels();
-    const kamino2 = new Kamino("mainnet-beta", rpc);
     for (const p of userStrats) {
       const shareMint = String(p.shareMint);
       const strategyAddr = String(p.strategy);
       const shares = stakedByMint.get(shareMint) ?? 0;
       if (shares <= 0) continue;
       let sharePrice = 0;
-      try { sharePrice = Number(await kamino2.getStrategySharePrice(p.strategy as Parameters<Kamino["getStrategySharePrice"]>[0])); } catch { /* sin precio */ }
+      try {
+        sharePrice = Number(await kamino.getStrategySharePrice(p.strategy as Parameters<typeof kamino.getStrategySharePrice>[0]));
+      } catch { /* sin precio */ }
       const valueUsd = shares * sharePrice;
       const lab = labels[strategyAddr];
       const pair = lab ? `${lab.tokenA}/${lab.tokenB}` : "Kamino LP";
