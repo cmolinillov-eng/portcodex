@@ -1,5 +1,6 @@
 import { address, getProgramDerivedAddress, getAddressEncoder, getAddressDecoder } from "@solana/kit";
 import { getSolanaRpc, TOKEN_PROGRAM, TOKEN_2022_PROGRAM } from "./rpc";
+import { getSolanaPrices } from "./prices";
 import type { LivePosition } from "../types";
 
 /**
@@ -26,6 +27,22 @@ const KNOWN: Record<string, { sym: string; dec: number }> = {
 const sym = (mint: string) => KNOWN[mint]?.sym ?? `${mint.slice(0, 4)}…`;
 
 const i32 = (b: Buffer, o: number) => b.readInt32LE(o);
+const u128 = (b: Buffer, o: number) => {
+  let x = BigInt(0);
+  for (let i = 0; i < 16; i++) x += BigInt(b[o + i]) << (BigInt(8) * BigInt(i));
+  return x;
+};
+
+/** Cantidades de token A/B a partir de liquidez + sqrtPrice + rango (CL math). */
+function amountsFromLiquidity(liquidity: bigint, sqrtPriceX64: bigint, tickLower: number, tickUpper: number) {
+  const sqrtP = Number(sqrtPriceX64) / 2 ** 64;
+  const sqrtPa = Math.pow(1.0001, tickLower / 2);
+  const sqrtPb = Math.pow(1.0001, tickUpper / 2);
+  const L = Number(liquidity);
+  if (sqrtP <= sqrtPa) return { raw0: (L * (sqrtPb - sqrtPa)) / (sqrtPa * sqrtPb), raw1: 0 };
+  if (sqrtP >= sqrtPb) return { raw0: 0, raw1: L * (sqrtPb - sqrtPa) };
+  return { raw0: (L * (sqrtPb - sqrtP)) / (sqrtP * sqrtPb), raw1: L * (sqrtP - sqrtPa) };
+}
 
 async function getBuf(rpc: ReturnType<typeof getSolanaRpc>, addr: string): Promise<Buffer | null> {
   const r = await rpc.getAccountInfo(address(addr), { encoding: "base64" }).send();
@@ -77,19 +94,32 @@ export async function enrichOrca(
 
       // Position: disc(8) whirlpool(32)@8 positionMint(32)@40 liquidity(u128)@72 tickLower@88 tickUpper@92
       const whirlpool = dec.decode(pos.subarray(8, 40));
+      const liquidity = u128(pos, 72);
       const tickLower = i32(pos, 88);
       const tickUpper = i32(pos, 92);
 
       const wp = await getBuf(rpc, whirlpool);
       if (!wp) continue;
-      // Whirlpool: tickCurrent(i32)@81 tokenMintA(32)@101 tokenMintB(32)@181
+      // Whirlpool: sqrtPrice(u128)@65 tickCurrent(i32)@81 tokenMintA(32)@101 tokenMintB(32)@181
+      const sqrtPriceX64 = u128(wp, 65);
       const tickCurrent = i32(wp, 81);
       const tokenMintA = dec.decode(wp.subarray(101, 133));
       const tokenMintB = dec.decode(wp.subarray(181, 213));
       const inRange = tickLower <= tickCurrent && tickCurrent < tickUpper;
 
-      const da = KNOWN[tokenMintA]?.dec ?? 0;
-      const db = KNOWN[tokenMintB]?.dec ?? 0;
+      // Precios + decimales (Jupiter). Fallback a tokens conocidos.
+      const prices = await getSolanaPrices([tokenMintA, tokenMintB]);
+      const da = prices.get(tokenMintA)?.decimals ?? KNOWN[tokenMintA]?.dec ?? 0;
+      const db = prices.get(tokenMintB)?.decimals ?? KNOWN[tokenMintB]?.dec ?? 0;
+      const priceA = prices.get(tokenMintA)?.usdPrice ?? null;
+      const priceB = prices.get(tokenMintB)?.usdPrice ?? null;
+
+      // Cantidades de cada token desde la liquidez.
+      const { raw0, raw1 } = amountsFromLiquidity(liquidity, sqrtPriceX64, tickLower, tickUpper);
+      const amtA = raw0 / 10 ** da;
+      const amtB = raw1 / 10 ** db;
+      const valueUsd = priceA != null && priceB != null ? amtA * priceA + amtB * priceB : null;
+
       const tickToPrice = (t: number) => Math.pow(1.0001, t) * Math.pow(10, da - db);
 
       positions.push({
@@ -102,10 +132,10 @@ export async function enrichOrca(
         kind: "liquidity",
         label: `${sym(tokenMintA)}/${sym(tokenMintB)}`,
         tokens: [
-          { symbol: sym(tokenMintA), address: tokenMintA, amount: 0, valueUsd: null },
-          { symbol: sym(tokenMintB), address: tokenMintB, amount: 0, valueUsd: null },
+          { symbol: sym(tokenMintA), address: tokenMintA, amount: amtA, valueUsd: priceA != null ? amtA * priceA : null },
+          { symbol: sym(tokenMintB), address: tokenMintB, amount: amtB, valueUsd: priceB != null ? amtB * priceB : null },
         ],
-        valueUsd: null, // TODO: derivar de liquidez + sqrtPrice + precios
+        valueUsd,
         range: { lower: tickToPrice(tickLower), upper: tickToPrice(tickUpper), current: tickToPrice(tickCurrent), inRange },
         unclaimedUsd: null,
         meta: { positionMint: mint, whirlpool, tickLower, tickUpper, tickCurrent },
