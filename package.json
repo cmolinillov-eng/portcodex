@@ -17,6 +17,7 @@
     "qa:prepush": "npm run -s lint && npm run -s test:e2e:roles && npm run -s test:e2e:financial && npm run -s test:e2e:exports && npm run -s test:e2e:exports:ui"
   },
   "dependencies": {
+    "@kamino-finance/farms-sdk": "^3.2.26",
     "@kamino-finance/kliquidity-sdk": "^13.0.0",
     "@solana/kit": "^2.3.0",
     "@splinetool/react-spline": "^4.1.0",

@@ -97,6 +97,15 @@ if (process.env.NODE_ENV === "production") {
 
 const nextConfig: NextConfig = {
   allowedDevOrigins,
+  // Los SDKs de Kamino/Orca arrastran @orca-so/whirlpools-core (WASM) que Next no
+  // puede empaquetar en la función serverless. Se marcan como externos: se cargan
+  // de node_modules en runtime (donde el .wasm sí existe).
+  serverExternalPackages: [
+    "@kamino-finance/kliquidity-sdk",
+    "@kamino-finance/farms-sdk",
+    "@orca-so/whirlpools-core",
+    "@orca-so/whirlpools",
+  ],
   async headers() {
     return [
       {

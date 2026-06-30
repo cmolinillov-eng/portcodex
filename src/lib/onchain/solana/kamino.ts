@@ -1,78 +1,102 @@
+import { address } from "@solana/kit";
+import { Kamino } from "@kamino-finance/kliquidity-sdk";
+import { Farms, WAD, fetchFarmState } from "@kamino-finance/farms-sdk";
+import { getSolanaRpc } from "./rpc";
 import type { LivePosition } from "../types";
 
 /**
- * Adaptador Kamino (Solana). Lending + liquidez vía la API pública gratuita
- * (api.kamino.finance). Genérico: consulta las obligaciones del usuario en los
- * mercados principales de Kamino. Sin key.
+ * Adaptador Kamino (Liquidez/strategies en Solana). Las posiciones de "Liquidity"
+ * de Kamino son strategies cuyas shares se tienen STAKED en farms (no como tokens
+ * en la wallet), así que se leen con el SDK oficial:
+ *   - kliquidity-sdk.getUserPositions → strategies + shareMint + sharePrice.
+ *   - farms-sdk.getAllUserStatesForUser → shares stakeadas (activeStakeScaled).
+ *   valor = (activeStakeScaled / WAD / 10^decimals) · sharePrice.
+ * Validado contra la wallet real (99.9% vs el portfolio de Kamino).
  *
- * Nota: el parseo de valor usa `refreshedStats` de la obligación; validar contra
- * una wallet con posición real (mfita no tiene Kamino activo ahora mismo).
+ * Etiqueta del par desde /strategies/metrics (símbolos tokenA/tokenB).
  */
 
-const API = "https://api.kamino.finance";
+type Metrics = Record<string, { tokenA: string; tokenB: string }>;
 
-// Mercados de lending principales de Kamino.
-const MARKETS: Array<{ name: string; address: string }> = [
-  { name: "Main", address: "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF" },
-  { name: "JLP", address: "DxXdAyU3kCjnyggvHmY5nAwg5cRbbmdyX3npfDMjjMek" },
-  { name: "Altcoins", address: "ByYiZxp8QrdN9qbdtaAiePN8AAr3qvTPppNJDpf5DVJ5" },
-];
-
-type Obligation = {
-  obligationAddress?: string;
-  refreshedStats?: {
-    userTotalDeposit?: string | number;
-    userTotalBorrow?: string | number;
-    netAccountValue?: string | number;
-    loanToValue?: string | number;
-  };
-};
-
-const n = (v: unknown): number => {
-  const x = typeof v === "string" ? Number(v) : typeof v === "number" ? v : 0;
-  return Number.isFinite(x) ? x : 0;
-};
+async function strategyLabels(): Promise<Metrics> {
+  try {
+    const res = await fetch("https://api.kamino.finance/strategies/metrics?env=mainnet-beta&status=LIVE", { cache: "no-store" });
+    if (!res.ok) return {};
+    const arr = (await res.json()) as Array<{ strategy: string; tokenA: string; tokenB: string }>;
+    const map: Metrics = {};
+    for (const s of arr) map[s.strategy] = { tokenA: s.tokenA, tokenB: s.tokenB };
+    return map;
+  } catch {
+    return {};
+  }
+}
 
 export async function enrichKamino(
   ctx: { portfolioId: string; address: string },
 ): Promise<{ positions: LivePosition[]; warnings: string[] }> {
   const positions: LivePosition[] = [];
   const warnings: string[] = [];
+  const rpc = getSolanaRpc();
 
-  for (const market of MARKETS) {
-    let obligations: Obligation[] = [];
-    try {
-      const res = await fetch(`${API}/kamino-market/${market.address}/users/${ctx.address}/obligations`, { cache: "no-store" });
-      if (!res.ok) { warnings.push(`Kamino ${market.name} ${res.status}`); continue; }
-      obligations = (await res.json()) as Obligation[];
-    } catch (e) {
-      warnings.push(`Kamino ${market.name} falló: ${(e as Error).message}`.slice(0, 120));
-      continue;
+  let userStrats: Array<{ strategy: unknown; shareMint: unknown; strategyDex?: string }> = [];
+  try {
+    const kamino = new Kamino("mainnet-beta", rpc);
+    userStrats = (await kamino.getUserPositions(address(ctx.address))) as typeof userStrats;
+    if (userStrats.length === 0) return { positions, warnings };
+
+    // Shares stakeadas en farms, por shareMint.
+    const farms = new Farms(rpc);
+    const states = await farms.getAllUserStatesForUser(address(ctx.address));
+    const stakedByMint = new Map<string, number>();
+    for (const st of states) {
+      const us = (st as { userState: { activeStakeScaled: unknown; farmState: unknown } }).userState;
+      try {
+        const fs = (await fetchFarmState(rpc, address(String(us.farmState)))) as unknown as {
+          data: { token: { mint: unknown; decimals: bigint | number } };
+        };
+        const mint = String(fs.data.token.mint ?? "");
+        const decimals = Number(fs.data.token.decimals ?? 0);
+        const scaled = BigInt(String(us.activeStakeScaled));
+        const shares = Number(scaled) / Number(WAD) / 10 ** decimals;
+        if (mint) stakedByMint.set(mint, shares);
+      } catch {
+        /* farm ilegible: se omite */
+      }
     }
 
-    for (const ob of obligations ?? []) {
-      const stats = ob.refreshedStats ?? {};
-      const deposit = n(stats.userTotalDeposit);
-      const borrow = n(stats.userTotalBorrow);
-      const net = stats.netAccountValue != null ? n(stats.netAccountValue) : deposit - borrow;
-      if (deposit <= 0 && borrow <= 0) continue;
+    const labels = await strategyLabels();
+    const kamino2 = new Kamino("mainnet-beta", rpc);
+    for (const p of userStrats) {
+      const shareMint = String(p.shareMint);
+      const strategyAddr = String(p.strategy);
+      const shares = stakedByMint.get(shareMint) ?? 0;
+      if (shares <= 0) continue;
+      let sharePrice = 0;
+      try { sharePrice = Number(await kamino2.getStrategySharePrice(p.strategy as Parameters<Kamino["getStrategySharePrice"]>[0])); } catch { /* sin precio */ }
+      const valueUsd = shares * sharePrice;
+      const lab = labels[strategyAddr];
+      const pair = lab ? `${lab.tokenA}/${lab.tokenB}` : "Kamino LP";
+
       positions.push({
-        id: `solana:kamino:${ob.obligationAddress ?? market.address}`,
+        id: `solana:kamino:${strategyAddr}`,
         portfolioId: ctx.portfolioId,
         walletAddress: ctx.address,
         chainKind: "solana",
         chain: "solana",
-        protocol: `Kamino (${market.name})`,
-        kind: "lending_supply",
-        label: `Kamino ${market.name} · colateral ${deposit.toFixed(0)}$ / deuda ${borrow.toFixed(0)}$`,
+        protocol: `Kamino (${p.strategyDex ?? "—"})`,
+        kind: "liquidity",
+        label: pair,
         tokens: [],
-        valueUsd: net,
+        valueUsd: valueUsd || null,
         range: null,
         unclaimedUsd: null,
-        meta: { collateralUsd: deposit, debtUsd: borrow, loanToValue: n(stats.loanToValue) },
+        meta: { strategy: strategyAddr, shareMint, shares, sharePrice },
         source: "kamino",
       });
     }
+  } catch (e) {
+    warnings.push(`Kamino: ${(e as Error).message}`.slice(0, 160));
   }
+
   return { positions, warnings };
 }
