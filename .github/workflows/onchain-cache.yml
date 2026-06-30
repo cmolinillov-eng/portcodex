@@ -1,0 +1,25 @@
+name: Onchain cache (Kamino)
+
+# Calcula las posiciones de Kamino (SDK que no corre en serverless) y las cachea
+# en Supabase. El panel "En vivo" lee de esa caché. Cada 30 min + manual.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm ci
+      - run: node scripts/onchain-cache.mjs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+          JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
