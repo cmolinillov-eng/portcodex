@@ -3,6 +3,7 @@ import { fetchZerionPositions, type ZerionPosition } from "./discovery/zerion";
 import { enrichPancakeV3 } from "./evm/pancakeswap-v3";
 import { enrichUniswapV3 } from "./evm/uniswap-v3";
 import { enrichAave } from "./evm/aave";
+import { enrichProjectX } from "./evm/projectx";
 import { enrichKamino } from "./solana/kamino";
 import { enrichOrca } from "./solana/orca";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
@@ -62,7 +63,17 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
     positions.push(...r.positions);
     warnings.push(...r.warnings);
   }
-  // TODO: enrichAave, enrichProjectX, Solana… (se añaden a la lista de arriba)
+  // Lectores directos (no dependen de Zerion; ProjectX no está indexado por Zerion)
+  const directCtx = { portfolioId: w.portfolioId, address: w.address };
+  for (const direct of [enrichProjectX]) {
+    try {
+      const r = await direct(directCtx);
+      positions.push(...r.positions);
+      warnings.push(...r.warnings);
+    } catch (e) {
+      warnings.push(`EVM directo: ${(e as Error).message}`.slice(0, 160));
+    }
+  }
 
   return { positions, warnings };
 }
