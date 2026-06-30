@@ -39,12 +39,14 @@ function extractNftId(name: string | null): string | null {
  */
 export async function fetchZerionPositions(
   address: string,
-  opts: { complex?: boolean; currency?: string } = {},
+  opts: { filter?: "only_simple" | "only_complex" | "no_filter"; currency?: string } = {},
 ): Promise<ZerionPosition[]> {
   const auth = basicAuth();
   if (!auth) throw new Error("Falta ZERION_API_KEY en el entorno.");
   const currency = opts.currency ?? "usd";
-  const filter = opts.complex ? "only_complex" : "no_filter";
+  // Solana solo admite only_simple; EVM admite no_filter (balances + DeFi).
+  const filter = opts.filter ?? "no_filter";
+  // sync=true fuerza refresco; no soportado igual en todos los casos, lo dejamos.
   const url =
     `https://api.zerion.io/v1/wallets/${address}/positions/` +
     `?currency=${currency}&filter%5Bpositions%5D=${filter}&sync=true`;
