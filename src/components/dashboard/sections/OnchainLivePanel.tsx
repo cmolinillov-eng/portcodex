@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Radio, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Radio, RefreshCw, Wallet2, Sprout } from "lucide-react";
 
 type LiveRange = { lower: number; upper: number; current: number; inRange: boolean };
 type LivePosition = {
@@ -13,6 +13,9 @@ type LivePosition = {
   valueUsd: number | null;
   range: LiveRange | null;
   unclaimedUsd: number | null;
+  walletLabel?: string | null;
+  walletAddress?: string;
+  meta?: Record<string, unknown>;
 };
 type LiveResult = { positions: LivePosition[]; warnings: string[]; syncedAt: string };
 
@@ -20,15 +23,319 @@ const usd = (n: number | null) =>
   n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 const num = (n: number) => (n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : n.toPrecision(4));
 
-const KIND_LABEL: Record<string, string> = {
-  wallet: "Hold", liquidity: "Liquidez", lending_supply: "Colateral",
-  lending_borrow: "Deuda", staking: "Staking", reward: "Recompensa", perp: "Perp", other: "Otro",
+/** Secciones del panel, en el mismo espíritu que el dashboard manual. */
+const GROUPS: Array<{ key: string; title: string; kinds: string[] }> = [
+  { key: "liquidity", title: "Pools de liquidez", kinds: ["liquidity"] },
+  { key: "lending", title: "Lending", kinds: ["lending_supply", "lending_borrow"] },
+  { key: "staking", title: "Staking / Farming", kinds: ["staking", "reward"] },
+  { key: "hold", title: "Hold (billeteras)", kinds: ["wallet"] },
+  { key: "other", title: "Otros", kinds: ["perp", "other"] },
+];
+
+function healthBadge(hf: number) {
+  const cls =
+    hf >= 2
+      ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
+      : hf >= 1.2
+        ? "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-amber-300"
+        : "border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300";
+  return (
+    <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-mono ${cls}`}>
+      HF {hf.toFixed(2)}
+    </span>
+  );
+}
+
+function shortAddr(a?: string) {
+  return a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a ?? "";
+}
+
+type WalletRow = { id: string; chain_kind: string; address: string; label: string | null; is_active: boolean };
+
+const CHAIN_KIND_LABEL: Record<string, string> = { evm: "EVM", solana: "Solana", bitcoin: "Bitcoin" };
+
+/** Gestor de las wallets del portfolio (añadir/activar). Solo managers. */
+function WalletManager({ portfolioId }: { portfolioId: string }) {
+  const [wallets, setWallets] = useState<WalletRow[] | null>(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ chainKind: "evm", address: "", label: "" });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/wallet/manage?portfolioId=${encodeURIComponent(portfolioId)}`);
+        const body = (await res.json()) as { wallets?: WalletRow[]; error?: string };
+        if (!res.ok) throw new Error(body.error ?? "No se pudieron leer las wallets.");
+        if (!cancelled) setWallets(body.wallets ?? []);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "Error leyendo wallets.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [portfolioId]);
+
+  async function addWallet() {
+    if (!form.address.trim()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/wallet/manage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portfolioId, ...form }),
+      });
+      const body = (await res.json()) as { wallet?: WalletRow; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "No se pudo añadir.");
+      setWallets((prev) => [...(prev ?? []), body.wallet!]);
+      setForm({ chainKind: "evm", address: "", label: "" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error añadiendo wallet.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleActive(w: WalletRow) {
+    setError("");
+    try {
+      const res = await fetch("/api/wallet/manage", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ portfolioId, walletId: w.id, isActive: !w.is_active }),
+      });
+      const body = (await res.json()) as { wallet?: WalletRow; error?: string };
+      if (!res.ok) throw new Error(body.error ?? "No se pudo actualizar.");
+      setWallets((prev) => (prev ?? []).map((x) => (x.id === w.id ? body.wallet! : x)));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error actualizando wallet.");
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-xl border border-[var(--line)] p-4">
+      <p className="text-xs text-[var(--muted)] mb-3">
+        Direcciones públicas que se leen de blockchain (solo lectura, nunca claves privadas).
+      </p>
+      {error ? <p className="text-xs text-rose-400 mb-2">{error}</p> : null}
+
+      {(wallets ?? []).map((w) => (
+        <div key={w.id} className="flex items-center justify-between gap-3 border-t border-[var(--line)] py-2 text-sm">
+          <div className="min-w-0">
+            <span className="text-[var(--foreground)]">{w.label ?? shortAddr(w.address)}</span>
+            <span className="ml-2 text-[10px] uppercase tracking-wider rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[var(--muted)]">
+              {CHAIN_KIND_LABEL[w.chain_kind] ?? w.chain_kind}
+            </span>
+            <div className="font-mono text-xs text-[var(--muted)] truncate" title={w.address}>{w.address}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => toggleActive(w)}
+            className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${w.is_active
+              ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
+              : "border-[var(--line)] text-[var(--muted)]"}`}
+          >
+            {w.is_active ? "Activa" : "Inactiva"}
+          </button>
+        </div>
+      ))}
+
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          Cadena
+          <select
+            value={form.chainKind}
+            onChange={(e) => setForm((f) => ({ ...f, chainKind: e.target.value }))}
+            className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 text-sm text-[var(--foreground)]"
+          >
+            <option value="evm">EVM (Rabby…)</option>
+            <option value="solana">Solana (Phantom…)</option>
+            <option value="bitcoin">Bitcoin (Ledger…)</option>
+          </select>
+        </label>
+        <label className="flex flex-1 min-w-[220px] flex-col gap-1 text-xs text-[var(--muted)]">
+          Dirección pública
+          <input
+            value={form.address}
+            onChange={(e) => setForm((f) => ({ ...f, address: e.target.value }))}
+            placeholder={form.chainKind === "bitcoin" ? "bc1…" : form.chainKind === "solana" ? "base58…" : "0x…"}
+            className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 font-mono text-sm text-[var(--foreground)]"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          Label
+          <input
+            value={form.label}
+            onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
+            placeholder="Ledger (hold)"
+            className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 text-sm text-[var(--foreground)]"
+          />
+        </label>
+        <button
+          type="button"
+          onClick={addWallet}
+          disabled={saving || !form.address.trim()}
+          className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-50"
+        >
+          {saving ? "Añadiendo…" : "Añadir"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type EventToken = { symbol: string; amount: number; priceUsd: number | null; valueUsd: number | null };
+type HarvestEvent = {
+  id: string;
+  chain: string;
+  protocol: string;
+  label: string | null;
+  tokens: EventToken[];
+  value_usd: number | null;
+  block_time: string | null;
+  tx_hash: string | null;
+  includes_principal: boolean;
 };
 
-export function OnchainLivePanel({ portfolioId }: { portfolioId: string }) {
+export type ManualPositionRef = { protocol: string; positionId: string; positionType: string; label: string };
+
+/** Harvests detectados on-chain, pendientes de registrar en la contabilidad. */
+function HarvestInbox({
+  portfolioId,
+  manualPositions,
+}: {
+  portfolioId: string;
+  manualPositions: ManualPositionRef[];
+}) {
+  const [events, setEvents] = useState<HarvestEvent[]>([]);
+  const [selection, setSelection] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/onchain/events?portfolioId=${encodeURIComponent(portfolioId)}`);
+        const body = (await res.json()) as { events?: HarvestEvent[] };
+        if (!cancelled && res.ok) setEvents(body.events ?? []);
+      } catch { /* sin sección */ }
+    })();
+    return () => { cancelled = true; };
+  }, [portfolioId]);
+
+  if (!events.length) return null;
+
+  async function act(ev: HarvestEvent, action: "ingest" | "dismiss") {
+    setBusy(ev.id + action);
+    setError("");
+    try {
+      const sel = manualPositions.find((p) => `${p.protocol}::${p.positionId}` === selection[ev.id]);
+      if (action === "ingest" && !sel) throw new Error("Elige la posición a la que pertenece el harvest.");
+      const res = await fetch("/api/onchain/events", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioId,
+          eventId: ev.id,
+          action,
+          positionId: sel?.positionId,
+          protocol: sel?.protocol,
+          positionType: sel?.positionType,
+        }),
+      });
+      const body = (await res.json()) as { error?: string };
+      if (!res.ok) throw new Error(body.error ?? "No se pudo procesar.");
+      setEvents((prev) => prev.filter((e) => e.id !== ev.id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error procesando el evento.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="mb-5 rounded-xl border border-[rgba(16,185,129,0.25)] bg-[rgba(16,185,129,0.04)] p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <Sprout className="h-4 w-4 text-emerald-400" aria-hidden="true" />
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">
+          Harvests detectados on-chain ({events.length})
+        </h3>
+      </div>
+      <p className="text-xs text-[var(--muted)] mb-3">
+        Cobros de comisiones detectados en la blockchain. Asigna la posición y regístralos con un clic — cantidad, precio y fecha reales del momento del cobro.
+      </p>
+      {error ? <p className="text-xs text-rose-400 mb-2">{error}</p> : null}
+
+      <div className="space-y-3">
+        {events.map((ev) => (
+          <div key={ev.id} className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-3 text-sm">
+            <div className="min-w-[180px]">
+              <div className="font-medium text-[var(--foreground)]">
+                {ev.label ?? "?"} <span className="text-xs text-[var(--muted)]">· {ev.protocol} · {ev.chain}</span>
+              </div>
+              <div className="text-xs text-[var(--muted)]">
+                {ev.block_time ? new Date(ev.block_time).toLocaleString("es-ES") : "—"}
+                {ev.includes_principal ? (
+                  <span className="ml-2 text-amber-300">⚠️ incluye retirada de principal — revisar</span>
+                ) : null}
+              </div>
+            </div>
+            <div className="font-mono text-xs text-[var(--muted)]">
+              {ev.tokens.map((t) => `${t.amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${t.symbol}`).join(" + ")}
+            </div>
+            <div className="font-mono text-[var(--foreground)]">{usd(ev.value_usd)}</div>
+            <div className="ml-auto flex items-center gap-2">
+              <select
+                value={selection[ev.id] ?? ""}
+                onChange={(e) => setSelection((s) => ({ ...s, [ev.id]: e.target.value }))}
+                className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--foreground)] max-w-[220px]"
+              >
+                <option value="">Posición destino…</option>
+                {manualPositions.map((p) => (
+                  <option key={`${p.protocol}::${p.positionId}`} value={`${p.protocol}::${p.positionId}`}>
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => act(ev, "ingest")}
+                disabled={busy !== "" || !selection[ev.id]}
+                className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
+              >
+                {busy === ev.id + "ingest" ? "Registrando…" : "Registrar harvest"}
+              </button>
+              <button
+                type="button"
+                onClick={() => act(ev, "dismiss")}
+                disabled={busy !== ""}
+                className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
+              >
+                Descartar
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function OnchainLivePanel({
+  portfolioId,
+  canManage = false,
+  manualPositions = [],
+}: {
+  portfolioId: string;
+  canManage?: boolean;
+  manualPositions?: ManualPositionRef[];
+}) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LiveResult | null>(null);
   const [error, setError] = useState("");
+  const [showWallets, setShowWallets] = useState(false);
 
   async function load() {
     if (!portfolioId) return;
@@ -48,6 +355,13 @@ export function OnchainLivePanel({ portfolioId }: { portfolioId: string }) {
 
   const total = data?.positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0) ?? 0;
 
+  const groups = data
+    ? GROUPS.map((g) => {
+        const rows = data.positions.filter((p) => g.kinds.includes(p.kind));
+        return { ...g, rows, subtotal: rows.reduce((s, p) => s + (p.valueUsd ?? 0), 0) };
+      }).filter((g) => g.rows.length > 0)
+    : [];
+
   return (
     <section className="glass-panel page-section-card p-5 md:p-6 mb-6" aria-label="Posiciones on-chain en vivo">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -58,11 +372,30 @@ export function OnchainLivePanel({ portfolioId }: { portfolioId: string }) {
             solo lectura
           </span>
         </div>
-        <button type="button" onClick={load} disabled={loading || !portfolioId} className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
-          {loading ? "Leyendo blockchain…" : data ? "Actualizar" : "Leer desde blockchain"}
-        </button>
+        <div className="flex items-center gap-2">
+          {canManage ? (
+            <button
+              type="button"
+              onClick={() => setShowWallets((v) => !v)}
+              className="btn-secondary px-3 py-2 text-sm"
+              aria-expanded={showWallets}
+            >
+              <Wallet2 className="h-4 w-4" aria-hidden="true" />
+              Wallets
+            </button>
+          ) : null}
+          <button type="button" onClick={load} disabled={loading || !portfolioId} className="btn-secondary px-4 py-2 text-sm disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />
+            {loading ? "Leyendo blockchain…" : data ? "Actualizar" : "Leer desde blockchain"}
+          </button>
+        </div>
       </div>
+
+      {canManage && showWallets ? <WalletManager portfolioId={portfolioId} /> : null}
+
+      {canManage && portfolioId ? (
+        <HarvestInbox portfolioId={portfolioId} manualPositions={manualPositions} />
+      ) : null}
 
       {error ? <p className="text-sm text-rose-400 mb-3">{error}</p> : null}
 
@@ -80,52 +413,67 @@ export function OnchainLivePanel({ portfolioId }: { portfolioId: string }) {
             {new Date(data.syncedAt).toLocaleTimeString("es-ES")}
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs tracking-[0.18em] text-[var(--muted)]">
-                <tr>
-                  <th className="px-3 py-2">POSICIÓN</th>
-                  <th className="px-3 py-2">TIPO</th>
-                  <th className="px-3 py-2">CADENA</th>
-                  <th className="px-3 py-2">RANGO / ESTADO</th>
-                  <th className="px-3 py-2 text-right">SIN RECLAMAR</th>
-                  <th className="px-3 py-2 text-right">VALOR</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.positions.map((p) => (
-                  <tr key={p.id} className="border-t border-[var(--line)]">
-                    <td className="px-3 py-3">
-                      <div className="font-medium text-[var(--foreground)]">{p.label}</div>
-                      {p.protocol ? <div className="text-xs text-[var(--muted)]">{p.protocol}</div> : null}
-                    </td>
-                    <td className="px-3 py-3 text-[var(--muted)]">{KIND_LABEL[p.kind] ?? p.kind}</td>
-                    <td className="px-3 py-3 text-[var(--muted)]">{p.chain}</td>
-                    <td className="px-3 py-3">
-                      {p.range ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="font-mono text-xs text-[var(--muted)]">
-                            {num(p.range.lower)} – {num(p.range.upper)} · act. {num(p.range.current)}
-                          </span>
-                          <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] ${p.range.inRange
-                            ? "border border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
-                            : "border border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300"}`}>
-                            {p.range.inRange ? "✅ Dentro de rango" : "⚠️ Fuera de rango"}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[var(--muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono text-[var(--muted)]">
-                      {p.unclaimedUsd ? usd(p.unclaimedUsd) : "—"}
-                    </td>
-                    <td className="px-3 py-3 text-right font-mono text-[var(--foreground)]">{usd(p.valueUsd)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {groups.map((g) => (
+            <div key={g.key} className="mb-5 last:mb-0">
+              <div className="flex items-baseline justify-between mb-1 px-1">
+                <h3 className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{g.title}</h3>
+                <span className="text-sm font-mono text-[var(--foreground)]">{usd(g.subtotal)}</span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-[10px] tracking-[0.18em] text-[var(--muted)]">
+                    <tr>
+                      <th className="px-3 py-1.5">POSICIÓN</th>
+                      <th className="px-3 py-1.5">WALLET</th>
+                      <th className="px-3 py-1.5">CADENA</th>
+                      <th className="px-3 py-1.5">RANGO / SALUD</th>
+                      <th className="px-3 py-1.5 text-right">SIN RECLAMAR</th>
+                      <th className="px-3 py-1.5 text-right">VALOR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {g.rows.map((p) => {
+                      const hf = typeof p.meta?.healthFactor === "number" ? (p.meta.healthFactor as number) : null;
+                      return (
+                        <tr key={p.id} className="border-t border-[var(--line)]">
+                          <td className="px-3 py-2.5">
+                            <div className="font-medium text-[var(--foreground)]">{p.label}</div>
+                            {p.protocol ? <div className="text-xs text-[var(--muted)]">{p.protocol}</div> : null}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-[var(--muted)]" title={p.walletAddress}>
+                            {p.walletLabel ?? shortAddr(p.walletAddress)}
+                          </td>
+                          <td className="px-3 py-2.5 text-[var(--muted)]">{p.chain}</td>
+                          <td className="px-3 py-2.5">
+                            {p.range ? (
+                              <div className="flex flex-col gap-1">
+                                <span className="font-mono text-xs text-[var(--muted)]">
+                                  {num(p.range.lower)} – {num(p.range.upper)} · act. {num(p.range.current)}
+                                </span>
+                                <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] ${p.range.inRange
+                                  ? "border border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
+                                  : "border border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300"}`}>
+                                  {p.range.inRange ? "✅ Dentro de rango" : "⚠️ Fuera de rango"}
+                                </span>
+                              </div>
+                            ) : hf != null ? (
+                              healthBadge(hf)
+                            ) : (
+                              <span className="text-[var(--muted)]">—</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-[var(--muted)]">
+                            {p.unclaimedUsd ? usd(p.unclaimedUsd) : "—"}
+                          </td>
+                          <td className="px-3 py-2.5 text-right font-mono text-[var(--foreground)]">{usd(p.valueUsd)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
 
           {data.warnings.length > 0 ? (
             <ul className="mt-3 space-y-1 text-xs text-amber-300/80">

@@ -1,7 +1,9 @@
-name: Onchain cache (Kamino)
+name: Onchain cache + harvests
 
-# Calcula las posiciones de Kamino (SDK que no corre en serverless) y las cachea
-# en Supabase. El panel "En vivo" lee de esa caché. Cada 30 min + manual.
+# 1) Cachea en Supabase lo que no corre en serverless (Kamino con rango y
+#    recompensas, fees pendientes de Orca).
+# 2) Escanea eventos Collect (harvests) de los V3 y los deja pendientes de
+#    confirmar en el panel "En vivo". Cada 30 min + manual.
 
 on:
   schedule:
@@ -23,3 +25,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
           JUPITER_API_KEY: ${{ secrets.JUPITER_API_KEY }}
+      - run: node scripts/onchain-harvests.mjs
+        if: always()
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ZERION_API_KEY: ${{ secrets.ZERION_API_KEY }}

@@ -18,7 +18,7 @@ function toRef(row: Row): WalletRef {
   return {
     id: row.id,
     portfolioId: row.portfolio_id,
-    chainKind: row.chain_kind === "solana" ? "solana" : "evm",
+    chainKind: row.chain_kind === "solana" ? "solana" : row.chain_kind === "bitcoin" ? "bitcoin" : "evm",
     address: row.address,
     label: row.label,
   };

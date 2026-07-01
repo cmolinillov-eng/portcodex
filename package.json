@@ -19,6 +19,9 @@
   "dependencies": {
     "@kamino-finance/farms-sdk": "^3.2.26",
     "@kamino-finance/kliquidity-sdk": "^13.0.0",
+    "@orca-so/whirlpools": "^2.2.0",
+    "@orca-so/whirlpools-client": "^2.0.0",
+    "@orca-so/whirlpools-core": "^2.0.0",
     "@solana/kit": "^2.3.0",
     "@splinetool/react-spline": "^4.1.0",
     "@splinetool/runtime": "^1.12.69",

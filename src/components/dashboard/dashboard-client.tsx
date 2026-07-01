@@ -595,7 +595,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
     // De este modo el total del portfolio no varía: el harvest ya estaba
     // contabilizado y simplemente se materializa en el activo destino.
     let harvestPendingUsd = 0;
-    let harvestPendingTokens: Array<{ tokenSymbol: string; amount: number; priceUsd: number; usdValue: number }> = [];
+    const harvestPendingTokens: Array<{ tokenSymbol: string; amount: number; priceUsd: number; usdValue: number }> = [];
     if (isSourceLp && sourceTarget) {
       const harvestEntry = harvestByPositionKey.get(form.rebalanceSourceKey);
       if (harvestEntry && harvestEntry.pendingByToken.length > 0) {
@@ -1805,7 +1805,25 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           ))
         )}
 
-        <OnchainLivePanel portfolioId={(portfolioContext?.portfolioId ?? "").trim()} />
+        <OnchainLivePanel
+          portfolioId={(portfolioContext?.portfolioId ?? "").trim()}
+          canManage={viewer.canDeletePosition}
+          manualPositions={Array.from(
+            new Map(
+              sections
+                .flatMap((s) => s.positions)
+                .map((p) => [
+                  `${p.protocol}::${p.positionId}`,
+                  {
+                    protocol: p.protocol,
+                    positionId: p.positionId,
+                    positionType: p.positionType,
+                    label: `${p.protocol} · ${p.tokenSymbol}`,
+                  },
+                ]),
+            ).values(),
+          )}
+        />
 
         <RecentActivity
           recentActivity={recentActivity}

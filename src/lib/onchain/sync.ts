@@ -6,6 +6,7 @@ import { enrichAave } from "./evm/aave";
 import { enrichProjectX } from "./evm/projectx";
 import { enrichKamino } from "./solana/kamino";
 import { enrichOrca } from "./solana/orca";
+import { syncBitcoinWallet } from "./bitcoin/balance";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
 
 type SolanaAdapter = (ctx: { portfolioId: string; address: string }) => Promise<{ positions: LivePosition[]; warnings: string[] }>;
@@ -110,15 +111,13 @@ export async function syncPortfolioLive(portfolioId: string): Promise<LiveSyncRe
   const warnings: string[] = [];
 
   for (const w of wallets) {
-    if (w.chainKind === "evm") {
-      const r = await syncEvmWallet(w);
-      positions.push(...r.positions);
-      warnings.push(...r.warnings);
-    } else {
-      const r = await syncSolanaWallet(w);
-      positions.push(...r.positions);
-      warnings.push(...r.warnings);
-    }
+    const r =
+      w.chainKind === "evm" ? await syncEvmWallet(w)
+      : w.chainKind === "bitcoin" ? await syncBitcoinWallet(w)
+      : await syncSolanaWallet(w);
+    // Propagar el label de la wallet (Rabby, Phantom, Ledger…) a sus posiciones.
+    positions.push(...r.positions.map((p) => ({ ...p, walletLabel: w.label })));
+    warnings.push(...r.warnings);
   }
 
   // Orden: mayor valor primero.

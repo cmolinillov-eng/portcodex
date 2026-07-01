@@ -10,7 +10,7 @@
  * portfolio o una dirección nueva basta para que se lea.
  */
 
-export type ChainKind = "evm" | "solana";
+export type ChainKind = "evm" | "solana" | "bitcoin";
 
 /** Una dirección pública a sincronizar, tal cual vive en portfolio_wallets. */
 export type WalletRef = {
@@ -57,6 +57,8 @@ export type LivePosition = {
   id: string;
   portfolioId: string;
   walletAddress: string;
+  /** Label amigable de la wallet ("Rabby", "Phantom", "Ledger (hold)")… si existe. */
+  walletLabel?: string | null;
   chainKind: ChainKind;
   /** Cadena concreta: "base", "ethereum", "solana", "hyperevm"… */
   chain: string;

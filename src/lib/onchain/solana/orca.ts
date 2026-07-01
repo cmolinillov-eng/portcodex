@@ -1,6 +1,7 @@
 import { address, getProgramDerivedAddress, getAddressEncoder, getAddressDecoder } from "@solana/kit";
 import { getSolanaRpc, TOKEN_PROGRAM, TOKEN_2022_PROGRAM } from "./rpc";
 import { getSolanaPrices } from "./prices";
+import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 import type { LivePosition } from "../types";
 
 /**
@@ -44,6 +45,30 @@ function amountsFromLiquidity(liquidity: bigint, sqrtPriceX64: bigint, tickLower
   return { raw0: (L * (sqrtPb - sqrtP)) / (sqrtP * sqrtPb), raw1: L * (sqrtP - sqrtPa) };
 }
 
+/**
+ * Fees/recompensas sin reclamar por positionMint, calculadas por el worker
+ * (collectFeesQuote es WASM y no corre en serverless) y cacheadas en
+ * onchain_cache con source "orca_fees". Mejor esfuerzo: si no hay caché, null.
+ */
+async function getCachedUnclaimed(portfolioId: string): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  try {
+    const client = getSupabaseServiceClient() ?? getSupabaseServerClient();
+    const { data } = await client
+      .from("onchain_cache")
+      .select("positions")
+      .eq("portfolio_id", portfolioId)
+      .eq("source", "orca_fees")
+      .maybeSingle();
+    for (const p of (data?.positions ?? []) as Array<{ id?: string; unclaimedUsd?: number }>) {
+      if (p.id && typeof p.unclaimedUsd === "number") out.set(p.id, p.unclaimedUsd);
+    }
+  } catch {
+    /* sin caché: las posiciones salen sin fees pendientes */
+  }
+  return out;
+}
+
 async function getBuf(rpc: ReturnType<typeof getSolanaRpc>, addr: string): Promise<Buffer | null> {
   const r = await rpc.getAccountInfo(address(addr), { encoding: "base64" }).send();
   if (!r.value) return null;
@@ -81,6 +106,9 @@ export async function enrichOrca(
   } catch (e) {
     return { positions, warnings: [`Orca: no se pudieron leer token accounts: ${(e as Error).message}`.slice(0, 140)] };
   }
+
+  // Fees pendientes desde la caché del worker (se mezclan por id).
+  const unclaimedById = await getCachedUnclaimed(ctx.portfolioId);
 
   for (const mint of mints) {
     try {
@@ -137,7 +165,7 @@ export async function enrichOrca(
         ],
         valueUsd,
         range: { lower: tickToPrice(tickLower), upper: tickToPrice(tickUpper), current: tickToPrice(tickCurrent), inRange },
-        unclaimedUsd: null,
+        unclaimedUsd: unclaimedById.get(`solana:orca:${mint}`) ?? null,
         meta: { positionMint: mint, whirlpool, tickLower, tickUpper, tickCurrent },
         source: "orca",
       });
