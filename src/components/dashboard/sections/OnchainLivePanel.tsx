@@ -2,14 +2,23 @@
 
 import { useEffect, useState } from "react";
 import { Radio, RefreshCw, Wallet2, Sprout } from "lucide-react";
+import {
+  OnchainSections,
+  tokenSetKey,
+  protocolsMatch,
+  kindMatchesType,
+  type OnchainLinkRow,
+} from "./OnchainSections";
 
-type LiveRange = { lower: number; upper: number; current: number; inRange: boolean };
-type LivePosition = {
+export type LiveRange = { lower: number; upper: number; current: number; inRange: boolean };
+export type LiveTokenAmount = { symbol: string; amount: number; valueUsd?: number | null };
+export type LivePosition = {
   id: string;
   chain: string;
   protocol: string | null;
   kind: string;
   label: string;
+  tokens?: LiveTokenAmount[];
   valueUsd: number | null;
   range: LiveRange | null;
   unclaimedUsd: number | null;
@@ -21,31 +30,6 @@ type LiveResult = { positions: LivePosition[]; warnings: string[]; syncedAt: str
 
 const usd = (n: number | null) =>
   n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-const num = (n: number) => (n >= 1 ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : n.toPrecision(4));
-
-/** Secciones del panel, en el mismo espíritu que el dashboard manual. */
-const GROUPS: Array<{ key: string; title: string; kinds: string[] }> = [
-  { key: "liquidity", title: "Pools de liquidez", kinds: ["liquidity"] },
-  { key: "lending", title: "Lending", kinds: ["lending_supply", "lending_borrow"] },
-  { key: "staking", title: "Staking / Farming", kinds: ["staking", "reward"] },
-  { key: "hold", title: "Hold (billeteras)", kinds: ["wallet"] },
-  { key: "other", title: "Otros", kinds: ["perp", "other"] },
-];
-
-function healthBadge(hf: number) {
-  const cls =
-    hf >= 2
-      ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
-      : hf >= 1.2
-        ? "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-amber-300"
-        : "border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300";
-  return (
-    <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-mono ${cls}`}>
-      HF {hf.toFixed(2)}
-    </span>
-  );
-}
-
 function shortAddr(a?: string) {
   return a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a ?? "";
 }
@@ -231,6 +215,12 @@ export type ManualPositionRef = {
   label: string;
   /** Valor contable actual (para la conciliación on-chain ↔ contabilidad). */
   valueUsd?: number;
+  /** Cost basis contable (columna DEPOSITADO de la vista on-chain). */
+  depositedValue?: number;
+  /** Yield cosechado acumulado (columna YIELD de la vista on-chain). */
+  totalHarvested?: number;
+  /** Par de tokens de la posición ("USDC/SOL") para el auto-enlace. */
+  tokenSymbol?: string;
 };
 
 /** Harvests detectados on-chain, pendientes de registrar en la contabilidad. */
@@ -301,7 +291,7 @@ function HarvestInbox({
       </div>
       <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
         <p className="text-xs text-[var(--muted)] max-w-[70ch]">
-          Harvests, depósitos y retiradas detectados en la blockchain. Asigna la posición (solo la primera vez — se recuerda) y regístralos con un clic: cantidad, precio y fecha reales del bloque. Descarta los que ya estén contabilizados a mano.
+          Operaciones que el sistema no pudo contabilizar solo (posición nueva sin enlace, o anteriores al enlace). Asigna la posición una vez — o elige &quot;Crear posición nueva&quot; — y a partir de ahí todo lo de esa posición se registra automáticamente.
         </p>
         <button
           type="button"
@@ -381,7 +371,7 @@ function HarvestInbox({
   );
 }
 
-type LinkRow = { id: string; onchain_id: string; protocol: string; position_id: string; position_type: string };
+type LinkRow = OnchainLinkRow;
 
 /**
  * Conciliación on-chain ↔ contabilidad (Fase D): compara el valor real leído
@@ -393,30 +383,19 @@ function ReconcileSection({
   positions,
   manualPositions,
   canManage,
+  links,
+  setLinks,
 }: {
   portfolioId: string;
   positions: LivePosition[];
   manualPositions: ManualPositionRef[];
   canManage: boolean;
+  links: LinkRow[] | null;
+  setLinks: React.Dispatch<React.SetStateAction<LinkRow[] | null>>;
 }) {
-  const [links, setLinks] = useState<LinkRow[] | null>(null);
   const [selection, setSelection] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(`/api/onchain/links?portfolioId=${encodeURIComponent(portfolioId)}`);
-        const body = (await res.json()) as { links?: LinkRow[] };
-        if (!cancelled && res.ok) setLinks(body.links ?? []);
-      } catch {
-        if (!cancelled) setLinks([]);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [portfolioId]);
 
   if (links == null) return null;
 
@@ -459,6 +438,7 @@ function ReconcileSection({
           protocol: sel.protocol,
           positionId: sel.positionId,
           positionType: sel.positionType,
+          autoIngest: true,
         }),
       });
       const body = (await res.json()) as { link?: LinkRow; error?: string };
@@ -581,6 +561,72 @@ export function OnchainLivePanel({
   const [data, setData] = useState<LiveResult | null>(null);
   const [error, setError] = useState("");
   const [showWallets, setShowWallets] = useState(false);
+  const [links, setLinks] = useState<LinkRow[] | null>(null);
+  const [autoLinked, setAutoLinked] = useState<Set<string>>(new Set());
+
+  // Enlaces on-chain ↔ contable (compartidos por secciones y conciliación).
+  useEffect(() => {
+    if (!portfolioId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/onchain/links?portfolioId=${encodeURIComponent(portfolioId)}`);
+        const body = (await res.json()) as { links?: LinkRow[] };
+        if (!cancelled && res.ok) setLinks(body.links ?? []);
+      } catch {
+        if (!cancelled) setLinks([]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [portfolioId]);
+
+  // AUTO-ENLACE silencioso: casa cada posición on-chain con su contable por
+  // protocolo + tipo + tokens (WETH≈ETH…). Sin intervención del usuario: el
+  // enlace se guarda con auto_ingest y a partir de ahí todo fluye solo.
+  useEffect(() => {
+    if (!canManage || !data || links == null || !manualPositions.length) return;
+    const linked = new Set(links.map((l) => l.onchain_id));
+    const targets = data.positions.filter(
+      (p) => (p.valueUsd ?? 0) >= 1 && !linked.has(p.id) && !autoLinked.has(p.id),
+    );
+    if (!targets.length) return;
+
+    (async () => {
+      const attempted = new Set(autoLinked);
+      for (const p of targets) {
+        attempted.add(p.id);
+        const candidates = manualPositions.filter(
+          (m) => kindMatchesType(p.kind, m.positionType) && (p.kind === "wallet" || protocolsMatch(p.protocol, m.protocol)),
+        );
+        const pKey = tokenSetKey(p.label);
+        const byTokens = candidates.filter((m) => tokenSetKey(m.tokenSymbol ?? m.label) === pKey);
+        // Único match por tokens → enlace directo; si no, único candidato del
+        // mismo protocolo+tipo (holds requieren siempre el match por símbolo).
+        const match = byTokens.length === 1 ? byTokens[0] : p.kind !== "wallet" && candidates.length === 1 ? candidates[0] : null;
+        if (!match) continue;
+        try {
+          const res = await fetch("/api/onchain/links", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              portfolioId,
+              onchainId: p.id,
+              protocol: match.protocol,
+              positionId: match.positionId,
+              positionType: match.positionType,
+              autoIngest: true,
+            }),
+          });
+          const body = (await res.json()) as { link?: LinkRow };
+          if (res.ok && body.link) {
+            setLinks((prev) => [...(prev ?? []).filter((l) => l.onchain_id !== p.id), body.link!]);
+          }
+        } catch { /* mejor esfuerzo */ }
+      }
+      setAutoLinked(attempted);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canManage, data, links, manualPositions, portfolioId]);
 
   async function load(refresh = true) {
     if (!portfolioId) return;
@@ -626,13 +672,6 @@ export function OnchainLivePanel({
 
   const total = data?.positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0) ?? 0;
 
-  const groups = data
-    ? GROUPS.map((g) => {
-        const rows = data.positions.filter((p) => g.kinds.includes(p.kind));
-        return { ...g, rows, subtotal: rows.reduce((s, p) => s + (p.valueUsd ?? 0), 0) };
-      }).filter((g) => g.rows.length > 0)
-    : [];
-
   return (
     <section className="glass-panel page-section-card p-5 md:p-6 mb-6" aria-label="Posiciones on-chain en vivo">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
@@ -640,7 +679,7 @@ export function OnchainLivePanel({
           <Radio className="h-5 w-5 text-emerald-400" aria-hidden="true" />
           <h2 className="font-designer text-2xl font-semibold tracking-tight text-[var(--foreground)]">En vivo (on-chain)</h2>
           <span className="text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-2 py-0.5 text-[var(--muted)]">
-            solo lectura
+            automático
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -689,73 +728,15 @@ export function OnchainLivePanel({
             ) : null}
           </div>
 
-          {groups.map((g) => (
-            <div key={g.key} className="mb-5 last:mb-0">
-              <div className="flex items-baseline justify-between mb-1 px-1">
-                <h3 className="text-xs uppercase font-mono tracking-[0.18em] text-[var(--muted)]">{g.title}</h3>
-                <span className="text-sm font-mono text-[var(--foreground)]">{usd(g.subtotal)}</span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-left font-mono text-[10px] tracking-[0.14em] text-[var(--muted)]">
-                    <tr>
-                      <th className="px-3 py-1.5">POSICIÓN</th>
-                      <th className="px-3 py-1.5">WALLET</th>
-                      <th className="px-3 py-1.5">CADENA</th>
-                      <th className="px-3 py-1.5">RANGO / SALUD</th>
-                      <th className="px-3 py-1.5 text-right">SIN RECLAMAR</th>
-                      <th className="px-3 py-1.5 text-right">VALOR</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.rows.map((p) => {
-                      const hf = typeof p.meta?.healthFactor === "number" ? (p.meta.healthFactor as number) : null;
-                      return (
-                        <tr key={p.id} className="border-t border-[var(--line)]">
-                          <td className="px-3 py-2.5">
-                            <div className="font-medium text-[var(--foreground)]">{p.label}</div>
-                            {p.protocol ? <div className="text-xs text-[var(--muted)]">{p.protocol}</div> : null}
-                          </td>
-                          <td className="px-3 py-2.5 text-xs text-[var(--muted)]" title={p.walletAddress}>
-                            {p.walletLabel ?? shortAddr(p.walletAddress)}
-                          </td>
-                          <td className="px-3 py-2.5 text-[var(--muted)]">{p.chain}</td>
-                          <td className="px-3 py-2.5">
-                            {p.range ? (
-                              <div className="flex flex-col gap-1">
-                                <span className="font-mono text-xs text-[var(--muted)]">
-                                  {num(p.range.lower)} – {num(p.range.upper)} · act. {num(p.range.current)}
-                                </span>
-                                <span className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] ${p.range.inRange
-                                  ? "border border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
-                                  : "border border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300"}`}>
-                                  {p.range.inRange ? "✅ Dentro de rango" : "⚠️ Fuera de rango"}
-                                </span>
-                              </div>
-                            ) : hf != null ? (
-                              healthBadge(hf)
-                            ) : (
-                              <span className="text-[var(--muted)]">—</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-[var(--muted)]">
-                            {p.unclaimedUsd ? usd(p.unclaimedUsd) : "—"}
-                          </td>
-                          <td className="px-3 py-2.5 text-right font-mono text-[var(--foreground)]">{usd(p.valueUsd)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
+          <OnchainSections positions={data.positions} links={links ?? []} manualPositions={manualPositions} />
 
           <ReconcileSection
             portfolioId={portfolioId}
             positions={data.positions}
             manualPositions={manualPositions}
             canManage={canManage}
+            links={links}
+            setLinks={setLinks}
           />
 
           {data.warnings.length > 0 ? (

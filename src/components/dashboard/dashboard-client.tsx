@@ -1820,6 +1820,14 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                     positionType: p.positionType,
                     label: `${p.protocol} · ${p.tokenSymbol}`,
                     valueUsd: p.currentValue,
+                    // Cost basis y yield contables → columnas DEPOSITADO/YIELD
+                    // de la vista on-chain (vía position_links).
+                    depositedValue:
+                      p.costBasisUsd !== null && Number.isFinite(p.costBasisUsd)
+                        ? p.costBasisUsd
+                        : p.averageEntryPrice * p.currentBalance,
+                    totalHarvested: p.totalHarvested,
+                    tokenSymbol: p.tokenSymbol,
                   },
                 ]),
             ).values(),
