@@ -165,6 +165,28 @@ const aaveRepayEvent = parseAbiItem(
   "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
 );
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// ¿El error es por tamaño del rango (→ reducir tramo) o por rate-limit (→ esperar)?
+const isSizeError = (msg) => /exceed|block range|too many results|response size|more than|query returned/i.test(msg);
+const isRateError = (msg) => /too many request|429|rate ?limit|http request failed|internal|500|503/i.test(msg);
+
+// getLogs con reintentos y backoff ante rate-limit del RPC gratuito. Los
+// errores de tamaño se propagan para que el llamador reduzca el tramo.
+async function getLogsRetry(client, params) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await client.getLogs(params);
+    } catch (e) {
+      const msg = String(e.message);
+      if (!isSizeError(msg) && isRateError(msg) && attempt < 3) {
+        await sleep(3000 * 2 ** attempt); // 3s → 6s → 12s
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 const CHUNK = 9000n; // rango máximo de getLogs en RPCs públicos
 // Primer escaneo: ventana hacia atrás (override con LOOKBACK_BLOCKS). Los runs
 // siguientes son incrementales desde last_block, así que da igual que sea grande.
@@ -284,15 +306,15 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
     let increases = [];
     try {
       [collects, decreases, increases] = await Promise.all([
-        client.getLogs({ address: npm, event: collectEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
-        client.getLogs({ address: npm, event: decreaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
-        client.getLogs({ address: npm, event: increaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: npm, event: collectEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: npm, event: decreaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: npm, event: increaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
       ]);
+      await sleep(150); // pacing: no agotar la cuota del RPC gratuito
     } catch (e) {
       const msg = String(e.message);
-      // Tramo demasiado grande o RPC saturado (los 500 suelen ser por tamaño
-      // de respuesta): reintenta el mismo tramo con la mitad de rango.
-      if (/exceed|limit|range|too (large|many)|response size|http request failed|internal/i.test(msg) && chunk > 500n) {
+      // Tramo demasiado grande: reintenta el mismo tramo con la mitad de rango.
+      if (isSizeError(msg) && chunk > 500n) {
         chunk = chunk / 2n;
         continue;
       }
@@ -412,14 +434,15 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
       // Solo se puede filtrar por args indexados: onBehalfOf (Supply/Borrow)
       // y user (Withdraw/Repay) — en todos los casos, la wallet del portfolio.
       [supplies, withdraws, borrows, repays] = await Promise.all([
-        client.getLogs({ address: pool, event: aaveSupplyEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
-        client.getLogs({ address: pool, event: aaveWithdrawEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
-        client.getLogs({ address: pool, event: aaveBorrowEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
-        client.getLogs({ address: pool, event: aaveRepayEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: pool, event: aaveSupplyEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: pool, event: aaveWithdrawEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: pool, event: aaveBorrowEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
+        getLogsRetry(client, { address: pool, event: aaveRepayEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
       ]);
+      await sleep(150);
     } catch (e) {
       const msg = String(e.message);
-      if (/exceed|limit|range|too (large|many)|response size|http request failed|internal/i.test(msg) && chunk > 500n) {
+      if (isSizeError(msg) && chunk > 500n) {
         chunk = chunk / 2n;
         continue;
       }
@@ -704,7 +727,7 @@ async function main() {
         if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
         const cfg = CHAINS[chainName];
         if (!cfg) continue;
-        const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: true }) });
+        const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 } }) });
         try {
           const extra = farmingIds.get(`${protocol.name}:${chainName}`);
           const n = await scanWallet(client, cfg, protocol, npm, w.portfolio_id, w.address, chainName, extra);
@@ -720,7 +743,7 @@ async function main() {
       if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
       const cfg = CHAINS[chainName];
       if (!cfg) continue;
-      const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: true }) });
+      const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 } }) });
       try {
         const n = await scanAave(client, cfg, w.portfolio_id, w.address, chainName);
         if (n > 0) console.log(`  ${chainName} Aave V3 ${w.address.slice(0, 8)} → ${n} eventos detectados`);
