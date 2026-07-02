@@ -397,6 +397,7 @@ function ReconcileSection({
   setLinks: React.Dispatch<React.SetStateAction<LinkRow[] | null>>;
 }) {
   const [selection, setSelection] = useState<Record<string, string>>({});
+  const [adoptUsd, setAdoptUsd] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
 
@@ -405,8 +406,13 @@ function ReconcileSection({
   const manualByKey = new Map(manualPositions.map((p) => [`${p.protocol}::${p.positionId}`, p]));
   const linkByOnchain = new Map(links.map((l) => [l.onchain_id, l]));
 
-  // Posiciones DeFi con valor (los holds pequeños no se concilian una a una).
-  const relevant = positions.filter((p) => (p.valueUsd ?? 0) >= 1 && p.kind !== "wallet");
+  // Posiciones DeFi con valor. Los holds solo aparecen si están SIN enlazar
+  // (para poder adoptarlos); enlazados no necesitan conciliación una a una.
+  const relevant = positions.filter(
+    (p) =>
+      (p.valueUsd ?? 0) >= 1 &&
+      (p.kind !== "wallet" || (!linkByOnchain.has(p.id) && (p.valueUsd ?? 0) >= 25)),
+  );
 
   const rows = relevant.map((p) => {
     const link = linkByOnchain.get(p.id) ?? null;
@@ -450,6 +456,43 @@ function ReconcileSection({
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error creando el enlace.");
     } finally {
+      setBusy("");
+    }
+  }
+
+  /**
+   * ADOPCIÓN: incorpora a la contabilidad una posición ya abierta indicando
+   * cuánto se depositó en USD. La base queda sellada (invariante) y la
+   * posición enlazada con auto_ingest — desde ahí, todo automático.
+   */
+  async function adoptPosition(p: LivePosition) {
+    const deposited = Number((adoptUsd[p.id] ?? "").replace(",", "."));
+    if (!Number.isFinite(deposited) || deposited <= 0) {
+      setError("Indica el depositado en $ para adoptar la posición.");
+      return;
+    }
+    setBusy(p.id + "adopt");
+    setError("");
+    try {
+      const res = await fetch("/api/onchain/adopt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioId,
+          onchainId: p.id,
+          protocol: p.protocol ?? "Wallet",
+          label: p.label,
+          kind: p.kind,
+          tokens: (p.tokens ?? []).map((t) => ({ symbol: t.symbol, amount: Math.abs(t.amount), valueUsd: t.valueUsd })),
+          depositedUsd: deposited,
+        }),
+      });
+      const body = (await res.json()) as { ok?: boolean; error?: string };
+      if (!res.ok || !body.ok) throw new Error(body.error ?? "No se pudo adoptar.");
+      // La contabilidad ha cambiado (posición nueva): recarga completa.
+      window.location.reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error adoptando la posición.");
       setBusy("");
     }
   }
@@ -507,28 +550,50 @@ function ReconcileSection({
                   ) : link ? (
                     <span className="text-xs text-amber-300">enlace roto ({link.protocol})</span>
                   ) : canManage ? (
-                    <span className="inline-flex items-center gap-1.5">
-                      <select
-                        value={selection[p.id] ?? ""}
-                        onChange={(e) => setSelection((s) => ({ ...s, [p.id]: e.target.value }))}
-                        className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1 text-xs text-[var(--foreground)] max-w-[180px]"
-                      >
-                        <option value="">Enlazar con…</option>
-                        {manualPositions.map((m) => (
-                          <option key={`${m.protocol}::${m.positionId}`} value={`${m.protocol}::${m.positionId}`}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => saveLink(p)}
-                        disabled={!selection[p.id] || busy !== ""}
-                        className="btn-secondary px-2 py-1 text-[11px] disabled:opacity-50"
-                      >
-                        {busy === p.id ? "…" : "Enlazar"}
-                      </button>
-                    </span>
+                    <div className="flex flex-col gap-1.5">
+                      <span className="inline-flex items-center gap-1.5">
+                        <select
+                          value={selection[p.id] ?? ""}
+                          onChange={(e) => setSelection((s) => ({ ...s, [p.id]: e.target.value }))}
+                          className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1 text-xs text-[var(--foreground)] max-w-[180px]"
+                        >
+                          <option value="">Enlazar con…</option>
+                          {manualPositions.map((m) => (
+                            <option key={`${m.protocol}::${m.positionId}`} value={`${m.protocol}::${m.positionId}`}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => saveLink(p)}
+                          disabled={!selection[p.id] || busy !== ""}
+                          className="btn-secondary px-2 py-1 text-[11px] disabled:opacity-50"
+                        >
+                          {busy === p.id ? "…" : "Enlazar"}
+                        </button>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={adoptUsd[p.id] ?? ""}
+                          onChange={(e) => setAdoptUsd((s) => ({ ...s, [p.id]: e.target.value }))}
+                          placeholder="Depositado $"
+                          title="Cuánto depositaste en USD al abrir esta posición — sella su base para calcular ganancia/pérdida"
+                          className="w-[110px] rounded-lg border border-[var(--line)] bg-transparent px-2 py-1 font-mono text-xs text-[var(--foreground)]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => adoptPosition(p)}
+                          disabled={busy !== "" || !(adoptUsd[p.id] ?? "").trim()}
+                          className="btn-secondary px-2 py-1 text-[11px] disabled:opacity-50"
+                          title="Crea la posición contable con ese depositado y la deja en automático"
+                        >
+                          {busy === p.id + "adopt" ? "…" : "Adoptar"}
+                        </button>
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-xs text-[var(--muted)]">sin enlazar</span>
                   )}

@@ -27,7 +27,6 @@ import { CsvModal } from "./modals/csv-modal";
 import { ManualPriceModal } from "./modals/manual-price-modal";
 import { DashboardHeader } from "./sections/DashboardHeader";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
-import { PositionSectionCard } from "./sections/PositionSectionCard";
 import { StrategyComposition } from "./sections/StrategyComposition";
 import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
 import { CurrencyProvider, useCurrency } from "./utils/currency-context";
@@ -1780,31 +1779,10 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           </section>
         ) : null}
 
-        {sections.length === 0 ? (
-          <section className="card-premium page-section-card text-center">
-            <p className="text-sm text-[var(--muted)]">
-              No hay posiciones activas (`is_active = true`) en `defi_positions_analytics` para este usuario.
-            </p>
-          </section>
-        ) : (
-          sections.map((section) => (
-            <PositionSectionCard
-              key={section.key}
-              section={section}
-              summary={summary}
-              viewer={viewer}
-              harvestByPosition={harvestByPosition}
-              isDeletingPositionKey={isDeletingPositionKey}
-              positionCompositeUiKey={positionCompositeUiKey}
-              openEditModal={openEditModal}
-              deletePosition={deletePosition}
-              openQuickHarvest={openQuickHarvest}
-              openReinvestHarvest={openReinvestHarvest}
-              onChangeStrategyTag={updateStrategyTag}
-            />
-          ))
-        )}
-
+        {/* Las tarjetas manuales por sección se retiraron: la vista única es
+            la on-chain (OnchainLivePanel), que ya presenta las posiciones con
+            la misma estética y se enriquece con la contabilidad vía enlaces.
+            La entrada manual queda como excepción en "Nueva operación". */}
         <OnchainLivePanel
           portfolioId={(portfolioContext?.portfolioId ?? "").trim()}
           canManage={viewer.canDeletePosition}

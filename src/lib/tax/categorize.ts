@@ -182,6 +182,46 @@ export function categorizeTransaction(
   const walletKind = walletProtocol?.walletKind ?? null;
   const walletName = walletProtocol?.name ?? tx.protocol;
 
+  // ─── ADOPCIÓN de posición preexistente (migración) ───────────────────────
+  // El gestor incorporó una posición ya abierta indicando su depositado: no
+  // es un hecho imponible (el patrimonio ya era suyo), pero SÍ crea el lote
+  // FIFO con esa base para que ventas/retiradas futuras tengan coste.
+  if ((tx.metadata?.source as string | undefined) === "onchain_adopt") {
+    const symbol = (tx.tokenInSymbol ?? "").toUpperCase();
+    const amount = Number(tx.tokenInAmount ?? 0);
+    const spotUsd = Number(tx.spotPriceUsd ?? 0);
+    if (symbol && amount > 0 && spotUsd > 0) {
+      const valueEur = roundEur(usdToEur(amount * spotUsd, fxRateUsdToEur));
+      return {
+        annotation: {
+          category: "non_taxable_transfer",
+          incomeType: "none",
+          valueEur,
+          costBasisEur: valueEur,
+          realizedGainEur: 0,
+          notes: `Adopción de posición existente: ${amount} ${symbol} en ${walletName} con base indicada de ${valueEur} €. Sin hecho imponible (patrimonio preexistente); el coste de adquisición real debe confirmarlo el asesor.`,
+          taxable: false,
+          humanLabel: getCategoryLabel("non_taxable_transfer"),
+          humanDescription: `Incorporaste a la app ${amount} ${symbol} ya existentes en ${walletName} (base ${valueEur} €).`,
+          inferred: true,
+          walletKind,
+        },
+        newLots: [
+          {
+            tokenSymbol: symbol,
+            amount,
+            costBasisEur: valueEur,
+            acquiredAt: tx.transactionDate,
+            acquiredViaEvent: "buy",
+            acquiredViaTransactionId: tx.id ?? null,
+          },
+        ],
+        taxEvents: [],
+        consumedLotUpdates: [],
+      };
+    }
+  }
+
   switch (txType) {
     case "deposit":
       return handleDeposit(tx, fxRateUsdToEur, walletKind, walletName);
