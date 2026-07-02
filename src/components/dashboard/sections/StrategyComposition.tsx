@@ -128,7 +128,7 @@ export function StrategyComposition({ sections }: Props) {
         >
           Composición por estrategia
         </h2>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-black/30 px-3 py-1 text-[11px] text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] text-[var(--muted)]">
           <Layers3 className="h-3 w-3" aria-hidden="true" />
           {taggedPositionCount} de {data.positionCount} posiciones etiquetadas
         </span>

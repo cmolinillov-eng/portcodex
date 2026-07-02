@@ -108,15 +108,15 @@ function WalletManager({ portfolioId }: { portfolioId: string }) {
         <div key={w.id} className="flex items-center justify-between gap-3 border-t border-[var(--line)] py-2 text-sm">
           <div className="min-w-0">
             <span className="text-[var(--foreground)]">{w.label ?? shortAddr(w.address)}</span>
-            <span className="ml-2 text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[var(--muted)]">
-              {CHAIN_KIND_LABEL[w.chain_kind] ?? w.chain_kind}
+            <span className="ml-2 whitespace-nowrap text-[10px] uppercase font-mono tracking-wider text-[var(--muted)]">
+              · {CHAIN_KIND_LABEL[w.chain_kind] ?? w.chain_kind}
             </span>
             <div className="font-mono text-xs text-[var(--muted)] truncate" title={w.address}>{w.address}</div>
           </div>
           <button
             type="button"
             onClick={() => toggleActive(w)}
-            className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] ${w.is_active
+            className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] ${w.is_active
               ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
               : "border-[var(--line)] text-[var(--muted)]"}`}
           >
@@ -315,7 +315,8 @@ function HarvestInbox({
           <div key={ev.id} className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-3 text-sm">
             <div className="min-w-[180px]">
               <div className="font-medium text-[var(--foreground)]">
-                <span className="mr-1.5 inline-flex rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[var(--muted)]">
+                <span className="mr-1.5 inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] uppercase tracking-wider text-emerald-300/90">
+                  <span className="h-1 w-1 rounded-full bg-emerald-400/70" aria-hidden="true" />
                   {EVENT_KIND_LABEL[ev.kind ?? "harvest"] ?? ev.kind}
                 </span>
                 {ev.label ?? "?"} <span className="text-xs text-[var(--muted)]">· {ev.protocol} · {ev.chain}</span>
@@ -500,14 +501,16 @@ function ReconcileSection({
   function driftBadge(drift: number | null) {
     if (drift == null) return <span className="text-[var(--muted)]">—</span>;
     const abs = Math.abs(drift);
-    const cls =
-      abs <= 2
-        ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
-        : abs <= 8
-          ? "border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.08)] text-amber-300"
-          : "border-[rgba(244,63,94,0.35)] bg-[rgba(244,63,94,0.08)] text-rose-300";
+    // Solo la alerta (desvío grande) conserva fondo suave; el resto, texto coloreado.
+    if (abs > 8) {
+      return (
+        <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(244,63,94,0.12)] px-2 py-0.5 text-[10px] font-mono tabular-nums text-rose-300">
+          {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
+        </span>
+      );
+    }
     return (
-      <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-mono ${cls}`}>
+      <span className={`inline-flex whitespace-nowrap text-[10px] font-mono tabular-nums ${abs <= 2 ? "text-emerald-300" : "text-amber-300"}`}>
         {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
       </span>
     );
@@ -746,7 +749,8 @@ export function OnchainLivePanel({
         <div className="flex items-center gap-2">
           <Radio className="h-5 w-5 text-emerald-400" aria-hidden="true" />
           <h2 className="font-designer text-2xl font-semibold tracking-tight text-[var(--foreground)]">En vivo (on-chain)</h2>
-          <span className="text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-2 py-0.5 text-[var(--muted)]">
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] uppercase font-mono tracking-wider text-[var(--muted)]">
+            <span className="h-1 w-1 rounded-full bg-emerald-400/70" aria-hidden="true" />
             automático
           </span>
         </div>
@@ -790,7 +794,8 @@ export function OnchainLivePanel({
             {" · "}{data.positions.length} posiciones{" · "}
             {new Date(data.syncedAt).toLocaleString("es-ES")}
             {data.cached ? (
-              <span className="ml-2 text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-2 py-0.5">
+              <span className="ml-2 inline-flex items-center gap-1.5 text-[10px] uppercase font-mono tracking-wider text-[var(--muted)]">
+                <span className="h-1 w-1 rounded-full bg-[var(--muted)]" aria-hidden="true" />
                 snapshot — pulsa Actualizar para leer en vivo
               </span>
             ) : null}

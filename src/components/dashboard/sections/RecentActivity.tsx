@@ -152,7 +152,8 @@ export function RecentActivity({
                     <div className="flex flex-col gap-1">
                       <TxTypeBadge type={item.type || ""} />
                       {item.movementOrigin === "harvest_reinvest" ? (
-                        <span className="inline-flex rounded-full border border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] px-2 py-0.5 text-[10px] text-emerald-300">
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] text-emerald-300">
+                          <span className="h-1 w-1 rounded-full bg-emerald-300" aria-hidden="true" />
                           Reinv. harvest
                         </span>
                       ) : null}

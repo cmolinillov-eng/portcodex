@@ -286,7 +286,7 @@ export function GlosarioClient() {
                   <BookOpen className="h-4 w-4 text-[#E6C173]" />
                   {t.term}
                 </h3>
-                <span className="shrink-0 rounded-full border border-[var(--line)] bg-[var(--void-elevated)] px-2.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--muted)]">
+                <span className="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wide text-[var(--muted)]">
                   {t.category}
                 </span>
               </div>
@@ -328,7 +328,7 @@ function CategoryChip({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
         active
           ? "border-[rgba(230,193,115,0.5)] bg-[rgba(230,193,115,0.14)] text-[#E6C173]"
           : "border-[var(--line)] bg-[var(--void-surface)] text-[var(--muted)] hover:border-[rgba(230,193,115,0.3)]"

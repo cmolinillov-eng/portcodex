@@ -237,10 +237,8 @@ export function DashboardHeader({
             {/* P&L inline indicator under balance */}
             <div className="mt-3 flex items-center gap-3">
               <span
-                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                  isPnlPositive
-                    ? "bg-emerald-500/10 text-emerald-300"
-                    : "bg-rose-500/10 text-rose-300"
+                className={`inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold tabular-nums ${
+                  isPnlPositive ? "text-emerald-300" : "text-rose-300"
                 }`}
               >
                 {isPnlPositive
@@ -271,18 +269,19 @@ export function DashboardHeader({
               </p>
             ) : null}
 
-            {/* Role badge */}
+            {/* Role label */}
             <span
-              className={`mt-2.5 inline-flex items-center rounded-full border px-2.5 py-1 text-[10px] font-semibold tracking-wider uppercase ${
+              className={`mt-2.5 inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-semibold tracking-wider uppercase ${
                 viewer.isSuperAdmin
-                  ? "border-indigo-500/50 bg-indigo-500/12 text-indigo-300"
+                  ? "text-indigo-300"
                   : viewer.role === "cliente"
-                    ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                    ? "text-amber-300"
                     : viewer.role === "admin"
-                      ? "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.1)] text-[#E6C173]"
-                      : "border-purple-500/40 bg-purple-500/10 text-[#A79BE0]"
+                      ? "text-[#E6C173]"
+                      : "text-[#A79BE0]"
               }`}
             >
+              <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />
               {viewer.isSuperAdmin
                 ? "Administrador Principal"
                 : viewer.role === "cliente"

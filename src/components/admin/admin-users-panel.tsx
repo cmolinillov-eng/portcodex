@@ -191,7 +191,7 @@ export function AdminUsersPanel({
                           }}
                           disabled={isSavingUserId === user.id}
                           aria-label={`Cambiar rol de ${displayName(user.fullName, user.email)}`}
-                          className={`rounded-lg border px-2 py-1 text-xs transition-colors ${roleBadgeClasses(user.role)} disabled:opacity-60`}
+                          className={`w-auto rounded-lg border px-3 py-1.5 text-xs transition-colors ${roleBadgeClasses(user.role)} disabled:opacity-60`}
                         >
                           <option value="cliente">Cliente</option>
                           <option value="autonomo">Autónomo</option>

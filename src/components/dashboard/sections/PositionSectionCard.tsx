@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { BadgeDollarSign, Layers, Pencil, Trash2, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, BadgeDollarSign, Layers, Pencil, Trash2, TrendingDown, TrendingUp } from "lucide-react";
 import type { PositionSection, DefiPosition } from "@/types/portfolio";
 import { percent, plainPercent } from "../utils/formatters";
 import { useMoneyFormatters } from "../utils/currency-context";
@@ -103,12 +103,19 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
                 Loan-to-Value
               </p>
               {hasDebt ? (
-                <span
-                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-                  style={{ color: utilColor, borderColor: `${utilColor}66`, borderWidth: 1, backgroundColor: `${utilColor}14` }}
-                >
-                  {utilLabel}
-                </span>
+                utilization >= 0.7 ? (
+                  <span
+                    className="whitespace-nowrap rounded-md text-[10px] font-semibold px-2 py-0.5"
+                    style={{ color: utilColor, backgroundColor: `${utilColor}1a` }}
+                  >
+                    {utilLabel}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-semibold" style={{ color: utilColor }}>
+                    <span className="h-1 w-1 rounded-full" style={{ backgroundColor: utilColor }} aria-hidden="true" />
+                    {utilLabel}
+                  </span>
+                )
               ) : null}
             </div>
             {hasDebt ? (
@@ -229,7 +236,8 @@ function parseCurrentPrice(label: string | null): number | null {
 function LpRangeBar({ position }: { position: DefiPosition }) {
   if (position.lpRangeStatus === "correlated") {
     return (
-      <span className="inline-flex rounded-full border border-[rgba(147,130,255,0.45)] bg-[rgba(147,130,255,0.1)] px-2.5 py-1 text-[11px] text-violet-300">
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] text-violet-300">
+        <span className="h-1 w-1 rounded-full bg-violet-300" aria-hidden="true" />
         Correlacionado
       </span>
     );
@@ -242,18 +250,19 @@ function LpRangeBar({ position }: { position: DefiPosition }) {
     if (position.lpRangeStatus === "na") {
       return <span className="text-xs text-[var(--muted)]">—</span>;
     }
-    // Fallback: badge only
+    // Fallback: estado en texto; solo la alerta (fuera de rango) conserva fondo suave
     return (
       <div className="space-y-1">
-        <span
-          className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${
-            position.lpRangeStatus === "out_of_range"
-              ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.1)] text-red-300"
-              : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.1)] text-emerald-300"
-          }`}
-        >
-          {position.lpRangeStatus === "out_of_range" ? "Fuera de rango" : "En rango"}
-        </span>
+        {position.lpRangeStatus === "out_of_range" ? (
+          <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[11px] font-medium text-red-300">
+            Fuera de rango
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-medium text-emerald-300">
+            <span className="h-1 w-1 rounded-full bg-emerald-300" aria-hidden="true" />
+            En rango
+          </span>
+        )}
         {position.lpRangeLabel ? (
           <p className="text-[11px] text-[var(--muted)] leading-relaxed">{position.lpRangeLabel}</p>
         ) : null}
@@ -389,7 +398,7 @@ export function PositionSectionCard({
         >
           {section.title}
         </h2>
-        <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-black/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           {section.positions.length} posición{section.positions.length !== 1 ? "es" : ""}
         </span>
@@ -446,7 +455,7 @@ export function PositionSectionCard({
               return (
                 <Fragment key={`${position.positionId}-${position.tokenSymbol}`}>
                 <tr
-                  className="border-t border-[var(--line)]"
+                  className="group/row border-t border-[var(--line)]"
                 >
                   {isLending ? (
                     <>
@@ -509,7 +518,7 @@ export function PositionSectionCard({
                   <td className="px-4 py-4">
                     <div className="flex flex-col gap-1.5">
                       <span
-                        className="inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                        className="inline-flex w-fit items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium shadow-none"
                         style={{
                           borderColor: `${meta.color}44`,
                           backgroundColor: `${meta.color}12`,
@@ -532,7 +541,7 @@ export function PositionSectionCard({
                   {showYieldColumn ? (
                     <td className="px-4 py-4">
                       {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(230,193,115,0.35)] bg-[rgba(230,193,115,0.09)] px-2.5 py-1 text-xs text-[#E6C173]">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#E6C173]">
                           <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
                           {currency(position.totalHarvested)}
                         </span>
@@ -545,24 +554,28 @@ export function PositionSectionCard({
                   {/* P&L / ROI */}
                   <td className="px-4 py-4">
                     {position.dataQualityIssue ? (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.1)] px-2.5 py-1 text-xs text-amber-300">
-                        Revisar precio medio
+                      <span
+                        className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-amber-300"
+                        title="El precio medio de entrada registrado parece incorrecto: revísalo para que el P&L sea fiable"
+                      >
+                        <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+                        Revisar precio
                       </span>
                     ) : position.roiPercent >= 0 ? (
                       <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(16,185,129,0.4)] bg-[rgba(16,185,129,0.1)] px-2.5 py-1 text-xs text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.12)]">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-400">
                           <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
                           {percent(position.roiPercent)}
                         </span>
-                        <p className="text-[11px] text-emerald-300">{signedCurrency(pnlValue)}</p>
+                        <p className="text-[11px] tabular-nums text-emerald-300">{signedCurrency(pnlValue)}</p>
                       </div>
                     ) : (
                       <div className="space-y-1">
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.1)] px-2.5 py-1 text-xs text-rose-400 shadow-[0_0_10px_rgba(248,113,113,0.12)]">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold tabular-nums text-rose-400">
                           <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
                           {percent(position.roiPercent)}
                         </span>
-                        <p className="text-[11px] text-rose-300">{signedCurrency(pnlValue)}</p>
+                        <p className="text-[11px] tabular-nums text-rose-300">{signedCurrency(pnlValue)}</p>
                       </div>
                     )}
                   </td>
@@ -572,17 +585,21 @@ export function PositionSectionCard({
                     <td className="px-4 py-4">
                       {position.healthFactor === null ? (
                         <span className="text-xs text-[var(--muted)]">N/A</span>
+                      ) : position.healthStatus === "critical" ? (
+                        <span
+                          className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400"
+                          aria-label={`Health factor: ${position.healthFactor.toFixed(2)} — ${position.healthStatus}`}
+                        >
+                          {position.healthFactor.toFixed(2)}
+                        </span>
                       ) : (
                         <span
-                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                            position.healthStatus === "critical"
-                              ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.1)] text-red-400"
-                              : position.healthStatus === "warning"
-                                ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.1)] text-amber-300"
-                                : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.1)] text-emerald-400"
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold tabular-nums ${
+                            position.healthStatus === "warning" ? "text-amber-300" : "text-emerald-400"
                           }`}
                           aria-label={`Health factor: ${position.healthFactor.toFixed(2)} — ${position.healthStatus}`}
                         >
+                          <span className={`h-1 w-1 rounded-full ${position.healthStatus === "warning" ? "bg-amber-300" : "bg-emerald-400"}`} aria-hidden="true" />
                           {position.healthFactor.toFixed(2)}
                         </span>
                       )}

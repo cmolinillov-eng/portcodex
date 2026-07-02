@@ -292,7 +292,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
               className="flex w-full items-center justify-between rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-4 py-3 text-left transition hover:border-[rgba(230,193,115,0.45)] hover:bg-[rgba(230,193,115,0.06)] disabled:opacity-60"
             >
               <span className="font-medium">{p.full_name ?? p.id.slice(0, 8)}</span>
-              <span className="rounded-full border border-[rgba(230,193,115,0.2)] bg-[rgba(230,193,115,0.08)] px-2.5 py-0.5 text-xs text-[#E6C173]">
+              <span className="whitespace-nowrap text-xs text-[#E6C173]">
                 {roleLabel[p.role] ?? p.role}
               </span>
             </button>
@@ -476,7 +476,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
                 ? "Crear cuenta"
                 : authView === "recover"
                   ? "Enviar enlace de recuperación"
-                  : "Gestionar mi Porfolio"}
+                  : "Gestionar mi Portfolio"}
           </span>
         )}
       </button>

@@ -169,10 +169,10 @@ export function OperacionesClient({ entries }: { entries: TraceabilityEntry[] })
                           {e.protocol}
                           {custodyClass !== "desconocida" ? (
                             <span
-                              className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wide ${
+                              className={`inline-flex items-center gap-1 whitespace-nowrap text-[9px] uppercase tracking-wide ${
                                 custodyClass === "centralizada"
-                                  ? "border-[rgba(245,158,11,0.35)] text-amber-300/90"
-                                  : "border-[rgba(16,185,129,0.35)] text-emerald-300/90"
+                                  ? "text-amber-300/90"
+                                  : "text-emerald-300/90"
                               }`}
                               title={custodyClass === "centralizada" ? "Billetera centralizada (CEX/bróker)" : "Billetera descentralizada (autocustodia/DEX)"}
                             >

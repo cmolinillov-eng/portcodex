@@ -651,13 +651,12 @@ button, a {
 }
 
 /* =====================================================================
-   TRANSACTION TYPE BADGES — technical stamps: mono, square, tracking
+   TRANSACTION TYPE LABELS — dot + colored mono text, no box
    ===================================================================== */
 .tx-badge {
   display: inline-flex;
   align-items: center;
-  border-radius: 0.25rem;
-  padding: 0.2rem 0.5rem;
+  gap: 0.4em;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.62rem;
   font-weight: 500;
@@ -665,6 +664,17 @@ button, a {
   text-transform: uppercase;
   white-space: nowrap;
   line-height: 1.4;
+  color: var(--muted);
+}
+.tx-badge::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+  flex-shrink: 0;
 }
 
 /* Inflows — phosphor green */
@@ -672,8 +682,6 @@ button, a {
 .tx-badge-staking_deposit,
 .tx-badge-lending_supply,
 .tx-badge-lp_deposit {
-  border: 1px solid rgba(61, 214, 140, 0.35);
-  background: rgba(61, 214, 140, 0.08);
   color: #7fe7b6;
 }
 
@@ -682,36 +690,26 @@ button, a {
 .tx-badge-staking_withdrawal,
 .tx-badge-lending_withdraw,
 .tx-badge-lp_withdraw {
-  border: 1px solid rgba(244, 80, 108, 0.38);
-  background: rgba(244, 80, 108, 0.08);
   color: #fda4af;
 }
 
 /* Harvest — champagne */
 .tx-badge-harvest {
-  border: 1px solid rgba(230, 193, 115, 0.4);
-  background: rgba(230, 193, 115, 0.08);
   color: #f4e3bc;
 }
 
 /* Borrow — amber */
 .tx-badge-lending_borrow {
-  border: 1px solid rgba(232, 168, 85, 0.4);
-  background: rgba(232, 168, 85, 0.08);
   color: #f2c789;
 }
 
 /* Rebalance — iris */
 .tx-badge-rebalance {
-  border: 1px solid rgba(167, 155, 224, 0.4);
-  background: rgba(167, 155, 224, 0.08);
   color: #cec8f0;
 }
 
 /* Position closed — slate indigo */
 .tx-badge-position_closed {
-  border: 1px solid rgba(129, 140, 248, 0.35);
-  background: rgba(129, 140, 248, 0.08);
   color: #a5b4fc;
 }
 
@@ -863,18 +861,14 @@ button, a {
 .landing-feature-chip {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  border-radius: 9999px;
-  border: 1px solid rgba(230, 193, 115, 0.18);
-  background: rgba(230, 193, 115, 0.04);
-  padding: 0.25rem 0.75rem;
+  gap: 0.45rem;
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 0.65rem;
   font-weight: 400;
   letter-spacing: 0.1em;
   text-transform: uppercase;
+  white-space: nowrap;
   color: rgba(255, 253, 248, 0.45);
-  backdrop-filter: blur(8px);
 }
 .landing-feature-chip::before {
   content: '';

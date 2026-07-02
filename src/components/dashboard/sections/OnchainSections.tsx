@@ -181,7 +181,7 @@ export function OnchainSections({
               </h2>
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm text-[var(--foreground)]">{currency(subtotal)}</span>
-                <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-black/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
                   <Layers className="h-3.5 w-3.5" aria-hidden="true" />
                   {rows.length} posición{rows.length !== 1 ? "es" : ""}
                 </span>
@@ -272,7 +272,7 @@ export function OnchainSections({
                         {/* PROTOCOLO */}
                         <td className="px-4 py-4">
                           <span
-                            className="inline-flex w-fit items-center rounded-full border px-2.5 py-1 text-xs font-medium"
+                            className="inline-flex w-fit items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium shadow-none"
                             style={{ borderColor: `${meta.color}44`, backgroundColor: `${meta.color}12`, color: meta.color }}
                           >
                             {p.protocol ?? "Wallet"}
@@ -284,7 +284,7 @@ export function OnchainSections({
                           <td className="px-4 py-4">
                             <div className="space-y-1">
                               {harvested > 0 ? (
-                                <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(230,193,115,0.35)] bg-[rgba(230,193,115,0.09)] px-2.5 py-1 text-xs text-[#E6C173]">
+                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#E6C173]">
                                   <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
                                   {currency(harvested)}
                                 </span>
@@ -307,7 +307,7 @@ export function OnchainSections({
                             <span className="text-xs text-[var(--muted)]" title="Sin posición contable enlazada aún">—</span>
                           ) : roi >= 0 ? (
                             <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(16,185,129,0.4)] bg-[rgba(16,185,129,0.1)] px-2.5 py-1 text-xs text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.12)]">
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold tabular-nums text-emerald-400">
                                 <TrendingUp className="h-3.5 w-3.5" aria-hidden="true" />
                                 {roi.toFixed(2)}%
                               </span>
@@ -315,7 +315,7 @@ export function OnchainSections({
                             </div>
                           ) : (
                             <div className="space-y-1">
-                              <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.1)] px-2.5 py-1 text-xs text-rose-400 shadow-[0_0_10px_rgba(248,113,113,0.12)]">
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs font-semibold tabular-nums text-rose-400">
                                 <TrendingDown className="h-3.5 w-3.5" aria-hidden="true" />
                                 {roi.toFixed(2)}%
                               </span>
@@ -329,16 +329,17 @@ export function OnchainSections({
                           <td className="px-4 py-4">
                             {hf == null ? (
                               <span className="text-xs text-[var(--muted)]">N/A</span>
+                            ) : hf < 1.2 ? (
+                              <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400">
+                                {hf.toFixed(2)}
+                              </span>
                             ) : (
                               <span
-                                className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                                  hf < 1.2
-                                    ? "border-[rgba(239,68,68,0.45)] bg-[rgba(239,68,68,0.1)] text-red-400"
-                                    : hf < 2
-                                      ? "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.1)] text-amber-300"
-                                      : "border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.1)] text-emerald-400"
+                                className={`inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold tabular-nums ${
+                                  hf < 2 ? "text-amber-300" : "text-emerald-400"
                                 }`}
                               >
+                                <span className={`h-1 w-1 rounded-full ${hf < 2 ? "bg-amber-300" : "bg-emerald-400"}`} aria-hidden="true" />
                                 {hf.toFixed(2)}
                               </span>
                             )}

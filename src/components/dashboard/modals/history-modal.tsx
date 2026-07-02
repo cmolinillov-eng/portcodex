@@ -149,11 +149,10 @@ export function HistoryModal({ isOpen, onClose }: HistoryModalProps) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-semibold">{row.tokenSymbol}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                          row.reason === "rebalanced"
-                            ? "bg-blue-500/20 text-blue-300"
-                            : "bg-red-500/20 text-red-300"
+                        <span className={`inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] font-medium ${
+                          row.reason === "rebalanced" ? "text-blue-300" : "text-red-300"
                         }`}>
+                          <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />
                           {row.reason === "rebalanced" ? "Rebalanceado" : "Eliminado"}
                         </span>
                       </div>

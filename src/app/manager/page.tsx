@@ -166,7 +166,7 @@ export default async function ManagerPage() {
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Gestor</h1>
-              <span className="rounded-full border border-[rgba(230,193,115,0.3)] bg-[rgba(230,193,115,0.08)] px-3 py-0.5 text-sm text-[#E6C173]">{managerLabel}</span>
+              <span className="whitespace-nowrap rounded-full border border-[rgba(230,193,115,0.3)] bg-[rgba(230,193,115,0.08)] px-3 py-0.5 text-sm text-[#E6C173]">{managerLabel}</span>
             </div>
             <div className="flex items-center gap-2">
               <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact" aria-label="Cerrar sesión">

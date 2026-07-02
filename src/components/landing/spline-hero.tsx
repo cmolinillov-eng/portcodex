@@ -143,7 +143,7 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
       </div>
 
       {/* Bottom feature strip */}
-      <div className="absolute bottom-6 left-0 right-0 z-10 flex items-center justify-center gap-4 px-6 pointer-events-none">
+      <div className="absolute bottom-6 left-0 right-0 z-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 pointer-events-none">
         <span className="landing-feature-chip">Multi-chain</span>
         <span className="landing-feature-chip">P&amp;L en tiempo real</span>
         <span className="landing-feature-chip">Staking · LP · Lending</span>

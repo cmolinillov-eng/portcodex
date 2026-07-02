@@ -115,7 +115,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
             type="button"
             onClick={() => canEdit && setEditing((v) => !v)}
             disabled={!canEdit}
-            className="inline-flex items-center gap-1 rounded-full border border-[rgba(167,155,224,0.45)] bg-[rgba(167,155,224,0.10)] px-2 py-0.5 text-[10px] font-medium text-[#CEC8F0] hover:bg-[rgba(167,155,224,0.18)] disabled:cursor-default"
+            className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium text-[#A79BE0]/80 hover:text-[#CEC8F0] disabled:cursor-default"
             title={canEdit ? "Click para cambiar la etiqueta" : currentTag}
           >
             <Tag className="h-2.5 w-2.5" aria-hidden="true" />
@@ -126,7 +126,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
               type="button"
               onClick={() => commit(null)}
               disabled={saving}
-              className="text-[10px] text-[var(--muted)] hover:text-rose-400 disabled:opacity-50"
+              className="text-[10px] text-[var(--muted)] opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-rose-400 disabled:opacity-50"
               aria-label="Quitar etiqueta"
               title="Quitar etiqueta"
             >
@@ -138,7 +138,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
         <button
           type="button"
           onClick={() => setEditing((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)] hover:border-[rgba(167,155,224,0.55)] hover:text-[#CEC8F0]"
+          className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] text-[var(--muted)] opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100 hover:text-[#CEC8F0]"
         >
           <Tag className="h-2.5 w-2.5" aria-hidden="true" />
           Etiqueta

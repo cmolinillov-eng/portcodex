@@ -180,7 +180,7 @@ export function AdminCreateUserForm({
                     : "border-[var(--line)] bg-black/20 hover:border-[rgba(245,158,11,0.3)]"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] px-2 py-0.5 text-xs text-amber-300">
+                <span className="inline-flex whitespace-nowrap text-xs font-semibold text-amber-300">
                   Cliente
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Solo lectura. Puedes asignar gestor ahora o luego.</p>
@@ -196,7 +196,7 @@ export function AdminCreateUserForm({
                     : "border-[var(--line)] bg-black/20 hover:border-[rgba(140,109,63,0.3)]"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] px-2 py-0.5 text-xs text-[#A79BE0]">
+                <span className="inline-flex whitespace-nowrap text-xs font-semibold text-[#A79BE0]">
                   Autónomo
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona su propio portfolio.</p>
@@ -212,7 +212,7 @@ export function AdminCreateUserForm({
                     : "border-[var(--line)] bg-black/20 hover:border-[rgba(230,193,115,0.25)]"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] px-2 py-0.5 text-xs text-[#E6C173]">
+                <span className="inline-flex whitespace-nowrap text-xs font-semibold text-[#E6C173]">
                   Gestor
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona portfolios de clientes.</p>
