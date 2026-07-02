@@ -115,7 +115,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
             type="button"
             onClick={() => canEdit && setEditing((v) => !v)}
             disabled={!canEdit}
-            className="inline-flex items-center gap-1 rounded-full border border-[rgba(186,160,255,0.45)] bg-[rgba(186,160,255,0.10)] px-2 py-0.5 text-[10px] font-medium text-[#D4C5FF] hover:bg-[rgba(186,160,255,0.18)] disabled:cursor-default"
+            className="inline-flex items-center gap-1 rounded-full border border-[rgba(167,155,224,0.45)] bg-[rgba(167,155,224,0.10)] px-2 py-0.5 text-[10px] font-medium text-[#CEC8F0] hover:bg-[rgba(167,155,224,0.18)] disabled:cursor-default"
             title={canEdit ? "Click para cambiar la etiqueta" : currentTag}
           >
             <Tag className="h-2.5 w-2.5" aria-hidden="true" />
@@ -138,7 +138,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
         <button
           type="button"
           onClick={() => setEditing((v) => !v)}
-          className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)] hover:border-[rgba(186,160,255,0.55)] hover:text-[#D4C5FF]"
+          className="inline-flex items-center gap-1 rounded-full border border-dashed border-[var(--line)] px-2 py-0.5 text-[10px] text-[var(--muted)] hover:border-[rgba(167,155,224,0.55)] hover:text-[#CEC8F0]"
         >
           <Tag className="h-2.5 w-2.5" aria-hidden="true" />
           Etiqueta
@@ -162,13 +162,13 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
               left: coords.left,
               width: 288,
               zIndex: 9999,
-              background: "#0a0f1e",
-              borderColor: "rgba(186, 160, 255, 0.4)",
+              background: "#0b0c10",
+              borderColor: "rgba(167, 155, 224, 0.4)",
               boxShadow:
-                "0 24px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(186, 160, 255, 0.12), 0 0 30px rgba(186, 160, 255, 0.12)",
+                "0 24px 60px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(167, 155, 224, 0.12), 0 0 30px rgba(167, 155, 224, 0.12)",
             }}
           >
-            <p className="mb-2 text-[10px] uppercase tracking-[0.12em] text-[var(--muted)]">
+            <p className="mb-2 text-[10px] uppercase font-mono tracking-[0.12em] text-[var(--muted)]">
               Etiqueta estratégica
             </p>
             <input
@@ -181,9 +181,9 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
               }}
               maxLength={60}
               placeholder="ej. Stablecoin yield"
-              className="w-full rounded-lg border border-[var(--line)] bg-black/40 px-2.5 py-2 text-xs text-[var(--foreground)] focus:border-[rgba(186,160,255,0.55)] focus:outline-none"
+              className="w-full rounded-lg border border-[var(--line)] bg-black/40 px-2.5 py-2 text-xs text-[var(--foreground)] focus:border-[rgba(167,155,224,0.55)] focus:outline-none"
             />
-            <p className="mt-2.5 mb-1.5 text-[9px] uppercase tracking-[0.12em] text-[var(--muted)] opacity-70">
+            <p className="mt-2.5 mb-1.5 text-[9px] uppercase font-mono tracking-[0.12em] text-[var(--muted)] opacity-70">
               Sugerencias
             </p>
             <div className="flex flex-wrap gap-1">
@@ -194,8 +194,8 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
                   onClick={() => setValue(suggestion)}
                   className={`rounded-full border px-2 py-0.5 text-[10px] transition-colors ${
                     value === suggestion
-                      ? "border-[rgba(186,160,255,0.55)] bg-[rgba(186,160,255,0.18)] text-[#D4C5FF]"
-                      : "border-[var(--line)] text-[var(--muted)] hover:border-[rgba(186,160,255,0.45)] hover:text-[#D4C5FF]"
+                      ? "border-[rgba(167,155,224,0.55)] bg-[rgba(167,155,224,0.18)] text-[#CEC8F0]"
+                      : "border-[var(--line)] text-[var(--muted)] hover:border-[rgba(167,155,224,0.45)] hover:text-[#CEC8F0]"
                   }`}
                 >
                   {suggestion}
@@ -225,7 +225,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
                   type="button"
                   onClick={() => commit(value.trim() || null)}
                   disabled={saving}
-                  className="rounded-md border border-[rgba(186,160,255,0.55)] bg-[rgba(186,160,255,0.15)] px-2.5 py-1 text-[10px] font-medium text-[#D4C5FF] hover:bg-[rgba(186,160,255,0.25)] disabled:opacity-50"
+                  className="rounded-md border border-[rgba(167,155,224,0.55)] bg-[rgba(167,155,224,0.15)] px-2.5 py-1 text-[10px] font-medium text-[#CEC8F0] hover:bg-[rgba(167,155,224,0.25)] disabled:opacity-50"
                 >
                   {saving ? "Guardando…" : "Guardar"}
                 </button>

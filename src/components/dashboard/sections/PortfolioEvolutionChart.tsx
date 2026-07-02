@@ -130,10 +130,10 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
       {/* Header: título + rango selector */}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <Activity className="h-5 w-5 text-[#A0D2FF] opacity-70" aria-hidden="true" />
+          <Activity className="h-5 w-5 text-[#E6C173] opacity-70" aria-hidden="true" />
           <h2
-            className="text-xl font-semibold tracking-tight text-[#D4C5FF]"
-            style={{ textShadow: "0 0 30px rgba(186,160,255,0.22)" }}
+            className="text-xl font-semibold tracking-tight text-[#CEC8F0]"
+            style={{ textShadow: "0 0 30px rgba(167,155,224,0.22)" }}
           >
             Evolución del Portfolio
           </h2>
@@ -146,7 +146,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
               onClick={() => setRange(r.key)}
               className={`rounded-md px-3 py-1.5 font-medium transition ${
                 range === r.key
-                  ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                  ? "bg-[rgba(230,193,115,0.18)] text-[#E6C173]"
                   : "text-[var(--muted)] hover:text-[var(--foreground)]"
               }`}
               aria-pressed={range === r.key}
@@ -160,7 +160,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
       {/* Loading state */}
       {loading ? (
         <div className="flex items-center justify-center h-52">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#A0D2FF] border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#E6C173] border-t-transparent" />
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -186,7 +186,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
               {/* TWR */}
               <div className="rounded-xl border border-[var(--line)] bg-black/20 px-3 py-2.5">
-                <p className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">
                   TWR
                 </p>
                 <p
@@ -201,7 +201,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
 
               {/* Max Drawdown */}
               <div className="rounded-xl border border-[var(--line)] bg-black/20 px-3 py-2.5">
-                <p className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">
                   Max Drawdown
                 </p>
                 <p className="mt-0.5 text-lg font-bold tabular-nums text-rose-300">
@@ -212,7 +212,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
 
               {/* P&L actual */}
               <div className="rounded-xl border border-[var(--line)] bg-black/20 px-3 py-2.5">
-                <p className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">
                   P&L
                 </p>
                 <p
@@ -229,10 +229,10 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
 
               {/* Datos acumulados */}
               <div className="rounded-xl border border-[var(--line)] bg-black/20 px-3 py-2.5">
-                <p className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">
+                <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">
                   Datos
                 </p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#A0D2FF]">
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#E6C173]">
                   {metrics.totalDays}
                 </p>
                 <p className="text-[10px] text-[var(--muted)] opacity-60">
@@ -278,12 +278,12 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
                 {lastPoint ? (
                   <ReferenceLine
                     y={lastPoint.deposited}
-                    stroke="rgba(160,210,255,0.35)"
+                    stroke="rgba(230,193,115,0.35)"
                     strokeDasharray="6 4"
                     label={{
                       value: "Depositado",
                       position: "insideTopRight",
-                      fill: "rgba(160,210,255,0.5)",
+                      fill: "rgba(230,193,115,0.5)",
                       fontSize: 10,
                     }}
                   />
@@ -321,7 +321,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
               <svg width="20" height="8" aria-hidden="true">
                 <line
                   x1="0" y1="4" x2="20" y2="4"
-                  stroke="rgba(160,210,255,0.5)"
+                  stroke="rgba(230,193,115,0.5)"
                   strokeWidth="1.5"
                   strokeDasharray="3 2"
                 />
@@ -350,7 +350,7 @@ function CustomTooltip({
   const isPnlPos = p.pnl >= 0;
 
   return (
-    <div className="rounded-xl border border-[var(--line)] bg-[rgba(6,12,24,0.95)] px-4 py-3 text-xs shadow-xl backdrop-blur-md">
+    <div className="rounded-xl border border-[var(--line)] bg-[rgba(9,10,13,0.95)] px-4 py-3 text-xs shadow-xl backdrop-blur-md">
       <p className="text-[10px] text-[var(--muted)] mb-2 font-medium">{p.label}</p>
       <div className="space-y-1.5">
         <div className="flex justify-between gap-6">
@@ -372,7 +372,7 @@ function CustomTooltip({
         {p.harvest > 0 ? (
           <div className="flex justify-between gap-6">
             <span className="text-[var(--muted)]">Harvest</span>
-            <span className="tabular-nums text-[#A0D2FF]">{currency(p.harvest)}</span>
+            <span className="tabular-nums text-[#E6C173]">{currency(p.harvest)}</span>
           </div>
         ) : null}
       </div>

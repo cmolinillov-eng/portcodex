@@ -670,12 +670,12 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
   ]);
 
   const compositionStyles = useMemo(() => {
-    // Paleta: wallet=azul perla, lending=púrpura, liquidity=teal, staking=ámbar
-    const palette = ["#A0D2FF", "#B87EF5", "#4ECDC4", "#FFB347", "#D4E9FF"];
+    // Paleta Obsidian Ledger: wallet=champán, staking=iris, lp=esmeralda, lending=ámbar
+    const palette = ["#E6C173", "#A79BE0", "#4FDF9D", "#E8A855", "#97AAC1"];
     const total = sectionTotals.reduce((sum, item) => sum + item.value, 0);
     if (total <= 0) {
       return {
-        donutBackground: "conic-gradient(#0e1e32 0deg 360deg)",
+        donutBackground: "conic-gradient(#21242b 0deg 360deg)",
         entries: sectionTotals.map((item, index) => ({
           ...item,
           percent: 0,
@@ -1838,10 +1838,10 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
         <Link
           href={`/fiscal${portfolioContext?.portfolioId ? `?portfolio=${portfolioContext.portfolioId}` : ""}`}
-          className="group flex items-center justify-between gap-4 rounded-2xl border border-[rgba(160,210,255,0.28)] bg-[rgba(160,210,255,0.06)] px-5 py-4 transition-colors hover:border-[rgba(160,210,255,0.5)] hover:bg-[rgba(160,210,255,0.1)]"
+          className="group flex items-center justify-between gap-4 rounded-2xl border border-[rgba(230,193,115,0.28)] bg-[rgba(230,193,115,0.06)] px-5 py-4 transition-colors hover:border-[rgba(230,193,115,0.5)] hover:bg-[rgba(230,193,115,0.1)]"
         >
           <div className="flex items-center gap-3.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(160,210,255,0.3)] bg-[rgba(160,210,255,0.1)] text-[#A0D2FF]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(230,193,115,0.3)] bg-[rgba(230,193,115,0.1)] text-[#E6C173]">
               <Scale className="h-5 w-5" />
             </span>
             <div>
@@ -1851,7 +1851,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
               </p>
             </div>
           </div>
-          <span className="flex items-center gap-1 text-xs font-medium text-[#A0D2FF]">
+          <span className="flex items-center gap-1 text-xs font-medium text-[#E6C173]">
             Abrir
             <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </span>
@@ -2615,7 +2615,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       }));
                     };
                     return (
-                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm">
+                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgba(230,193,115,0.25)] bg-[rgba(230,193,115,0.06)] px-3 py-2 text-sm">
                         <div>
                           <span className="text-[var(--muted)]">Capital disponible: </span>
                           <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
@@ -2628,7 +2628,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                         <button
                           type="button"
                           onClick={fillFullBalance}
-                          className="rounded-md border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-2.5 py-1 text-xs text-[#A0D2FF] transition-colors hover:bg-[rgba(160,210,255,0.18)]"
+                          className="rounded-md border border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] px-2.5 py-1 text-xs text-[#E6C173] transition-colors hover:bg-[rgba(230,193,115,0.18)]"
                         >
                           Usar saldo completo
                         </button>
@@ -2834,7 +2834,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                               placeholder="USDC"
                             />
                           </label>
-                          <div className="sm:col-span-2 rounded-lg border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] p-3">
+                          <div className="sm:col-span-2 rounded-lg border border-[rgba(230,193,115,0.25)] bg-[rgba(230,193,115,0.06)] p-3">
                             <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-2">
                               <span>Split entre tokens (% en {form.rebalanceTargetTokenSymbol || "Token A"})</span>
                               <span className="font-semibold text-[var(--brand)]">
@@ -3079,7 +3079,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "liquidity_pool" ? (
-                <div className="grid gap-3 rounded-xl border border-[rgba(160,210,255,0.25)] bg-[rgba(160,210,255,0.06)] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-[rgba(230,193,115,0.25)] bg-[rgba(230,193,115,0.06)] p-3 sm:grid-cols-2">
                   <p className="col-span-full text-xs text-[var(--muted)]">
                     Liquidity Pool V3: dos tokens + rango. Con esto se habilita el cálculo de IL automáticamente.
                   </p>
@@ -3191,7 +3191,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                 type="button"
                 onClick={submitOperation}
                 disabled={isSaving}
-                className="rounded-lg border border-[rgba(160,210,255,0.5)] bg-[rgba(160,210,255,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(160,210,255,0.3)] disabled:opacity-60"
+                className="rounded-lg border border-[rgba(230,193,115,0.5)] bg-[rgba(230,193,115,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(230,193,115,0.3)] disabled:opacity-60"
               >
                 {isSaving ? "Guardando..." : "Guardar operación"}
               </button>

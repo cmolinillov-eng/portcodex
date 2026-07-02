@@ -168,7 +168,7 @@ export function QuickHarvestModal({
           </div>
 
           {reinvest ? (
-            <div className="space-y-3 rounded-lg border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.05)] p-3">
+            <div className="space-y-3 rounded-lg border border-[rgba(230,193,115,0.2)] bg-[rgba(230,193,115,0.05)] p-3">
               <div>
                 <label className="mb-1 block text-xs text-[var(--muted)]">Posición destino</label>
                 <select

@@ -60,7 +60,7 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
           width: "520px",
           height: "220px",
           background:
-            "radial-gradient(ellipse at center, rgba(160,210,255,0.12) 0%, rgba(157,80,187,0.08) 50%, transparent 75%)",
+            "radial-gradient(ellipse at center, rgba(230,193,115,0.12) 0%, rgba(140,109,63,0.08) 50%, transparent 75%)",
           filter: "blur(32px)",
           transform: "translate(-50%, -50%)",
         }}
@@ -73,15 +73,15 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
           <div
             className="h-7 w-7 rounded-lg flex items-center justify-center"
             style={{
-              background: "linear-gradient(135deg, rgba(160,210,255,0.2), rgba(157,80,187,0.2))",
-              border: "1px solid rgba(160,210,255,0.25)",
+              background: "linear-gradient(135deg, rgba(230,193,115,0.2), rgba(140,109,63,0.2))",
+              border: "1px solid rgba(230,193,115,0.25)",
               backdropFilter: "blur(8px)",
             }}
             aria-hidden="true"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#A0D2FF" opacity="0.8" />
-              <rect x="8" y="10" width="4" height="2" fill="#9D50BB" opacity="0.8" />
+              <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#E6C173" opacity="0.8" />
+              <rect x="8" y="10" width="4" height="2" fill="#8C6D3F" opacity="0.8" />
             </svg>
           </div>
           <span
@@ -96,10 +96,10 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
         <button
           onClick={onLoginClick}
           aria-label="Abrir panel de inicio de sesión"
-          className="group relative px-5 py-2 rounded-full border border-white/10 bg-white/[0.04] font-designer text-[12px] font-[300] tracking-[0.12em] text-white/55 hover:text-white hover:border-[#A0D2FF]/40 hover:bg-white/[0.08] transition-all duration-300 overflow-hidden"
+          className="group relative px-5 py-2 rounded-full border border-white/10 bg-white/[0.04] font-designer text-[12px] font-[300] tracking-[0.12em] text-white/55 hover:text-white hover:border-[#E6C173]/40 hover:bg-white/[0.08] transition-all duration-300 overflow-hidden"
         >
           <span className="relative z-10">INICIAR SESIÓN</span>
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#A0D2FF]/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#E6C173]/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
         </button>
       </div>
 
@@ -109,13 +109,13 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
           className="text-center font-designer leading-tight select-none flex flex-wrap justify-center gap-x-4 overflow-hidden"
           style={{ fontSize: "clamp(2.8rem, 7vw, 5.25rem)", fontWeight: 200, letterSpacing: "-0.02em" }}
         >
-          <span className="hero-word hero-word-1 bg-gradient-to-r from-[#A0D2FF] to-[#D4E9FF] bg-clip-text text-transparent">
+          <span className="hero-word hero-word-1 bg-gradient-to-r from-[#E6C173] to-[#F4E3BC] bg-clip-text text-transparent">
             Control.
           </span>
           <span className="hero-word hero-word-2 text-white/90">
             Visión.
           </span>
-          <span className="hero-word hero-word-3 bg-gradient-to-r from-[#9D50BB] to-[#C090E8] bg-clip-text text-transparent">
+          <span className="hero-word hero-word-3 bg-gradient-to-r from-[#8C6D3F] to-[#A79BE0] bg-clip-text text-transparent">
             Cripto.
           </span>
         </h1>
@@ -135,7 +135,7 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
             className="landing-cta font-designer"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M2 7h10M7 2l5 5-5 5" stroke="#A0D2FF" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              <path d="M2 7h10M7 2l5 5-5 5" stroke="#E6C173" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             ACCEDER AL TERMINAL
           </button>

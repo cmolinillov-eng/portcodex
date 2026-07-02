@@ -140,7 +140,7 @@ export function AdminCreateUserForm({
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
                 placeholder="Nombre y apellidos"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
               />
             </label>
 
@@ -151,7 +151,7 @@ export function AdminCreateUserForm({
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="correo@dominio.com"
                 type="email"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
               />
             </label>
 
@@ -162,7 +162,7 @@ export function AdminCreateUserForm({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 placeholder="Mínimo 8 caracteres"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
               />
             </label>
           </div>
@@ -192,11 +192,11 @@ export function AdminCreateUserForm({
                 aria-pressed={role === "autonomo"}
                 className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.01] ${
                   role === "autonomo"
-                    ? "border-[rgba(157,80,187,0.55)] bg-[rgba(157,80,187,0.14)] shadow-[0_0_12px_rgba(157,80,187,0.15)]"
-                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(157,80,187,0.3)]"
+                    ? "border-[rgba(140,109,63,0.55)] bg-[rgba(140,109,63,0.14)] shadow-[0_0_12px_rgba(140,109,63,0.15)]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(140,109,63,0.3)]"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] px-2 py-0.5 text-xs text-[#C090E8]">
+                <span className="inline-flex rounded-full border border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] px-2 py-0.5 text-xs text-[#A79BE0]">
                   Autónomo
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona su propio portfolio.</p>
@@ -208,11 +208,11 @@ export function AdminCreateUserForm({
                 aria-pressed={role === "admin"}
                 className={`rounded-xl border px-3 py-2.5 text-left transition-all duration-200 hover:scale-[1.01] ${
                   role === "admin"
-                    ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] shadow-[0_0_12px_rgba(160,210,255,0.10)]"
-                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(160,210,255,0.25)]"
+                    ? "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] shadow-[0_0_12px_rgba(230,193,115,0.10)]"
+                    : "border-[var(--line)] bg-black/20 hover:border-[rgba(230,193,115,0.25)]"
                 }`}
               >
-                <span className="inline-flex rounded-full border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-2 py-0.5 text-xs text-[#A0D2FF]">
+                <span className="inline-flex rounded-full border border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] px-2 py-0.5 text-xs text-[#E6C173]">
                   Gestor
                 </span>
                 <p className="mt-1 text-xs text-[var(--muted)]">Gestiona portfolios de clientes.</p>
@@ -221,7 +221,7 @@ export function AdminCreateUserForm({
           </div>
 
           {role === "cliente" ? (
-            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.04)] p-4">
+            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.04)] p-4">
               <p className="text-sm font-medium text-[var(--foreground)]">Asignación de gestor</p>
               <div className="mt-2 grid gap-2 md:grid-cols-2">
                 <button
@@ -233,8 +233,8 @@ export function AdminCreateUserForm({
                   }}
                   className={`rounded-lg border px-3 py-2 text-left text-sm transition-all ${
                     clientAssignMode === "later"
-                      ? "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]"
-                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(157,80,187,0.25)]"
+                      ? "border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] text-[#A79BE0]"
+                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(140,109,63,0.25)]"
                   }`}
                 >
                   Crear cliente ahora y asignar gestor después
@@ -245,8 +245,8 @@ export function AdminCreateUserForm({
                   onClick={() => setClientAssignMode("now")}
                   className={`rounded-lg border px-3 py-2 text-left text-sm transition-all ${
                     clientAssignMode === "now"
-                      ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]"
-                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(160,210,255,0.25)]"
+                      ? "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] text-[#E6C173]"
+                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:border-[rgba(230,193,115,0.25)]"
                   }`}
                 >
                   Crear cliente y asignar gestor ahora
@@ -259,7 +259,7 @@ export function AdminCreateUserForm({
                   <select
                     value={clientManagerId}
                     onChange={(event) => setClientManagerId(event.target.value)}
-                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
+                    className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
                   >
                     <option value="">Seleccionar gestor</option>
                     {managerOptions.map((manager) => (
@@ -274,13 +274,13 @@ export function AdminCreateUserForm({
           ) : null}
 
           {role === "admin" ? (
-            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.04)] p-4">
+            <div className="mt-5 rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.04)] p-4">
               <label className="text-sm">
                 <span className="mb-1 block text-[var(--muted)]">Portfolio a gestionar (opcional)</span>
                 <select
                   value={managerPortfolioId}
                   onChange={(event) => setManagerPortfolioId(event.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(160,210,255,0.15)]"
+                  className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
                 >
                   <option value="">Sin portfolio asignado</option>
                   {availablePortfolios.map((portfolio) => (

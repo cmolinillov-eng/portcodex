@@ -83,7 +83,7 @@ export function RecentActivity({
     >
       {/* Header */}
       <div className="section-header-row mb-5 flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+        <h2 className="font-designer text-2xl font-semibold tracking-tight text-[var(--foreground)]">
           Actividad Reciente
         </h2>
         <button
@@ -100,16 +100,16 @@ export function RecentActivity({
       {/* Table */}
       <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
         <table className="w-full min-w-[980px] border-collapse">
-          <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
+          <thead className="bg-[rgba(10,11,14,0.55)] text-left backdrop-blur-md">
             <tr>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">FECHA</th>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TIPO</th>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">POSICIÓN</th>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">TOKENS</th>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">DETALLE</th>
-              <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">PRECIO</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">FECHA</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">TIPO</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">POSICIÓN</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">TOKENS</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">DETALLE</th>
+              <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">PRECIO</th>
               {showUndoCol ? (
-                <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">ACCIÓN</th>
+                <th scope="col" className="px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]">ACCIÓN</th>
               ) : null}
             </tr>
           </thead>
@@ -119,7 +119,7 @@ export function RecentActivity({
                 <td className="px-6 py-10 text-center" colSpan={colCount}>
                   <div className="flex flex-col items-center gap-2 text-[var(--muted)]">
                     <div
-                      className="h-10 w-10 rounded-full border border-[var(--line)] bg-[rgba(160,210,255,0.05)] flex items-center justify-center"
+                      className="h-10 w-10 rounded-full border border-[var(--line)] bg-[rgba(230,193,115,0.05)] flex items-center justify-center"
                       aria-hidden="true"
                     >
                       <FileSpreadsheet className="h-5 w-5 opacity-40" />

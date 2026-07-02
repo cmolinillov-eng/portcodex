@@ -120,6 +120,9 @@ const collectEvent = parseAbiItem(
 const decreaseEvent = parseAbiItem(
   "event DecreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
 );
+const increaseEvent = parseAbiItem(
+  "event IncreaseLiquidity(uint256 indexed tokenId, uint128 liquidity, uint256 amount0, uint256 amount1)",
+);
 
 const npmAbi = [
   { name: "balanceOf", type: "function", stateMutability: "view", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
@@ -190,17 +193,77 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
   if (from < 0n) from = 0n;
   if (from > latest) return 0;
 
+  // Metadatos de posición (tokens/decimales) cacheados por tokenId.
+  const posMeta = new Map();
+  async function metaFor(tokenId) {
+    const k = tokenId.toString();
+    if (posMeta.has(k)) return posMeta.get(k);
+    const pos = await client.readContract({ address: npm, abi: npmAbi, functionName: "positions", args: [tokenId] });
+    const [token0, token1] = [pos[2], pos[3]];
+    const [dec0, sym0, dec1, sym1] = await Promise.all([
+      client.readContract({ address: token0, abi: erc20Abi, functionName: "decimals" }),
+      client.readContract({ address: token0, abi: erc20Abi, functionName: "symbol" }),
+      client.readContract({ address: token1, abi: erc20Abi, functionName: "decimals" }),
+      client.readContract({ address: token1, abi: erc20Abi, functionName: "symbol" }),
+    ]);
+    const m = { token0, token1, dec0: Number(dec0), dec1: Number(dec1), sym0, sym1 };
+    posMeta.set(k, m);
+    return m;
+  }
+
   let found = 0;
+  // Inserta un evento (deposit/withdraw/harvest) con precios del bloque.
+  async function emit(kind, log, raw0, raw1) {
+    const m = await metaFor(log.args.tokenId);
+    const block = await client.getBlock({ blockNumber: log.blockNumber });
+    const tsSec = Number(block.timestamp);
+    const amount0 = Number(raw0) / 10 ** m.dec0;
+    const amount1 = Number(raw1) / 10 ** m.dec1;
+    const price0 = await llamaPrice(cfg.llama, m.token0, tsSec);
+    const price1 = await llamaPrice(cfg.llama, m.token1, tsSec);
+
+    const tokens = [];
+    if (amount0 > 0) tokens.push({ symbol: m.sym0, amount: amount0, priceUsd: price0, valueUsd: price0 != null ? amount0 * price0 : null });
+    if (amount1 > 0) tokens.push({ symbol: m.sym1, amount: amount1, priceUsd: price1, valueUsd: price1 != null ? amount1 * price1 : null });
+    if (!tokens.length) return;
+
+    const valueUsd = tokens.every((t) => t.valueUsd != null)
+      ? tokens.reduce((s, t) => s + t.valueUsd, 0)
+      : null;
+    // Ignora polvo (< $0.01): decrease con 0 o redondeos.
+    if (valueUsd != null && valueUsd < 0.01) return;
+
+    const { error: insErr } = await sb.from("onchain_events").upsert({
+      portfolio_id: portfolioId,
+      event_key: `${chainName}:${log.transactionHash}:${log.logIndex}:${kind}`,
+      kind,
+      chain: chainName,
+      protocol: protocol.name,
+      wallet_address: walletAddr,
+      position_ref: String(log.args.tokenId),
+      label: `${m.sym0}/${m.sym1}`,
+      tokens,
+      value_usd: valueUsd,
+      block_time: new Date(tsSec * 1000).toISOString(),
+      tx_hash: log.transactionHash,
+      includes_principal: false,
+    }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+    if (insErr) console.error(`  insert evento: ${insErr.message}`);
+    else found++;
+  }
+
   let chunk = CHUNK; // adaptativo: los RPCs públicos limitan el rango de getLogs
   let start = from;
   while (start <= latest) {
     const end = start + chunk > latest ? latest : start + chunk;
     let collects = [];
     let decreases = [];
+    let increases = [];
     try {
-      [collects, decreases] = await Promise.all([
+      [collects, decreases, increases] = await Promise.all([
         client.getLogs({ address: npm, event: collectEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
         client.getLogs({ address: npm, event: decreaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
+        client.getLogs({ address: npm, event: increaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
       ]);
     } catch (e) {
       const msg = String(e.message);
@@ -212,56 +275,27 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
       start = end + 1n;
       continue;
     }
-    const decreaseTxs = new Set(decreases.map((d) => d.transactionHash));
 
-    for (const log of collects) {
-      try {
-        const tokenId = log.args.tokenId;
-        const pos = await client.readContract({ address: npm, abi: npmAbi, functionName: "positions", args: [tokenId] });
-        const [token0, token1] = [pos[2], pos[3]];
-        const [dec0, sym0, dec1, sym1] = await Promise.all([
-          client.readContract({ address: token0, abi: erc20Abi, functionName: "decimals" }),
-          client.readContract({ address: token0, abi: erc20Abi, functionName: "symbol" }),
-          client.readContract({ address: token1, abi: erc20Abi, functionName: "decimals" }),
-          client.readContract({ address: token1, abi: erc20Abi, functionName: "symbol" }),
-        ]);
-        const block = await client.getBlock({ blockNumber: log.blockNumber });
-        const tsSec = Number(block.timestamp);
+    // Principal retirado por tx+tokenId, para separar fees en el Collect.
+    const decreasedByTx = new Map();
+    for (const d of decreases) {
+      decreasedByTx.set(`${d.transactionHash}:${d.args.tokenId}`, { a0: d.args.amount0, a1: d.args.amount1 });
+    }
 
-        const amount0 = Number(log.args.amount0) / 10 ** Number(dec0);
-        const amount1 = Number(log.args.amount1) / 10 ** Number(dec1);
-        const price0 = await llamaPrice(cfg.llama, token0, tsSec);
-        const price1 = await llamaPrice(cfg.llama, token1, tsSec);
-
-        const tokens = [];
-        if (amount0 > 0) tokens.push({ symbol: sym0, amount: amount0, priceUsd: price0, valueUsd: price0 != null ? amount0 * price0 : null });
-        if (amount1 > 0) tokens.push({ symbol: sym1, amount: amount1, priceUsd: price1, valueUsd: price1 != null ? amount1 * price1 : null });
-        if (!tokens.length) continue;
-
-        const valueUsd = tokens.every((t) => t.valueUsd != null)
-          ? tokens.reduce((s, t) => s + t.valueUsd, 0)
-          : null;
-
-        const { error: insErr } = await sb.from("onchain_events").upsert({
-          portfolio_id: portfolioId,
-          event_key: `${chainName}:${log.transactionHash}:${log.logIndex}`,
-          kind: "harvest",
-          chain: chainName,
-          protocol: protocol.name,
-          wallet_address: walletAddr,
-          position_ref: String(tokenId),
-          label: `${sym0}/${sym1}`,
-          tokens,
-          value_usd: valueUsd,
-          block_time: new Date(tsSec * 1000).toISOString(),
-          tx_hash: log.transactionHash,
-          includes_principal: decreaseTxs.has(log.transactionHash),
-        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
-        if (insErr) console.error(`  insert evento: ${insErr.message}`);
-        else found++;
-      } catch (e) {
-        console.error(`  evento ${chainName}: ${String(e.message).slice(0, 100)}`);
+    try {
+      // Depósitos (añadir liquidez, incluye la apertura de la posición).
+      for (const log of increases) await emit("deposit", log, log.args.amount0, log.args.amount1);
+      // Retiradas (el principal que salió del pool).
+      for (const log of decreases) await emit("withdraw", log, log.args.amount0, log.args.amount1);
+      // Harvest = Collect − principal retirado en la misma tx (solo las fees).
+      for (const log of collects) {
+        const dec = decreasedByTx.get(`${log.transactionHash}:${log.args.tokenId}`);
+        const fee0 = dec ? (log.args.amount0 > dec.a0 ? log.args.amount0 - dec.a0 : 0n) : log.args.amount0;
+        const fee1 = dec ? (log.args.amount1 > dec.a1 ? log.args.amount1 - dec.a1 : 0n) : log.args.amount1;
+        await emit("harvest", log, fee0, fee1);
       }
+    } catch (e) {
+      console.error(`  eventos ${chainName}: ${String(e.message).slice(0, 100)}`);
     }
     start = end + 1n;
   }

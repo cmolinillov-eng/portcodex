@@ -124,7 +124,7 @@ function WalletManager({ portfolioId }: { portfolioId: string }) {
         <div key={w.id} className="flex items-center justify-between gap-3 border-t border-[var(--line)] py-2 text-sm">
           <div className="min-w-0">
             <span className="text-[var(--foreground)]">{w.label ?? shortAddr(w.address)}</span>
-            <span className="ml-2 text-[10px] uppercase tracking-wider rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[var(--muted)]">
+            <span className="ml-2 text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[var(--muted)]">
               {CHAIN_KIND_LABEL[w.chain_kind] ?? w.chain_kind}
             </span>
             <div className="font-mono text-xs text-[var(--muted)] truncate" title={w.address}>{w.address}</div>
@@ -188,6 +188,7 @@ function WalletManager({ portfolioId }: { portfolioId: string }) {
 type EventToken = { symbol: string; amount: number; priceUsd: number | null; valueUsd: number | null };
 type HarvestEvent = {
   id: string;
+  kind?: string; // harvest | deposit | withdraw
   chain: string;
   protocol: string;
   label: string | null;
@@ -196,7 +197,12 @@ type HarvestEvent = {
   block_time: string | null;
   tx_hash: string | null;
   includes_principal: boolean;
+  /** Enlace contable preexistente (position_links): viene preasignado. */
+  link?: { protocol: string; position_id: string; position_type: string } | null;
 };
+
+const EVENT_KIND_LABEL: Record<string, string> = { harvest: "Harvest", deposit: "Depósito", withdraw: "Retirada" };
+const EVENT_ACTION_LABEL: Record<string, string> = { harvest: "Registrar harvest", deposit: "Registrar depósito", withdraw: "Registrar retirada" };
 
 export type ManualPositionRef = { protocol: string; positionId: string; positionType: string; label: string };
 
@@ -232,7 +238,8 @@ function HarvestInbox({
     setError("");
     try {
       const sel = manualPositions.find((p) => `${p.protocol}::${p.positionId}` === selection[ev.id]);
-      if (action === "ingest" && !sel) throw new Error("Elige la posición a la que pertenece el harvest.");
+      // Con enlace guardado (position_links) no hace falta elegir: va preasignado.
+      if (action === "ingest" && !sel && !ev.link) throw new Error("Elige la posición a la que pertenece la operación.");
       const res = await fetch("/api/onchain/events", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -260,11 +267,11 @@ function HarvestInbox({
       <div className="flex items-center gap-2 mb-2">
         <Sprout className="h-4 w-4 text-emerald-400" aria-hidden="true" />
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
-          Harvests detectados on-chain ({events.length})
+          Operaciones detectadas on-chain ({events.length})
         </h3>
       </div>
       <p className="text-xs text-[var(--muted)] mb-3">
-        Cobros de comisiones detectados en la blockchain. Asigna la posición y regístralos con un clic — cantidad, precio y fecha reales del momento del cobro.
+        Harvests, depósitos y retiradas detectados en la blockchain. Asigna la posición (solo la primera vez — se recuerda) y regístralos con un clic: cantidad, precio y fecha reales del bloque.
       </p>
       {error ? <p className="text-xs text-rose-400 mb-2">{error}</p> : null}
 
@@ -273,12 +280,18 @@ function HarvestInbox({
           <div key={ev.id} className="flex flex-wrap items-center gap-3 border-t border-[var(--line)] pt-3 text-sm">
             <div className="min-w-[180px]">
               <div className="font-medium text-[var(--foreground)]">
+                <span className="mr-1.5 inline-flex rounded-full border border-[var(--line)] px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[var(--muted)]">
+                  {EVENT_KIND_LABEL[ev.kind ?? "harvest"] ?? ev.kind}
+                </span>
                 {ev.label ?? "?"} <span className="text-xs text-[var(--muted)]">· {ev.protocol} · {ev.chain}</span>
               </div>
               <div className="text-xs text-[var(--muted)]">
                 {ev.block_time ? new Date(ev.block_time).toLocaleString("es-ES") : "—"}
                 {ev.includes_principal ? (
                   <span className="ml-2 text-amber-300">⚠️ incluye retirada de principal — revisar</span>
+                ) : null}
+                {ev.link ? (
+                  <span className="ml-2 text-emerald-300">→ {ev.link.protocol} (enlazada)</span>
                 ) : null}
               </div>
             </div>
@@ -287,25 +300,27 @@ function HarvestInbox({
             </div>
             <div className="font-mono text-[var(--foreground)]">{usd(ev.value_usd)}</div>
             <div className="ml-auto flex items-center gap-2">
-              <select
-                value={selection[ev.id] ?? ""}
-                onChange={(e) => setSelection((s) => ({ ...s, [ev.id]: e.target.value }))}
-                className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--foreground)] max-w-[220px]"
-              >
-                <option value="">Posición destino…</option>
-                {manualPositions.map((p) => (
-                  <option key={`${p.protocol}::${p.positionId}`} value={`${p.protocol}::${p.positionId}`}>
-                    {p.label}
-                  </option>
-                ))}
-              </select>
+              {ev.link ? null : (
+                <select
+                  value={selection[ev.id] ?? ""}
+                  onChange={(e) => setSelection((s) => ({ ...s, [ev.id]: e.target.value }))}
+                  className="rounded-lg border border-[var(--line)] bg-transparent px-2 py-1.5 text-xs text-[var(--foreground)] max-w-[220px]"
+                >
+                  <option value="">Posición destino…</option>
+                  {manualPositions.map((p) => (
+                    <option key={`${p.protocol}::${p.positionId}`} value={`${p.protocol}::${p.positionId}`}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <button
                 type="button"
                 onClick={() => act(ev, "ingest")}
-                disabled={busy !== "" || !selection[ev.id]}
+                disabled={busy !== "" || (!selection[ev.id] && !ev.link)}
                 className="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
               >
-                {busy === ev.id + "ingest" ? "Registrando…" : "Registrar harvest"}
+                {busy === ev.id + "ingest" ? "Registrando…" : EVENT_ACTION_LABEL[ev.kind ?? "harvest"] ?? "Registrar"}
               </button>
               <button
                 type="button"
@@ -367,8 +382,8 @@ export function OnchainLivePanel({
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
         <div className="flex items-center gap-2">
           <Radio className="h-5 w-5 text-emerald-400" aria-hidden="true" />
-          <h2 className="text-2xl font-semibold tracking-tight text-[var(--foreground)]">En vivo (on-chain)</h2>
-          <span className="text-[10px] uppercase tracking-wider rounded-full border border-[var(--line)] px-2 py-0.5 text-[var(--muted)]">
+          <h2 className="font-designer text-2xl font-semibold tracking-tight text-[var(--foreground)]">En vivo (on-chain)</h2>
+          <span className="text-[10px] uppercase font-mono tracking-wider rounded-full border border-[var(--line)] px-2 py-0.5 text-[var(--muted)]">
             solo lectura
           </span>
         </div>
@@ -416,12 +431,12 @@ export function OnchainLivePanel({
           {groups.map((g) => (
             <div key={g.key} className="mb-5 last:mb-0">
               <div className="flex items-baseline justify-between mb-1 px-1">
-                <h3 className="text-xs uppercase tracking-[0.18em] text-[var(--muted)]">{g.title}</h3>
+                <h3 className="text-xs uppercase font-mono tracking-[0.18em] text-[var(--muted)]">{g.title}</h3>
                 <span className="text-sm font-mono text-[var(--foreground)]">{usd(g.subtotal)}</span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
-                  <thead className="text-left text-[10px] tracking-[0.18em] text-[var(--muted)]">
+                  <thead className="text-left font-mono text-[10px] tracking-[0.14em] text-[var(--muted)]">
                     <tr>
                       <th className="px-3 py-1.5">POSICIÓN</th>
                       <th className="px-3 py-1.5">WALLET</th>

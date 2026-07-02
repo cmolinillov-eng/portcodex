@@ -41,9 +41,9 @@ function roleBadgeClasses(role: Role): string {
     return "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300";
   }
   if (role === "admin") {
-    return "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] text-[#A0D2FF]";
+    return "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] text-[#E6C173]";
   }
-  return "border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.12)] text-[#C090E8]";
+  return "border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] text-[#A79BE0]";
 }
 
 
@@ -130,8 +130,8 @@ export function AdminUsersPanel({
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.18)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(157,80,187,0.12)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(230,193,115,0.18)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(140,109,63,0.12)]" aria-hidden="true" />
 
       <section className="page-content">
         <header className="card-premium page-header-card animate-fade-up">
@@ -153,15 +153,15 @@ export function AdminUsersPanel({
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "all" ? "border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)]" : ""}`}>Todos ({counts.all})</button>
-            <button type="button" onClick={() => setFilter("admin")} aria-pressed={filter === "admin"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "admin" ? "border-[rgba(160,210,255,0.4)] bg-[rgba(160,210,255,0.12)]" : ""}`}>Gestores ({counts.admin})</button>
+            <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "all" ? "border-[rgba(230,193,115,0.4)] bg-[rgba(230,193,115,0.12)]" : ""}`}>Todos ({counts.all})</button>
+            <button type="button" onClick={() => setFilter("admin")} aria-pressed={filter === "admin"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "admin" ? "border-[rgba(230,193,115,0.4)] bg-[rgba(230,193,115,0.12)]" : ""}`}>Gestores ({counts.admin})</button>
             <button type="button" onClick={() => setFilter("cliente")} aria-pressed={filter === "cliente"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "cliente" ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)]" : ""}`}>Clientes ({counts.cliente})</button>
-            <button type="button" onClick={() => setFilter("autonomo")} aria-pressed={filter === "autonomo"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "autonomo" ? "border-[rgba(157,80,187,0.4)] bg-[rgba(157,80,187,0.10)]" : ""}`}>Autónomos ({counts.autonomo})</button>
+            <button type="button" onClick={() => setFilter("autonomo")} aria-pressed={filter === "autonomo"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "autonomo" ? "border-[rgba(140,109,63,0.4)] bg-[rgba(140,109,63,0.10)]" : ""}`}>Autónomos ({counts.autonomo})</button>
           </div>
 
           <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
+              <thead className="bg-[rgba(10,11,14,0.55)] text-left backdrop-blur-md">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">USUARIO</th>
                   <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>
@@ -202,16 +202,16 @@ export function AdminUsersPanel({
                         {userPortfolios.length === 0 ? (
                           <span className="text-[var(--muted)]">Sin portfolio</span>
                         ) : user.role === "admin" ? (
-                          <Link href={`/admin/managers/${user.id}`} className="text-[#A0D2FF] underline underline-offset-2">
+                          <Link href={`/admin/managers/${user.id}`} className="text-[#E6C173] underline underline-offset-2">
                             {userPortfolios.length} portfolio(s)
                           </Link>
                         ) : userPortfolios.length === 1 ? (
-                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-[#A0D2FF] underline underline-offset-2">
+                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-[#E6C173] underline underline-offset-2">
                             {userPortfolios[0].name}
                           </Link>
                         ) : (
                           <details>
-                            <summary className="cursor-pointer list-none text-[#A0D2FF]">
+                            <summary className="cursor-pointer list-none text-[#E6C173]">
                               {userPortfolios.length} portfolio(s)
                             </summary>
                             <div className="mt-1 space-y-1 text-xs text-[var(--muted)]">

@@ -24,7 +24,7 @@ export function LoginOverlay({ isOpen, onClose }: LoginOverlayProps) {
 
         <div className="space-y-6">
           <div className="space-y-2">
-            <h2 className="font-designer text-[24px] font-[300] text-[#A0D2FF]">
+            <h2 className="font-designer text-[24px] font-[300] text-[#E6C173]">
               Acceder al Terminal
             </h2>
             <p className="font-designer text-[14px] font-[200] text-white/50">
@@ -38,7 +38,7 @@ export function LoginOverlay({ isOpen, onClose }: LoginOverlayProps) {
 
           <div className="text-center">
             <p className="font-designer text-[12px] font-[200] text-white/30">
-              ¿No tienes cuenta? <span className="text-[#A0D2FF]/80 cursor-pointer hover:text-[#A0D2FF] transition-colors">Solicitar acceso</span>
+              ¿No tienes cuenta? <span className="text-[#E6C173]/80 cursor-pointer hover:text-[#E6C173] transition-colors">Solicitar acceso</span>
             </p>
           </div>
         </div>

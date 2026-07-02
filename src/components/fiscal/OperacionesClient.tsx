@@ -83,7 +83,7 @@ export function OperacionesClient({ entries }: { entries: TraceabilityEntry[] })
         <select
           value={custody}
           onChange={(e) => setCustody(e.target.value as CustodyClass | "todas")}
-          className="rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[rgba(160,210,255,0.55)] focus:outline-none"
+          className="rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[rgba(230,193,115,0.55)] focus:outline-none"
         >
           {CUSTODY_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>
@@ -95,7 +95,7 @@ export function OperacionesClient({ entries }: { entries: TraceabilityEntry[] })
         <select
           value={fiscalFilter}
           onChange={(e) => setFiscalFilter(e.target.value)}
-          className="rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[rgba(160,210,255,0.55)] focus:outline-none"
+          className="rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3 py-2 text-sm text-[var(--foreground)] focus:border-[rgba(230,193,115,0.55)] focus:outline-none"
         >
           <option value="todas">Todas las categorías fiscales</option>
           {fiscalOptions.map((b) => (
@@ -111,7 +111,7 @@ export function OperacionesClient({ entries }: { entries: TraceabilityEntry[] })
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Buscar protocolo, token, nota…"
-            className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-surface)] py-2 pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[rgba(160,210,255,0.55)] focus:outline-none"
+            className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-surface)] py-2 pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[rgba(230,193,115,0.55)] focus:outline-none"
           />
         </div>
 
@@ -119,7 +119,7 @@ export function OperacionesClient({ entries }: { entries: TraceabilityEntry[] })
           type="button"
           onClick={exportCsv}
           disabled={filtered.length === 0}
-          className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3.5 py-2 text-sm text-[var(--foreground)] transition-colors hover:border-[rgba(160,210,255,0.45)] disabled:opacity-50"
+          className="inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--void-surface)] px-3.5 py-2 text-sm text-[var(--foreground)] transition-colors hover:border-[rgba(230,193,115,0.45)] disabled:opacity-50"
         >
           <Download className="h-4 w-4" /> CSV
         </button>

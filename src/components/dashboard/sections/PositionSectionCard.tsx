@@ -26,10 +26,10 @@ interface PositionSectionCardProps {
 
 // Per-section visual identity (anchor: top-border gradient + header accent)
 const SECTION_META: Record<string, { label: string; color: string; glowClass: string }> = {
-  wallet:         { label: "Wallet",         color: "#A0D2FF", glowClass: "text-[#A0D2FF]" },
-  staking:        { label: "Staking",        color: "#C090E8", glowClass: "text-[#C090E8]" },
-  lending:        { label: "Lending",        color: "#fcd34d", glowClass: "text-[#fcd34d]" },
-  liquidity_pools: { label: "Liquidity Pools", color: "#6ee7b7", glowClass: "text-[#6ee7b7]" },
+  wallet:         { label: "Wallet",         color: "#97AAC1", glowClass: "text-[#97AAC1]" },
+  staking:        { label: "Staking",        color: "#A79BE0", glowClass: "text-[#A79BE0]" },
+  lending:        { label: "Lending",        color: "#E8A855", glowClass: "text-[#E8A855]" },
+  liquidity_pools: { label: "Liquidity Pools", color: "#4FDF9D", glowClass: "text-[#4FDF9D]" },
 };
 
 function formatTokenAmount(amount: number): string {
@@ -78,10 +78,10 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
         <div className="grid gap-5 md:grid-cols-3">
           {/* Net Value */}
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] mb-2">
+            <p className="text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] mb-2">
               Posición neta
             </p>
-            <p className={`text-xl font-semibold tabular-nums ${details.netValueUsd >= 0 ? "text-[#fcd34d]" : "text-rose-300"}`}>
+            <p className={`text-xl font-semibold tabular-nums ${details.netValueUsd >= 0 ? "text-[#E8A855]" : "text-rose-300"}`}>
               {currency(details.netValueUsd)}
             </p>
             <div className="mt-2 space-y-1 text-[11px] text-[var(--muted)]">
@@ -99,7 +99,7 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
           {/* LTV bar */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">
+              <p className="text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)]">
                 Loan-to-Value
               </p>
               {hasDebt ? (
@@ -143,7 +143,7 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
 
           {/* Distancia a liquidación */}
           <div>
-            <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)] mb-2">
+            <p className="text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] mb-2">
               Distancia a liquidación
             </p>
             {!hasDebt || details.liquidationRisks.length === 0 ? (
@@ -361,9 +361,9 @@ export function PositionSectionCard({
   const showYieldColumn = section.key !== "wallet";
   const showActionsColumn = viewer.canOperate;
   const sectionToneClass = `card-section-${section.key}`;
-  const meta = SECTION_META[section.key] ?? { label: section.title, color: "#A0D2FF", glowClass: "text-[#A0D2FF]" };
+  const meta = SECTION_META[section.key] ?? { label: section.title, color: "#E6C173", glowClass: "text-[#E6C173]" };
 
-  const thClass = "px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]";
+  const thClass = "px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]";
 
   // colSpan dinámico para el panel de detalles lending (debe abarcar toda la tabla)
   const lendingColSpan =
@@ -384,12 +384,12 @@ export function PositionSectionCard({
       {/* Section header */}
       <div className="section-header-row mb-5 flex items-center justify-between gap-3 flex-wrap">
         <h2
-          className={`text-2xl font-semibold tracking-tight ${meta.glowClass}`}
+          className={`font-designer text-2xl font-semibold tracking-tight ${meta.glowClass}`}
           style={{ textShadow: `0 0 30px ${meta.color}22` }}
         >
           {section.title}
         </h2>
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-black/30 px-3 py-1.5 text-xs text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--line)] bg-black/30 px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.08em] text-[var(--muted)]">
           <Layers className="h-3.5 w-3.5" aria-hidden="true" />
           {section.positions.length} posición{section.positions.length !== 1 ? "es" : ""}
         </span>
@@ -398,7 +398,7 @@ export function PositionSectionCard({
       {/* Table */}
       <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
         <table className="w-full min-w-[900px] border-collapse">
-          <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
+          <thead className="bg-[rgba(10,11,14,0.55)] text-left backdrop-blur-md">
             <tr>
               {isLending ? (
                 <>
@@ -532,7 +532,7 @@ export function PositionSectionCard({
                   {showYieldColumn ? (
                     <td className="px-4 py-4">
                       {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(160,210,255,0.35)] bg-[rgba(160,210,255,0.09)] px-2.5 py-1 text-xs text-[#A0D2FF]">
+                        <span className="inline-flex items-center gap-1 rounded-full border border-[rgba(230,193,115,0.35)] bg-[rgba(230,193,115,0.09)] px-2.5 py-1 text-xs text-[#E6C173]">
                           <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
                           {currency(position.totalHarvested)}
                         </span>
@@ -630,7 +630,7 @@ export function PositionSectionCard({
                             <button
                               type="button"
                               onClick={() => openQuickHarvest(position)}
-                              className="inline-flex items-center gap-1 rounded-md border border-[rgba(160,210,255,0.35)] bg-[rgba(160,210,255,0.08)] px-2 py-1 text-[11px] text-[#A0D2FF] transition hover:bg-[rgba(160,210,255,0.16)] hover:border-[rgba(160,210,255,0.55)]"
+                              className="inline-flex items-center gap-1 rounded-md border border-[rgba(230,193,115,0.35)] bg-[rgba(230,193,115,0.08)] px-2 py-1 text-[11px] text-[#E6C173] transition hover:bg-[rgba(230,193,115,0.16)] hover:border-[rgba(230,193,115,0.55)]"
                               aria-label={`Registrar harvest para ${position.tokenSymbol}`}
                               style={{ transition: "all 0.3s var(--ease)" }}
                             >
@@ -646,7 +646,7 @@ export function PositionSectionCard({
                                 <button
                                   type="button"
                                   onClick={() => openReinvestHarvest(position)}
-                                  className="inline-flex items-center gap-1 rounded-md border border-[rgba(157,80,187,0.45)] bg-[rgba(157,80,187,0.1)] px-2 py-1 text-[11px] text-[#D4B6EC] transition hover:bg-[rgba(157,80,187,0.2)] hover:border-[rgba(157,80,187,0.65)]"
+                                  className="inline-flex items-center gap-1 rounded-md border border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.1)] px-2 py-1 text-[11px] text-[#F4E3BC] transition hover:bg-[rgba(140,109,63,0.2)] hover:border-[rgba(140,109,63,0.65)]"
                                   aria-label={`Reinvertir harvest pendiente de ${position.tokenSymbol}`}
                                   style={{ transition: "all 0.3s var(--ease)" }}
                                 >

@@ -28,6 +28,35 @@ function getClient() {
   return getSupabaseServiceClient() ?? getSupabaseServerClient();
 }
 
+// LivePosition.id de la posición del evento: `${chain}:${slug}:${nftId}`.
+// Permite casar el evento con position_links (Fase B).
+const PROTOCOL_SLUGS: Record<string, string> = {
+  "pancakeswap v3": "pancakeswap-v3",
+  "uniswap v3": "uniswap-v3",
+  projectx: "projectx",
+};
+function eventOnchainId(ev: { chain: string; protocol: string; position_ref: string | null }): string | null {
+  const slug = PROTOCOL_SLUGS[ev.protocol.toLowerCase()];
+  if (!slug || !ev.position_ref) return null;
+  return `${ev.chain}:${slug}:${ev.position_ref}`;
+}
+
+type LinkInfo = { protocol: string; position_id: string; position_type: string; auto_ingest: boolean };
+
+async function getLinks(portfolioId: string): Promise<Map<string, LinkInfo>> {
+  const out = new Map<string, LinkInfo>();
+  try {
+    const { data } = await getClient()
+      .from("position_links")
+      .select("onchain_id, protocol, position_id, position_type, auto_ingest")
+      .eq("portfolio_id", portfolioId);
+    for (const l of data ?? []) out.set(l.onchain_id as string, l as LinkInfo);
+  } catch {
+    /* tabla sin crear: sin enlaces */
+  }
+  return out;
+}
+
 export async function GET(request: NextRequest) {
   const portfolioId = (request.nextUrl.searchParams.get("portfolioId") ?? "").trim();
   const access = await getViewerAccess();
@@ -44,7 +73,15 @@ export async function GET(request: NextRequest) {
     // Tabla aún sin crear (migración pendiente): panel sin sección, no error.
     return NextResponse.json({ events: [] });
   }
-  return NextResponse.json({ events: (data ?? []) as EventRow[] });
+
+  // Adjuntar el enlace contable si la posición está enlazada (preasignación).
+  const links = await getLinks(portfolioId);
+  const events = ((data ?? []) as EventRow[]).map((ev) => {
+    const oid = eventOnchainId(ev as { chain: string; protocol: string; position_ref: string | null });
+    const link = oid ? links.get(oid) ?? null : null;
+    return { ...ev, link };
+  });
+  return NextResponse.json({ events });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -73,7 +110,7 @@ export async function PATCH(request: NextRequest) {
   const client = getClient();
   const { data: ev, error: evErr } = await client
     .from("onchain_events")
-    .select("id, portfolio_id, chain, protocol, label, tokens, value_usd, block_time, tx_hash, status, position_ref")
+    .select("id, portfolio_id, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, status, position_ref")
     .eq("id", eventId)
     .eq("portfolio_id", portfolioId)
     .single();
@@ -90,11 +127,22 @@ export async function PATCH(request: NextRequest) {
   }
 
   // action === "ingest": crear transacciones `harvest` (una por token cobrado).
-  const positionId = (body.positionId ?? "").trim();
-  const protocol = (body.protocol ?? "").trim();
-  const positionType = (body.positionType ?? "Liquidity Pool").trim();
+  // Si no llega posición explícita, usar el enlace de position_links (Fase B).
+  let positionId = (body.positionId ?? "").trim();
+  let protocol = (body.protocol ?? "").trim();
+  let positionType = (body.positionType ?? "Liquidity Pool").trim();
   if (!positionId || !protocol) {
-    return NextResponse.json({ error: "Registrar requiere positionId y protocol (posición manual destino)." }, { status: 400 });
+    const links = await getLinks(portfolioId);
+    const oid = eventOnchainId(ev as { chain: string; protocol: string; position_ref: string | null });
+    const link = oid ? links.get(oid) : undefined;
+    if (link) {
+      positionId = link.position_id;
+      protocol = link.protocol;
+      positionType = link.position_type;
+    }
+  }
+  if (!positionId || !protocol) {
+    return NextResponse.json({ error: "Registrar requiere positionId y protocol (o un enlace en position_links)." }, { status: 400 });
   }
 
   const tokens = (ev.tokens ?? []) as EventToken[];
@@ -104,19 +152,30 @@ export async function PATCH(request: NextRequest) {
   }
 
   const timestamp = ev.block_time ?? new Date().toISOString();
-  // Mismo grupo de operación → el botón "Deshacer" revierte el harvest completo.
+  // Tipo contable según el evento detectado (Fase C1):
+  //   harvest → harvest (token_in), deposit → lp_deposit (token_in),
+  //   withdraw → lp_withdraw (token_out). Misma semántica que el flujo manual
+  //   auditado: deposited += in*spot / deposited -= out*spot.
+  const kind = (ev.kind as string) ?? "harvest";
+  const TX_TYPE: Record<string, string> = { harvest: "harvest", deposit: "lp_deposit", withdraw: "lp_withdraw" };
+  const txType = TX_TYPE[kind];
+  if (!txType) return NextResponse.json({ error: `Tipo de evento no soportado: ${kind}.` }, { status: 400 });
+  const NOTE_LABEL: Record<string, string> = { harvest: "Harvest", deposit: "Depósito", withdraw: "Retirada" };
+  const isOut = kind === "withdraw";
+
+  // Mismo grupo de operación → el botón "Deshacer" revierte la operación completa.
   const operationGroupId = crypto.randomUUID();
   const rows = usable.map((t) => ({
     portfolio_id: portfolioId,
-    type: "harvest",
+    type: txType,
     operation_group_id: operationGroupId,
-    token_in_symbol: t.symbol.toUpperCase(),
-    token_in_amount: t.amount,
-    token_out_symbol: null,
-    token_out_amount: null,
+    token_in_symbol: isOut ? null : t.symbol.toUpperCase(),
+    token_in_amount: isOut ? null : t.amount,
+    token_out_symbol: isOut ? t.symbol.toUpperCase() : null,
+    token_out_amount: isOut ? t.amount : null,
     spot_price: t.priceUsd as number,
     fee_amount: 0,
-    notes: `Harvest on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim(),
+    notes: `${NOTE_LABEL[kind]} on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim(),
     transaction_date: timestamp,
     protocol,
     position_id: positionId,
@@ -126,6 +185,18 @@ export async function PATCH(request: NextRequest) {
 
   const { error: txErr } = await client.from("transactions").insert(rows);
   if (txErr) return NextResponse.json({ error: `No se pudo crear la transacción: ${txErr.message}` }, { status: 500 });
+
+  // Aprender el enlace: la próxima vez este NFT ya viene preasignado.
+  const oid = eventOnchainId(ev as { chain: string; protocol: string; position_ref: string | null });
+  if (oid) {
+    await client
+      .from("position_links")
+      .upsert(
+        { portfolio_id: portfolioId, onchain_id: oid, protocol, position_id: positionId, position_type: positionType },
+        { onConflict: "portfolio_id,onchain_id" },
+      )
+      .then(() => undefined, () => undefined); // mejor esfuerzo (tabla puede no existir aún)
+  }
 
   const { error: updErr } = await client
     .from("onchain_events")

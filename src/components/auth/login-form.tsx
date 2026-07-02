@@ -289,10 +289,10 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
               type="button"
               disabled={isSubmitting}
               onClick={() => selectProfile(p.id)}
-              className="flex w-full items-center justify-between rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-4 py-3 text-left transition hover:border-[rgba(160,210,255,0.45)] hover:bg-[rgba(160,210,255,0.06)] disabled:opacity-60"
+              className="flex w-full items-center justify-between rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-4 py-3 text-left transition hover:border-[rgba(230,193,115,0.45)] hover:bg-[rgba(230,193,115,0.06)] disabled:opacity-60"
             >
               <span className="font-medium">{p.full_name ?? p.id.slice(0, 8)}</span>
-              <span className="rounded-full border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.08)] px-2.5 py-0.5 text-xs text-[#A0D2FF]">
+              <span className="rounded-full border border-[rgba(230,193,115,0.2)] bg-[rgba(230,193,115,0.08)] px-2.5 py-0.5 text-xs text-[#E6C173]">
                 {roleLabel[p.role] ?? p.role}
               </span>
             </button>
@@ -312,14 +312,14 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       {!isRecoveryMode ? (
-        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[rgba(160,210,255,0.12)] bg-[rgba(0,0,0,0.25)] p-1">
+        <div className="grid grid-cols-3 gap-2 rounded-xl border border-[rgba(230,193,115,0.12)] bg-[rgba(0,0,0,0.25)] p-1">
           <button
             type="button"
             onClick={() => setAuthView("login")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "login"
-                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
-                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
+                ? "bg-[rgba(230,193,115,0.12)] text-[#F4E3BC]"
+                : "text-[var(--muted)] hover:bg-[rgba(230,193,115,0.06)]"
             }`}
           >
             Iniciar sesión
@@ -329,8 +329,8 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             onClick={() => setAuthView("register")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "register"
-                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
-                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
+                ? "bg-[rgba(230,193,115,0.12)] text-[#F4E3BC]"
+                : "text-[var(--muted)] hover:bg-[rgba(230,193,115,0.06)]"
             }`}
           >
             Registrarse
@@ -340,15 +340,15 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             onClick={() => setAuthView("recover")}
             className={`rounded-lg px-2 py-1.5 text-xs transition ${
               authView === "recover"
-                ? "bg-[rgba(160,210,255,0.12)] text-[#D4E9FF]"
-                : "text-[var(--muted)] hover:bg-[rgba(160,210,255,0.06)]"
+                ? "bg-[rgba(230,193,115,0.12)] text-[#F4E3BC]"
+                : "text-[var(--muted)] hover:bg-[rgba(230,193,115,0.06)]"
             }`}
           >
             Recuperar
           </button>
         </div>
       ) : (
-        <p className="rounded-lg border border-[rgba(160,210,255,0.2)] bg-[rgba(160,210,255,0.06)] px-3 py-2 text-sm text-[#D4E9FF]">
+        <p className="rounded-lg border border-[rgba(230,193,115,0.2)] bg-[rgba(230,193,115,0.06)] px-3 py-2 text-sm text-[#F4E3BC]">
           Define tu nueva contraseña para completar la recuperación.
         </p>
       )}
@@ -364,7 +364,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
               value={registerFullName}
               onChange={(event) => setRegisterFullName(event.target.value)}
               placeholder="Tu nombre visible"
-              className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+              className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
             />
           </label>
 
@@ -377,7 +377,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
               value={registerEmail}
               onChange={(event) => setRegisterEmail(event.target.value)}
               placeholder="correo@dominio.com"
-              className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+              className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
             />
           </label>
         </>
@@ -393,7 +393,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
             placeholder="tuusuario o correo@dominio.com"
-            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+            className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
           />
         </label>
       ) : null}
@@ -408,7 +408,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             value={recoverEmail}
             onChange={(event) => setRecoverEmail(event.target.value)}
             placeholder="correo@dominio.com"
-            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+            className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
           />
         </label>
       ) : null}
@@ -425,7 +425,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+            className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
           />
         </label>
       ) : null}
@@ -440,7 +440,7 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
             value={confirmPassword}
             onChange={(event) => setConfirmPassword(event.target.value)}
             placeholder="••••••••"
-            className="w-full rounded-xl border border-[rgba(160,210,255,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(160,210,255,0.55)] focus:ring-2 focus:ring-[rgba(160,210,255,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(160,210,255,0.3),0_0_20px_rgba(157,80,187,0.12)]"
+            className="w-full rounded-xl border border-[rgba(230,193,115,0.15)] bg-black/30 px-3 py-2.5 text-sm outline-none transition-all duration-[400ms] ease-in-out focus:border-[rgba(230,193,115,0.55)] focus:ring-2 focus:ring-[rgba(230,193,115,0.1)] focus:shadow-[inset_0_0_0_1px_rgba(230,193,115,0.3),0_0_20px_rgba(140,109,63,0.12)]"
           />
         </label>
       ) : null}
@@ -462,8 +462,8 @@ export function LoginForm({ initialView = "login" }: LoginFormProps) {
         disabled={isSubmitting}
         className={`relative inline-flex w-full items-center justify-center overflow-hidden text-foreground transition duration-300 disabled:cursor-not-allowed disabled:opacity-60 ${
           isSubmitting
-            ? "h-2 rounded-full bg-[rgba(157,80,187,0.15)] px-0 py-0"
-            : "rounded-xl border border-[rgba(157,80,187,0.4)] bg-gradient-to-r from-[rgba(160,210,255,0.08)] to-[rgba(157,80,187,0.12)] px-4 py-3.5 text-[18px] font-medium transition-all duration-[400ms] ease-in-out hover:-translate-y-[2px] hover:from-[rgba(160,210,255,0.14)] hover:to-[rgba(157,80,187,0.2)] hover:shadow-[0_14px_30px_rgba(157,80,187,0.2)]"
+            ? "h-2 rounded-full bg-[rgba(140,109,63,0.15)] px-0 py-0"
+            : "rounded-xl border border-[rgba(140,109,63,0.4)] bg-gradient-to-r from-[rgba(230,193,115,0.08)] to-[rgba(140,109,63,0.12)] px-4 py-3.5 text-[18px] font-medium transition-all duration-[400ms] ease-in-out hover:-translate-y-[2px] hover:from-[rgba(230,193,115,0.14)] hover:to-[rgba(140,109,63,0.2)] hover:shadow-[0_14px_30px_rgba(140,109,63,0.2)]"
         }`}
       >
         {isSubmitting ? (

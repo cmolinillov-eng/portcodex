@@ -11,7 +11,7 @@ interface Props {
 }
 
 const PALETTE = [
-  "#C090E8", "#A0D2FF", "#fcd34d", "#6ee7b7",
+  "#A79BE0", "#E6C173", "#fcd34d", "#6ee7b7",
   "#FB7185", "#F97316", "#22D3EE", "#A78BFA",
   "#84CC16", "#F472B6",
 ];
@@ -123,8 +123,8 @@ export function StrategyComposition({ sections }: Props) {
     >
       <div className="mb-3 flex items-center justify-between gap-3 flex-wrap">
         <h2
-          className="text-xl font-semibold tracking-tight text-[#D4C5FF]"
-          style={{ textShadow: "0 0 30px rgba(186,160,255,0.22)" }}
+          className="text-xl font-semibold tracking-tight text-[#CEC8F0]"
+          style={{ textShadow: "0 0 30px rgba(167,155,224,0.22)" }}
         >
           Composición por estrategia
         </h2>

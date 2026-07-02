@@ -158,15 +158,15 @@ export default async function ManagerPage() {
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(160,210,255,0.22)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(160,210,255,0.16)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(230,193,115,0.22)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(230,193,115,0.16)]" aria-hidden="true" />
 
       <section className="page-content">
         <header className="card-premium page-header-card self-start animate-fade-up">
           <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div className="flex flex-wrap items-center gap-3">
               <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Gestor</h1>
-              <span className="rounded-full border border-[rgba(160,210,255,0.3)] bg-[rgba(160,210,255,0.08)] px-3 py-0.5 text-sm text-[#A0D2FF]">{managerLabel}</span>
+              <span className="rounded-full border border-[rgba(230,193,115,0.3)] bg-[rgba(230,193,115,0.08)] px-3 py-0.5 text-sm text-[#E6C173]">{managerLabel}</span>
             </div>
             <div className="flex items-center gap-2">
               <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact" aria-label="Cerrar sesión">
@@ -179,15 +179,15 @@ export default async function ManagerPage() {
         <section className="card-premium page-section-card animate-fade-up stagger-2">
           <div className="section-header-row mb-5 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-2xl font-semibold tracking-tight">Clientes Asignados</h2>
-            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(160,210,255,0.05)] px-4 py-2 text-center">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.05)] px-4 py-2 text-center">
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Portfolios gestionados</p>
-              <p className="text-lg font-semibold text-[#A0D2FF]">{rows.length}</p>
+              <p className="text-lg font-semibold text-[#E6C173]">{rows.length}</p>
             </div>
           </div>
 
           <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
             <table className="w-full min-w-[1180px] border-collapse">
-              <thead className="bg-[rgba(10,18,40,0.55)] text-left backdrop-blur-md">
+              <thead className="bg-[rgba(10,11,14,0.55)] text-left backdrop-blur-md">
                 <tr>
                   <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">CLIENTE</th>
                   <th scope="col" className="px-4 py-3 text-xs font-medium tracking-[0.18em] text-[var(--muted)]">EMAIL</th>

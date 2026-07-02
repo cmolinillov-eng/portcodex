@@ -83,7 +83,7 @@ export function DashboardHeader({
     : null;
 
   return (
-    <header className="glass-panel relative overflow-hidden rounded-[2rem] px-5 pt-7 pb-5 md:px-8 md:pt-8 md:pb-6 animate-fade-up">
+    <header className="glass-panel relative overflow-hidden rounded-2xl px-5 pt-7 pb-5 md:px-8 md:pt-8 md:pb-6 animate-fade-up">
       {/* ── Iridescent top border ── */}
       <div
         className="pointer-events-none absolute top-0 left-0 right-0 z-20"
@@ -96,19 +96,19 @@ export function DashboardHeader({
       <div
         className="pointer-events-none absolute -top-20 -right-20 h-[560px] w-[560px]"
         style={{
-          background: "radial-gradient(ellipse at 70% 20%, rgba(160,210,255,0.09), transparent 50%)",
+          background: "radial-gradient(ellipse at 70% 20%, rgba(230,193,115,0.09), transparent 50%)",
         }}
       />
       <div
         className="pointer-events-none absolute -bottom-16 -left-16 h-[400px] w-[400px]"
         style={{
-          background: "radial-gradient(ellipse at 30% 80%, rgba(157,80,187,0.07), transparent 55%)",
+          background: "radial-gradient(ellipse at 30% 80%, rgba(140,109,63,0.07), transparent 55%)",
         }}
       />
       <div
         className="pointer-events-none absolute top-1/2 left-1/2 h-[300px] w-[600px] -translate-x-1/2 -translate-y-1/2"
         style={{
-          background: "radial-gradient(ellipse, rgba(160,210,255,0.03), transparent 60%)",
+          background: "radial-gradient(ellipse, rgba(230,193,115,0.03), transparent 60%)",
         }}
       />
 
@@ -173,7 +173,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("USD")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "USD"
-                ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                ? "bg-[rgba(230,193,115,0.18)] text-[#E6C173]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "USD"}
@@ -186,7 +186,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("EUR")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "EUR"
-                ? "bg-[rgba(160,210,255,0.18)] text-[#A0D2FF]"
+                ? "bg-[rgba(230,193,115,0.18)] text-[#E6C173]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "EUR"}
@@ -220,11 +220,11 @@ export function DashboardHeader({
             <div
               className="header-balance-glow pointer-events-none absolute -top-8 -left-6 h-40 w-64 rounded-full"
               style={{
-                background: "radial-gradient(ellipse, rgba(160,210,255,0.2), transparent 70%)",
+                background: "radial-gradient(ellipse, rgba(230,193,115,0.2), transparent 70%)",
               }}
             />
 
-            <p className="relative text-[10px] uppercase tracking-[0.3em] text-[var(--muted)] font-medium">
+            <p className="relative text-[10px] uppercase font-mono tracking-[0.3em] text-[var(--muted)] font-medium">
               Saldo Total del Portfolio
             </p>
             <h1 className="text-hero relative mt-2 text-5xl tracking-tight font-semibold md:text-6xl lg:text-[4rem]">
@@ -279,8 +279,8 @@ export function DashboardHeader({
                   : viewer.role === "cliente"
                     ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
                     : viewer.role === "admin"
-                      ? "border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.1)] text-[#A0D2FF]"
-                      : "border-purple-500/40 bg-purple-500/10 text-[#C090E8]"
+                      ? "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.1)] text-[#E6C173]"
+                      : "border-purple-500/40 bg-purple-500/10 text-[#A79BE0]"
               }`}
             >
               {viewer.isSuperAdmin
@@ -326,14 +326,14 @@ export function DashboardHeader({
                   <circle
                     cx="120" cy="120" r="116"
                     fill="none"
-                    stroke="rgba(160,210,255,0.08)"
+                    stroke="rgba(230,193,115,0.08)"
                     strokeWidth="0.5"
                     strokeDasharray="4 12"
                   />
                   {/* Orbital dots */}
-                  <circle cx="120" cy="4" r="1.5" fill="rgba(160,210,255,0.35)" />
-                  <circle cx="236" cy="120" r="1" fill="rgba(157,80,187,0.3)" />
-                  <circle cx="120" cy="236" r="1.5" fill="rgba(160,210,255,0.25)" />
+                  <circle cx="120" cy="4" r="1.5" fill="rgba(230,193,115,0.35)" />
+                  <circle cx="236" cy="120" r="1" fill="rgba(140,109,63,0.3)" />
+                  <circle cx="120" cy="236" r="1.5" fill="rgba(230,193,115,0.25)" />
                 </svg>
 
                 {/* Inner orbital ring — counter-rotate */}
@@ -345,11 +345,11 @@ export function DashboardHeader({
                   <circle
                     cx="120" cy="120" r="112"
                     fill="none"
-                    stroke="rgba(157,80,187,0.06)"
+                    stroke="rgba(140,109,63,0.06)"
                     strokeWidth="0.5"
                     strokeDasharray="2 18"
                   />
-                  <circle cx="8" cy="120" r="1" fill="rgba(157,80,187,0.2)" />
+                  <circle cx="8" cy="120" r="1" fill="rgba(140,109,63,0.2)" />
                 </svg>
 
                 {/* Main donut SVG */}
@@ -357,13 +357,13 @@ export function DashboardHeader({
                   viewBox="0 0 220 220"
                   className="relative h-56 w-56"
                   aria-hidden="true"
-                  style={{ filter: "drop-shadow(0 0 20px rgba(160,210,255,0.18))" }}
+                  style={{ filter: "drop-shadow(0 0 20px rgba(230,193,115,0.18))" }}
                 >
                   {/* Track */}
                   <circle
                     cx="110" cy="110" r={donutR}
                     fill="none"
-                    stroke="rgba(14,30,50,0.9)"
+                    stroke="rgba(20,23,30,0.9)"
                     strokeWidth={donutOuterStroke}
                   />
                   {/* Segments */}
@@ -406,7 +406,7 @@ export function DashboardHeader({
                   className="pointer-events-none absolute rounded-full"
                   style={{
                     inset: `${donutInnerInset}px`,
-                    background: "radial-gradient(circle, rgba(6,12,24,0.98) 55%, rgba(10,20,42,0.92) 100%)",
+                    background: "radial-gradient(circle, rgba(9,10,13,0.98) 55%, rgba(13,15,19,0.92) 100%)",
                     boxShadow: "inset 0 0 20px rgba(0,0,0,0.5)",
                   }}
                 />
@@ -420,7 +420,7 @@ export function DashboardHeader({
                           className="mx-auto mb-1 h-1.5 w-1.5 rounded-full"
                           style={{ backgroundColor: hoveredEntry.color }}
                         />
-                        <p className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] truncate max-w-[100px]">
+                        <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] truncate max-w-[100px]">
                           {hoveredEntry.title}
                         </p>
                         <p className="mt-0.5 text-lg font-semibold leading-tight text-white">
@@ -432,7 +432,7 @@ export function DashboardHeader({
                       </>
                     ) : (
                       <>
-                        <p className="text-[9px] uppercase tracking-[0.22em] text-[var(--muted)]">Total</p>
+                        <p className="text-[9px] uppercase font-mono tracking-[0.22em] text-[var(--muted)]">Total</p>
                         <p className="mt-0.5 text-xl font-semibold leading-tight text-white">
                           {currency(summary.totalValueUsd)}
                         </p>
@@ -512,19 +512,19 @@ export function DashboardHeader({
           <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-4 space-y-3">
             {/* Depositado */}
             <div className="header-stat-row" style={{ "--stat-accent": "var(--accent-primary)" } as React.CSSProperties}>
-              <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">Depositado</div>
+              <div className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">Depositado</div>
               <p className="mt-0.5 text-xl font-semibold leading-tight tabular-nums">
                 {currencyCompact(summary.totalDepositedUsd)}
               </p>
             </div>
 
             {/* Harvest */}
-            <div className="header-stat-row" style={{ "--stat-accent": "#A0D2FF" } as React.CSSProperties}>
+            <div className="header-stat-row" style={{ "--stat-accent": "#E6C173" } as React.CSSProperties}>
               <div className="flex items-center gap-1.5">
-                <span className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">Harvest</span>
-                <BadgeDollarSign className="h-3 w-3 text-[#A0D2FF] opacity-50" aria-hidden="true" />
+                <span className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">Harvest</span>
+                <BadgeDollarSign className="h-3 w-3 text-[#E6C173] opacity-50" aria-hidden="true" />
               </div>
-              <p className="mt-0.5 text-xl font-semibold leading-tight text-[#A0D2FF] tabular-nums">
+              <p className="mt-0.5 text-xl font-semibold leading-tight text-[#E6C173] tabular-nums">
                 {currencyCompact(summary.totalHarvestUsd)}
               </p>
             </div>
@@ -535,7 +535,7 @@ export function DashboardHeader({
                 className="header-stat-row"
                 style={{ "--stat-accent": summary.totalRealizedPnl >= 0 ? "var(--profit)" : "var(--loss)" } as React.CSSProperties}
               >
-                <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">P&L Realizado</div>
+                <div className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">P&L Realizado</div>
                 <p className={`mt-0.5 text-lg font-semibold leading-tight tabular-nums ${summary.totalRealizedPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
                   {signedCurrency(summary.totalRealizedPnl)}
                 </p>
@@ -553,13 +553,13 @@ export function DashboardHeader({
             >
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">P&L %</div>
+                  <div className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">P&L %</div>
                   <p className={`mt-1 text-xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
                     {percent(summary.pnlPercent)}
                   </p>
                 </div>
                 <div>
-                  <div className="text-[9px] uppercase tracking-[0.18em] text-[var(--muted)] font-medium">P&L USD</div>
+                  <div className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">P&L USD</div>
                   <p className={`mt-1 text-xl font-bold leading-tight tabular-nums ${isPnlPositive ? "text-emerald-300" : "text-rose-300"}`}>
                     {signedCurrencyCompact(summary.pnlUsd)}
                   </p>

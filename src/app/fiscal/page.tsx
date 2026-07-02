@@ -70,7 +70,7 @@ export default async function ResumenFiscalPage({
         action={
           <Link
             href={`/fiscal/exportar${portfolio ? `?portfolio=${portfolio}` : ""}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(160,210,255,0.45)] bg-[rgba(160,210,255,0.10)] px-3.5 py-2 text-sm font-medium text-[#A0D2FF] transition-colors hover:bg-[rgba(160,210,255,0.18)]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] px-3.5 py-2 text-sm font-medium text-[#E6C173] transition-colors hover:bg-[rgba(230,193,115,0.18)]"
           >
             <Download className="h-4 w-4" /> Exportar
           </Link>
