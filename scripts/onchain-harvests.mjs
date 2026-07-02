@@ -164,10 +164,22 @@ const aaveBorrowEvent = parseAbiItem(
 const aaveRepayEvent = parseAbiItem(
   "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
 );
+const aavePoolAbi = [{
+  name: "getUserAccountData", type: "function", stateMutability: "view",
+  inputs: [{ name: "user", type: "address" }],
+  outputs: [
+    { name: "totalCollateralBase", type: "uint256" },
+    { name: "totalDebtBase", type: "uint256" },
+    { name: "availableBorrowsBase", type: "uint256" },
+    { name: "currentLiquidationThreshold", type: "uint256" },
+    { name: "ltv", type: "uint256" },
+    { name: "healthFactor", type: "uint256" },
+  ],
+}];
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ¿El error es por tamaño del rango (→ reducir tramo) o por rate-limit (→ esperar)?
-const isSizeError = (msg) => /exceed|block range|too many results|response size|more than|query returned/i.test(msg);
+const isSizeError = (msg) => /exceed|block range|ranges? over|not supported|too many results|response size|more than|query returned/i.test(msg);
 const isRateError = (msg) => /too many request|429|rate ?limit|http request failed|internal|500|503/i.test(msg);
 
 // getLogs con reintentos y backoff ante rate-limit del RPC gratuito. Los
@@ -314,7 +326,7 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
     } catch (e) {
       const msg = String(e.message);
       // Tramo demasiado grande: reintenta el mismo tramo con la mitad de rango.
-      if (isSizeError(msg) && chunk > 500n) {
+      if (isSizeError(msg) && chunk > 50n) {
         chunk = chunk / 2n;
         continue;
       }
@@ -367,12 +379,25 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
   const pool = AAVE_POOLS[chainName];
   if (!pool) return 0;
 
-  const latest = await client.getBlockNumber();
   const { data: state } = await sb
     .from("onchain_scan_state")
     .select("last_block")
     .eq("portfolio_id", portfolioId).eq("chain", chainName).eq("protocol", "Aave V3")
     .maybeSingle();
+
+  // Primer escaneo de esta cadena: solo si la wallet tiene algo en Aave aquí
+  // (colateral o deuda). Evita quemar la cuota del RPC gratuito en cadenas
+  // vacías. Con cursor existente se sigue escaneando siempre (incremental).
+  if (state?.last_block == null) {
+    try {
+      const d = await client.readContract({ address: pool, abi: aavePoolAbi, functionName: "getUserAccountData", args: [walletAddr] });
+      if (d[0] === 0n && d[1] === 0n) return 0;
+    } catch {
+      return 0; // RPC caído: se reintenta en el próximo run
+    }
+  }
+
+  const latest = await client.getBlockNumber();
   let from = state?.last_block != null ? BigInt(state.last_block) + 1n : latest - DEFAULT_LOOKBACK;
   if (from < 0n) from = 0n;
   if (from > latest) return 0;
@@ -442,7 +467,7 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
       await sleep(150);
     } catch (e) {
       const msg = String(e.message);
-      if (isSizeError(msg) && chunk > 500n) {
+      if (isSizeError(msg) && chunk > 50n) {
         chunk = chunk / 2n;
         continue;
       }
