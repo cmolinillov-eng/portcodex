@@ -1,10 +1,14 @@
-// Aviso por email de operaciones on-chain pendientes de confirmar.
-// Corre tras el escáner (GitHub Action). Envía un resumen por portfolio con
-// los eventos en estado "pending" que aún no se hayan avisado.
+// Aviso por email de operaciones on-chain detectadas, POR PORTFOLIO:
+// cada cliente recibe lo suyo en el email de su perfil (portfolios.owner_id →
+// profiles.email). Si existe NOTIFY_EMAIL, el gestor va en copia de todos.
+// Corre tras el escáner (GitHub Action).
 //
-// OPCIONAL Y GRATIS: solo actúa si existen RESEND_API_KEY (resend.com, plan
-// gratuito) y NOTIFY_EMAIL (destinatario). Sin esas variables, sale sin hacer
-// nada — el resto del pipeline no depende de este paso.
+// OPCIONAL Y GRATIS: solo actúa si existe RESEND_API_KEY (resend.com, plan
+// gratuito). Sin ella, sale sin hacer nada.
+//   ⚠️ Con el remitente por defecto (onboarding@resend.dev) Resend solo
+//   permite enviar AL correo del dueño de la cuenta Resend. Para que lleguen
+//   a los clientes: verificar un dominio en Resend (gratis) y definir
+//   NOTIFY_FROM="Portcodex <avisos@tudominio.com>".
 //
 // Idempotencia sin migraciones: los eventos avisados se marcan reutilizando
 // onchain_scan_state con protocol "_notify" (last_block = epoch del último
@@ -26,9 +30,10 @@ if (fs.existsSync(envPath)) {
 }
 
 const RESEND_KEY = process.env.RESEND_API_KEY;
-const NOTIFY_EMAIL = process.env.NOTIFY_EMAIL;
-if (!RESEND_KEY || !NOTIFY_EMAIL) {
-  console.log("Notificaciones desactivadas (faltan RESEND_API_KEY / NOTIFY_EMAIL).");
+const MANAGER_EMAIL = process.env.NOTIFY_EMAIL || null; // gestor en copia (opcional)
+const FROM = process.env.NOTIFY_FROM || "Portcodex <onboarding@resend.dev>";
+if (!RESEND_KEY) {
+  console.log("Notificaciones desactivadas (falta RESEND_API_KEY).");
   process.exit(0);
 }
 
@@ -79,14 +84,28 @@ async function main() {
   }
   if (!byPortfolio.size) { console.log("Sin eventos nuevos que avisar."); return; }
 
-  // Nombre del portfolio para el asunto.
+  // Nombre + email del DUEÑO de cada portfolio (cada cliente recibe lo suyo).
   const ids = [...byPortfolio.keys()];
-  const { data: portfolios } = await sb.from("portfolios").select("id, name").in("id", ids);
-  const nameById = new Map((portfolios ?? []).map((p) => [p.id, p.name]));
+  const { data: portfolios } = await sb.from("portfolios").select("id, name, owner_id").in("id", ids);
+  const ownerIds = [...new Set((portfolios ?? []).map((p) => p.owner_id).filter(Boolean))];
+  const { data: owners } = ownerIds.length
+    ? await sb.from("profiles").select("id, email").in("id", ownerIds)
+    : { data: [] };
+  const emailByProfile = new Map((owners ?? []).map((o) => [o.id, o.email]));
+  const infoById = new Map(
+    (portfolios ?? []).map((p) => [p.id, { name: p.name, ownerEmail: emailByProfile.get(p.owner_id) ?? null }]),
+  );
 
   const now = Math.floor(Date.now() / 1000);
   for (const [portfolioId, evs] of byPortfolio) {
-    const name = nameById.get(portfolioId) ?? portfolioId.slice(0, 8);
+    const info = infoById.get(portfolioId) ?? { name: portfolioId.slice(0, 8), ownerEmail: null };
+    const name = info.name;
+    // Destinatarios: el dueño del portfolio; el gestor (NOTIFY_EMAIL) en copia.
+    const to = [info.ownerEmail, MANAGER_EMAIL].filter(Boolean);
+    if (!to.length) {
+      console.log(`Sin destinatario para ${name} (dueño sin email y sin NOTIFY_EMAIL) — omitido.`);
+      continue;
+    }
     const lines = evs.map((ev) =>
       `<tr><td style="padding:4px 12px 4px 0">${KIND_LABEL[ev.kind] ?? ev.kind}</td><td style="padding:4px 12px 4px 0">${ev.label ?? ""} · ${ev.protocol} · ${ev.chain}</td><td style="padding:4px 0;text-align:right;font-family:monospace">${usd(ev.value_usd)}</td></tr>`,
     );
@@ -99,8 +118,8 @@ async function main() {
       method: "POST",
       headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from: "Portfolio <onboarding@resend.dev>",
-        to: [NOTIFY_EMAIL],
+        from: FROM,
+        to,
         subject: `Portfolio ${name}: ${evs.length} operaciones on-chain detectadas`,
         html,
       }),

@@ -32,8 +32,10 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ZERION_API_KEY: ${{ secrets.ZERION_API_KEY }}
           HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
-      # Aviso por email de operaciones pendientes (opcional: requiere secrets
-      # RESEND_API_KEY y NOTIFY_EMAIL; sin ellos el paso no hace nada).
+      # Aviso por email POR PORTFOLIO: cada cliente recibe lo suyo en el email
+      # de su perfil; NOTIFY_EMAIL (opcional) pone al gestor en copia.
+      # Requiere secret RESEND_API_KEY; NOTIFY_FROM para remitente con dominio
+      # propio verificado en Resend. Sin secrets, el paso no hace nada.
       - run: node scripts/onchain-notify.mjs
         if: always()
         env:
@@ -41,3 +43,4 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+          NOTIFY_FROM: ${{ secrets.NOTIFY_FROM }}
