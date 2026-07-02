@@ -64,9 +64,11 @@ async function ensureCache(client: SupabaseClient): Promise<void> {
 
 /**
  * Normalización para matching case-insensitive y tolerante a espacios.
+ * Quita sufijos de versión: la ingesta on-chain escribe "PancakeSwap V3",
+ * "Uniswap V3", "Aave V3"… que deben casar con su entrada del catálogo.
  */
 export function normalizeProtocolName(name: string): string {
-  return (name ?? "").trim().toLowerCase();
+  return (name ?? "").trim().toLowerCase().replace(/\s+v\d+$/, "");
 }
 
 /**
@@ -83,12 +85,21 @@ export async function getWalletProtocolMeta(
 }
 
 /**
- * Versión síncrona para tests / contextos sin cliente Supabase.
- * Usa un catálogo embebido mínimo (los más comunes).
+ * Precarga el catálogo de BD en memoria para que la versión síncrona lo use.
+ * Llamar antes de una ronda de categorización (compute-traceability/backfill).
+ */
+export async function preloadWalletCatalog(client: SupabaseClient): Promise<void> {
+  await ensureCache(client);
+}
+
+/**
+ * Versión síncrona para la categorización en secuencia. Consulta primero el
+ * catálogo de BD (si fue precargado con preloadWalletCatalog) y después el
+ * embebido — así las clasificaciones hechas en `wallet_protocols` mandan.
  */
 export function getWalletProtocolMetaSync(protocolName: string): WalletProtocolMeta {
   const key = normalizeProtocolName(protocolName);
-  return EMBEDDED_CATALOG.get(key) ?? { ...UNKNOWN_FALLBACK, name: protocolName };
+  return cache?.get(key) ?? EMBEDDED_CATALOG.get(key) ?? { ...UNKNOWN_FALLBACK, name: protocolName };
 }
 
 /**
@@ -189,6 +200,7 @@ const EMBEDDED_CATALOG = new Map<string, WalletProtocolMeta>([
   ["coinbase wallet",{ name: "Coinbase Wallet",walletKind: "hot_wallet", countryCode: null, isForeign: false, custodial: false }],
   ["wallet",        { name: "Wallet",        walletKind: "hot_wallet",   countryCode: null, isForeign: false, custodial: false }],
   // Cold wallets
+  ["bitcoin",       { name: "Bitcoin",       walletKind: "cold_wallet",  countryCode: null, isForeign: false, custodial: false }], // transferencias BTC on-chain (Ledger)
   ["ledger",        { name: "Ledger",        walletKind: "cold_wallet",  countryCode: null, isForeign: false, custodial: false }],
   ["trezor",        { name: "Trezor",        walletKind: "cold_wallet",  countryCode: null, isForeign: false, custodial: false }],
   ["coldcard",      { name: "Coldcard",      walletKind: "cold_wallet",  countryCode: null, isForeign: false, custodial: false }],

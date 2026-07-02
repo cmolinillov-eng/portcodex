@@ -1,5 +1,6 @@
 import type { TraceabilityEntry } from "@/lib/tax/compute-traceability";
 import { getAeatClassification, getCustodyClass } from "@/lib/tax/aeat-mapping";
+import { getTaxYear } from "@/lib/tax/eur-conversion";
 import { formatDate } from "./format";
 
 function csvCell(v: unknown): string {
@@ -19,6 +20,7 @@ function toCsv(header: string[], rows: string[][]): string {
 export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
   const header = [
     "Fecha",
+    "Ejercicio",
     "Tipo operacion",
     "Billetera",
     "Protocolo",
@@ -39,6 +41,7 @@ export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
     const cls = getAeatClassification(e.fiscal.category, e.fiscal.incomeType, e.fiscal.realizedGainEur);
     return [
       formatDate(e.transactionDate),
+      String(getTaxYear(e.transactionDate)),
       e.type,
       getCustodyClass(e.walletKind),
       e.protocol,

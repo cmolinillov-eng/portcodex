@@ -91,7 +91,11 @@ async function performIngest(
 ): Promise<{ ok: true; inserted: number } | { ok: false; error: string; status: number }> {
   const client = getClient();
   const tokens = (ev.tokens ?? []) as EventToken[];
-  const usable = tokens.filter((t) => t.amount > 0 && t.priceUsd != null);
+  // priceUsd > 0 (no solo != null): un precio 0 crearía una fila que el motor
+  // fiscal degrada a "datos incompletos" y el rendimiento desaparecería del
+  // Modelo 100 en silencio. Mejor dejar el evento en bandeja y registrarlo
+  // a mano con precio correcto.
+  const usable = tokens.filter((t) => t.amount > 0 && t.priceUsd != null && t.priceUsd > 0);
   if (!usable.length) {
     return { ok: false, error: "El evento no tiene tokens con precio; regístralo a mano.", status: 400 };
   }
@@ -207,6 +211,9 @@ export async function GET(request: NextRequest) {
   const links = await getLinks(portfolioId);
   const events: Array<EventRow & { kind?: string | null; link: LinkInfo | null }> = [];
   let autoIngested = 0;
+  // La ingesta automática ESCRIBE contabilidad: solo si el viewer puede operar.
+  const canWrite = ensurePortfolioAccess(access, portfolioId, true).ok;
+  const client = getClient();
 
   for (const raw of (data ?? []) as Array<EventRow & { kind?: string | null }>) {
     const oid = eventOnchainId(raw as { chain: string; protocol: string; position_ref: string | null });
@@ -219,12 +226,24 @@ export async function GET(request: NextRequest) {
       link?.created_at && raw.block_time
         ? new Date(raw.block_time).getTime() > new Date(link.created_at).getTime()
         : false;
-    if (link && link.auto_ingest && isNewer) {
+    if (canWrite && link && link.auto_ingest && isNewer) {
+      // Reclamo atómico: dos GET concurrentes no pueden ingerir el mismo
+      // evento dos veces (RCM duplicado). Solo quien "gana" el update sigue.
+      const { data: claimed } = await client
+        .from("onchain_events")
+        .update({ status: "ingested", ingested_at: new Date().toISOString() })
+        .eq("id", raw.id)
+        .eq("status", "pending")
+        .select("id");
+      if (!claimed || claimed.length === 0) continue; // otro proceso lo tomó
+
       const result = await performIngest(raw as PendingEvent, portfolioId, link.position_id, link.protocol, link.position_type);
       if (result.ok) {
         autoIngested++;
         continue; // ya contabilizado: fuera de la bandeja
       }
+      // Falló tras el reclamo: devolver a pendiente para que no se pierda.
+      await client.from("onchain_events").update({ status: "pending", ingested_at: null }).eq("id", raw.id);
     }
     events.push({ ...raw, link });
   }

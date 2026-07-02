@@ -11,6 +11,7 @@ import { FiscalPageHeader } from "@/components/fiscal/FiscalPageHeader";
 import { FiscalBadge } from "@/components/fiscal/FiscalBadge";
 import { formatEur } from "@/lib/fiscal/format";
 import { TRACEABILITY_DISCLAIMER } from "@/lib/tax/types";
+import { getTaxYear } from "@/lib/tax/eur-conversion";
 
 export const dynamic = "force-dynamic";
 
@@ -27,9 +28,9 @@ function isRendimiento(it: string): boolean {
 export default async function ResumenFiscalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ portfolio?: string }>;
+  searchParams: Promise<{ portfolio?: string; ejercicio?: string }>;
 }) {
-  const { portfolio } = await searchParams;
+  const { portfolio, ejercicio } = await searchParams;
   const ctx = await getFiscalContext(portfolio);
   const portfolioId = ctx.activePortfolioId;
 
@@ -42,9 +43,20 @@ export default async function ResumenFiscalPage({
     );
   }
 
-  const { entries } = await computeTraceability(portfolioId);
+  const { entries, fxSource } = await computeTraceability(portfolioId);
 
-  const bucketInputs: AeatBucketInput[] = entries.map((e) => ({
+  // El Modelo 100 es ANUAL: agregamos solo el ejercicio seleccionado.
+  // El FIFO ya corrió sobre TODO el histórico (las bases vienen bien);
+  // aquí solo se filtra qué operaciones suman a las casillas.
+  const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort((a, b) => b - a);
+  const requestedYear = Number(ejercicio);
+  const selectedYear =
+    Number.isInteger(requestedYear) && years.includes(requestedYear)
+      ? requestedYear
+      : years[0] ?? new Date().getFullYear();
+  const yearEntries = entries.filter((e) => getTaxYear(e.transactionDate) === selectedYear);
+
+  const bucketInputs: AeatBucketInput[] = yearEntries.map((e) => ({
     category: e.fiscal.category,
     incomeType: e.fiscal.incomeType,
     amountEur: isRendimiento(e.fiscal.incomeType) ? e.fiscal.valueEur : e.fiscal.realizedGainEur,
@@ -52,15 +64,20 @@ export default async function ResumenFiscalPage({
 
   const { buckets, totalBaseAhorro, totalBaseGeneral } = aggregateByCasilla(bucketInputs);
 
-  // Modelo 721 — estimación por flujo neto en custodios extranjeros
+  // Modelo 721 — estimación por flujo neto en custodios extranjeros hasta el
+  // 31/12 del ejercicio seleccionado (el saldo relevante es el de cierre).
   let foreignNet = 0;
   for (const e of entries) {
+    if (getTaxYear(e.transactionDate) > selectedYear) continue;
     if (!isForeignCustodian(e.walletKind)) continue;
     if (e.fiscal.category === "buy") foreignNet += e.fiscal.valueEur;
     else if (e.fiscal.category === "sell") foreignNet -= e.fiscal.valueEur;
   }
   const foreignBalance = Math.max(0, foreignNet);
   const obligado721 = foreignBalance > MODELO_721_THRESHOLD;
+
+  const yearHref = (y: number) =>
+    `/fiscal?${new URLSearchParams({ ...(portfolio ? { portfolio } : {}), ejercicio: String(y) }).toString()}`;
 
   return (
     <>
@@ -78,6 +95,33 @@ export default async function ResumenFiscalPage({
       />
 
       <div className="mx-auto max-w-5xl space-y-6 px-7 py-7">
+        {/* Selector de ejercicio fiscal */}
+        {years.length > 0 ? (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">Ejercicio</span>
+            {years.map((y) => (
+              <Link
+                key={y}
+                href={yearHref(y)}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                  y === selectedYear
+                    ? "border-[rgba(230,193,115,0.55)] bg-[rgba(230,193,115,0.14)] text-[#E6C173]"
+                    : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {y}
+              </Link>
+            ))}
+            <span className="text-xs text-[var(--muted)]">· {yearEntries.length} operaciones en {selectedYear}</span>
+          </div>
+        ) : null}
+
+        {fxSource === "fallback" ? (
+          <p className="rounded-lg border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.08)] px-4 py-2.5 text-xs text-amber-300">
+            ⚠️ No se pudo obtener el tipo de cambio EUR/USD (ni histórico ni actual): los importes usan un tipo aproximado. Reintenta más tarde antes de exportar.
+          </p>
+        ) : null}
+
         {/* Tarjetas base */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <BaseCard
@@ -101,7 +145,7 @@ export default async function ResumenFiscalPage({
           <div className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
             <div>
               <h2 className="text-base font-semibold text-[var(--foreground)]">Desglose por casilla IRPF</h2>
-              <p className="mt-0.5 text-xs text-[var(--muted)]">Modelo 100 · agregado por categoría fiscal</p>
+              <p className="mt-0.5 text-xs text-[var(--muted)]">Modelo 100 · ejercicio {selectedYear} · agregado por categoría fiscal</p>
             </div>
           </div>
 

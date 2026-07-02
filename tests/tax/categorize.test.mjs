@@ -99,11 +99,14 @@ function categorize(tx, { rate, lots, walletKind }) {
   const t = (tx.type ?? "").trim().toLowerCase();
   const positionType = (tx.positionType ?? "").trim().toLowerCase();
 
+  // Transferencias detectadas on-chain: siempre movimiento de wallet propia.
+  const isOnchainIngest = tx.metadata?.source === "onchain_ingest";
+
   if (t === "deposit") {
     const symbol = tx.tokenInSymbol?.toUpperCase();
     const amount = tx.tokenInAmount ?? 0;
     const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const category = decideDepositCategory(walletKind);
+    const category = isOnchainIngest ? "non_taxable_transfer" : decideDepositCategory(walletKind);
     if (category === "buy") {
       return {
         category: "buy",
@@ -131,7 +134,7 @@ function categorize(tx, { rate, lots, walletKind }) {
     const symbol = tx.tokenOutSymbol?.toUpperCase();
     const amount = tx.tokenOutAmount ?? 0;
     const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const category = decideWithdrawalCategory(walletKind);
+    const category = isOnchainIngest ? "non_taxable_transfer" : decideWithdrawalCategory(walletKind);
     if (category === "sell") {
       const fifo = applyFifo(symbol, amount, lots);
       const gain = roundEur(valueEur - fifo.consumedCostEur);
@@ -177,18 +180,26 @@ function categorize(tx, { rate, lots, walletKind }) {
   }
 
   if (t === "lp_withdraw") {
+    // ROTACIÓN DE LOTES: consume por FIFO los lotes del token y traslada su
+    // base al lote de salida (sin duplicación). Lo no cubierto, a FMV.
     const symbol = tx.tokenInSymbol?.toUpperCase();
     const amount = tx.tokenInAmount ?? 0;
     const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
+    const fifo = applyFifo(symbol, amount, lots);
+    const uncovered = Math.max(0, amount - fifo.consumedAmount);
+    const uncoveredEur = roundEur(usdToEur(uncovered * tx.spotPriceUsd, rate));
+    const carried = roundEur(fifo.consumedCostEur + uncoveredEur);
     return {
       category: "lp_remove",
       incomeType: "none",
       taxable: false,
       valueEur,
+      costBasisEur: carried,
       realizedGainEur: 0,
       inferred: true,
       walletKind,
-      newLot: { tokenSymbol: symbol, amount, costBasisEur: valueEur },
+      newLot: { tokenSymbol: symbol, amount, costBasisEur: carried },
+      lotsConsumed: fifo.lotsConsumed,
     };
   }
 
@@ -369,13 +380,81 @@ test("Harvest sobre Staking nativo → staking_reward", () => {
   assert.equal(r.category, "staking_reward");
 });
 
-test("LP withdraw → lp_remove, crea lote nuevo con FMV", () => {
+test("LP withdraw → lp_remove, ROTA lotes: consume el original y traslada su base", () => {
+  // Compraste 1 ETH por 1.000 € → lp_deposit (lote sigue vivo) → lp_withdraw
+  // cuando vale 2.000 €. El lote de salida hereda la base de 1.000 € y el
+  // original queda consumido: la base total NO se duplica (antes: 3.000 €).
+  const lots = [makeLot("L1", "ETH", 1.0, 1000, "2024-01-01")];
+  const r = categorize(
+    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2173.91, positionType: "Liquidity Pool" },
+    { rate: 0.92, lots, walletKind: "dex" },
+  );
+  assert.equal(r.category, "lp_remove");
+  assert.equal(r.taxable, false);
+  assert.equal(r.newLot.costBasisEur, 1000, "la base del lote original se traslada, no se usa FMV");
+  assert.equal(r.lotsConsumed.length, 1, "el lote original se consume (rotación)");
+});
+
+test("LP withdraw sin lotes previos → la parte no cubierta entra a FMV (anotada)", () => {
+  // Token aparecido por IL o rebalanceo cuya base viajó por otra vía.
   const r = categorize(
     { type: "lp_withdraw", tokenInSymbol: "USDC", tokenInAmount: 500, spotPriceUsd: 1, positionType: "Liquidity Pool" },
     { rate: 0.92, lots: [], walletKind: "dex" },
   );
   assert.equal(r.category, "lp_remove");
-  assert.equal(r.newLot.costBasisEur, 460);
+  assert.equal(r.newLot.costBasisEur, 460, "sin lote previo, la única base disponible es el FMV");
+});
+
+test("Ciclo completo buy→lp_deposit→lp_withdraw NO duplica la base total", () => {
+  // buy 1 ETH a 1.000 €
+  const lots = [makeLot("L1", "ETH", 1.0, 1000, "2024-01-01")];
+  // lp_deposit no consume el lote (base viaja con los tokens)
+  const dep = categorize(
+    { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 1500, positionType: "Liquidity Pool" },
+    { rate: 0.92, lots, walletKind: "dex" },
+  );
+  assert.equal(dep.newLot, undefined, "lp_deposit no crea lote");
+  // lp_withdraw rota: consume L1 y crea lote con la misma base
+  const wit = categorize(
+    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2000, positionType: "Liquidity Pool" },
+    { rate: 0.92, lots, walletKind: "dex" },
+  );
+  const totalBasis = wit.newLot.costBasisEur; // el lote L1 quedó consumido
+  assert.equal(totalBasis, 1000, "base total tras el ciclo = base original (sin fantasma)");
+});
+
+test("Transferencia on-chain (onchain_ingest) NUNCA es venta, ni con protocolo sin catalogar", () => {
+  // Retirada de BTC del Ledger detectada por el escáner: protocolo "Bitcoin"
+  // no está en el catálogo → antes caía en "other" → venta imponible ficticia.
+  const lots = [makeLot("L1", "BTC", 0.5, 10000, "2024-01-01")];
+  const r = categorize(
+    {
+      type: "withdrawal",
+      tokenOutSymbol: "BTC",
+      tokenOutAmount: 0.5,
+      spotPriceUsd: 60000,
+      positionType: "Hold",
+      metadata: { source: "onchain_ingest" },
+    },
+    { rate: 0.92, lots, walletKind: "other" },
+  );
+  assert.equal(r.category, "non_taxable_transfer", "transferencia entre wallets propias, no venta");
+  assert.equal(r.taxable, false);
+});
+
+test("Entrada on-chain (onchain_ingest) en protocolo sin catalogar NO es compra", () => {
+  const r = categorize(
+    {
+      type: "deposit",
+      tokenInSymbol: "BTC",
+      tokenInAmount: 0.01,
+      spotPriceUsd: 60000,
+      positionType: "Hold",
+      metadata: { source: "onchain_ingest" },
+    },
+    { rate: 0.92, lots: [], walletKind: "other" },
+  );
+  assert.equal(r.category, "non_taxable_transfer");
 });
 
 test("Staking deposit → non_taxable_transfer en cualquier wallet", () => {

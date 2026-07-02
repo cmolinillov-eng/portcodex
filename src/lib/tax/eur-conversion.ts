@@ -55,12 +55,63 @@ export function calculateRealizedGain(proceedsEur: number, costBasisEur: number)
 }
 
 /**
- * Devuelve el año fiscal de una fecha ISO.
- * En España coincide con año natural (1-ene a 31-dic).
+ * Tipos de cambio USD→EUR HISTÓRICOS por fecha (Frankfurter/BCE, gratis).
+ *
+ * Con la ingesta on-chain el spot USD es del bloque (puede ser de meses
+ * atrás): valorar con el FX de hoy desviaría los importes y haría los
+ * informes no reproducibles. Devuelve Map "YYYY-MM-DD" → rate, con los días
+ * sin cotización (fines de semana/festivos) rellenados con el día hábil
+ * anterior. Si la API falla devuelve un Map vacío y el caller usa el tipo
+ * actual como aproximación (comportamiento anterior, con disclaimer).
+ */
+export async function fetchEurRatesByDate(isoDates: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const days = [...new Set(isoDates.map((d) => d.slice(0, 10)))].filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+  if (!days.length) return out;
+  // Empezar unos días antes para poder rellenar hacia delante el primer día.
+  const start = new Date(`${days[0]}T00:00:00Z`);
+  start.setUTCDate(start.getUTCDate() - 5);
+  const startStr = start.toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const end = days[days.length - 1] < today ? days[days.length - 1] : today;
+
+  try {
+    const res = await fetch(`https://api.frankfurter.dev/v1/${startStr}..${end}?base=USD&symbols=EUR`, {
+      cache: "no-store",
+    });
+    if (!res.ok) return out;
+    const json = (await res.json()) as { rates?: Record<string, { EUR?: number }> };
+    const series = json.rates ?? {};
+    const seriesDays = Object.keys(series).sort();
+    if (!seriesDays.length) return out;
+
+    // Relleno hacia delante: cada día pedido usa la última cotización previa.
+    let si = 0;
+    let lastRate: number | null = null;
+    for (const day of days) {
+      while (si < seriesDays.length && seriesDays[si] <= day) {
+        const r = series[seriesDays[si]]?.EUR;
+        if (typeof r === "number" && r > 0) lastRate = r;
+        si++;
+      }
+      if (lastRate != null) out.set(day, lastRate);
+    }
+  } catch {
+    /* API caída: Map vacío → fallback al tipo actual */
+  }
+  return out;
+}
+
+/**
+ * Devuelve el año fiscal de una fecha ISO, en hora peninsular española
+ * (una operación del 1-ene 00:30 CET es del año nuevo aunque en UTC aún
+ * sea 31-dic).
  */
 export function getTaxYear(isoDate: string): number {
   const d = new Date(isoDate);
-  const year = d.getUTCFullYear();
-  if (!Number.isFinite(year)) return new Date().getUTCFullYear();
-  return year;
+  if (Number.isNaN(d.getTime())) return new Date().getUTCFullYear();
+  const year = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "Europe/Madrid", year: "numeric" }).format(d),
+  );
+  return Number.isFinite(year) ? year : d.getUTCFullYear();
 }

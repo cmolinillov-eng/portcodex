@@ -69,10 +69,13 @@ export function applyFifo(
         lot.amount > EPSILON,
     )
     .sort((a, b) => {
+      // Fechas inválidas van AL FINAL (determinista): devolver 0 en el
+      // comparador podía desordenar lotes válidos alrededor del inválido.
       const tsA = Date.parse(a.acquiredAt);
       const tsB = Date.parse(b.acquiredAt);
-      if (!Number.isFinite(tsA) || !Number.isFinite(tsB)) return 0;
-      return tsA - tsB;
+      const va = Number.isFinite(tsA) ? tsA : Number.POSITIVE_INFINITY;
+      const vb = Number.isFinite(tsB) ? tsB : Number.POSITIVE_INFINITY;
+      return va - vb;
     });
 
   let remaining = amountToConsume;

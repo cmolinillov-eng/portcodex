@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
       .eq("portfolio_id", portfolioId)
       .eq("operation_group_id", operationGroupId)
       .is("deleted_at", null)
-      .select("id");
+      .select("id, metadata");
     if (undone.error) throw new Error(undone.error.message);
 
     if ((undone.data ?? []).length === 0) {
@@ -139,6 +139,24 @@ export async function POST(request: NextRequest) {
         { error: "No se encontró la operación a deshacer (puede que ya esté deshecha)." },
         { status: 404 },
       );
+    }
+
+    // Si la operación venía de un evento on-chain ingerido, devolver el
+    // evento a la bandeja (pending): la operación real no desaparece de la
+    // blockchain — así se puede re-registrar en la posición correcta.
+    const eventIds = [
+      ...new Set(
+        (undone.data ?? [])
+          .map((r) => (r.metadata as Record<string, unknown> | null)?.eventId)
+          .filter((v): v is string => typeof v === "string" && v.length > 0),
+      ),
+    ];
+    if (eventIds.length > 0) {
+      await client
+        .from("onchain_events")
+        .update({ status: "pending", ingested_at: null })
+        .in("id", eventIds)
+        .then(() => undefined, () => undefined); // mejor esfuerzo
     }
 
     return NextResponse.json({

@@ -106,8 +106,6 @@ export function getAeatClassification(
 
     // ─── Ganancia patrimonial por PERMUTA (cripto ↔ cripto) ────────────────
     case "swap_out":
-    case "lp_provide":
-    case "lp_remove":
     case "nft_sell_swap":
     case "nft_buy_swap":
       return {
@@ -117,6 +115,22 @@ export function getAeatClassification(
         casilla: CASILLA_GP_TRANSMISION,
         aeatNote: "Permuta cripto-cripto. Base del ahorro (criterio DGT).",
         countsTowardTax: true,
+      };
+
+    // ─── Movimientos de liquidez (LP) ──────────────────────────────────────
+    // Coherente con categorize: la app NO computa la permuta del ciclo LP
+    // (taxable: false, base rotada sin duplicación). Si el asesor aplica el
+    // criterio DGT de permuta, se calcula aparte. Antes esto aparecía como
+    // "GP permuta" con importe 0 — contradicción visible en Resumen vs CSV.
+    case "lp_provide":
+    case "lp_remove":
+      return {
+        badge: "Movimiento LP",
+        tone: "neutral",
+        base: null,
+        casilla: "—",
+        aeatNote: "Provisión/retirada de liquidez. La app no computa permuta (criterio DGT a valorar por el asesor).",
+        countsTowardTax: false,
       };
 
     // ─── Derivados ─────────────────────────────────────────────────────────

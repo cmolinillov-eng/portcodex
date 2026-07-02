@@ -204,7 +204,7 @@ export function categorizeTransaction(
       return handleLpDeposit(tx, currentLots, fxRateUsdToEur, walletKind, walletName);
 
     case "lp_withdraw":
-      return handleLpWithdraw(tx, fxRateUsdToEur, walletKind, walletName);
+      return handleLpWithdraw(tx, currentLots, fxRateUsdToEur, walletKind, walletName);
 
     case "harvest":
       return handleHarvest(tx, positionType, fxRateUsdToEur, walletKind, walletName);
@@ -253,7 +253,11 @@ function handleDeposit(
     );
   }
 
-  const category = decideDepositCategory(walletKind);
+  // Las transferencias detectadas on-chain (metadata.source = onchain_ingest)
+  // son SIEMPRE movimientos de wallets propias monitorizadas → nunca es una
+  // compra con fiat, aunque el protocolo no esté catalogado ("Bitcoin"…).
+  const isOnchainTransfer = (tx.metadata?.source as string | undefined) === "onchain_ingest";
+  const category = isOnchainTransfer ? "non_taxable_transfer" : decideDepositCategory(walletKind);
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
   // ─── CASO ESPECIAL: Destino de un rebalanceo ───────────────────────────
@@ -401,7 +405,10 @@ function handleWithdrawal(
     );
   }
 
-  const category = decideWithdrawalCategory(walletKind);
+  // Salidas detectadas on-chain: transferencia de wallet propia, nunca venta
+  // (aunque el protocolo no esté catalogado). El gestor puede recategorizar.
+  const isOnchainTransfer = (tx.metadata?.source as string | undefined) === "onchain_ingest";
+  const category = isOnchainTransfer ? "non_taxable_transfer" : decideWithdrawalCategory(walletKind);
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
   // ─── CASO A: Venta real (CEX, broker, payment app) ──────────────────────
@@ -563,7 +570,9 @@ function handleLendingBorrow(
  *      (con su impermanent loss correspondiente)
  *
  * Mantenemos el lote FIFO sin consumir, así el cost basis viaja con los
- * tokens al pool. Cuando se retire (lp_withdraw), ahí sí calculamos resultado.
+ * tokens al pool. Cuando se retire (lp_withdraw), los lotes originales se
+ * ROTAN: se consumen por FIFO y su base se traslada al lote de salida —
+ * la base total del contribuyente no cambia en el ciclo LP (sin duplicación).
  */
 function handleLpDeposit(
   tx: CategorizeInput,
@@ -658,6 +667,7 @@ function handleLpDeposit(
 
 function handleLpWithdraw(
   tx: CategorizeInput,
+  currentLots: TaxLot[],
   rate: number,
   walletKind: WalletKind | null,
   walletName: string,
@@ -733,6 +743,23 @@ function handleLpWithdraw(
   }
 
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
+
+  // ROTACIÓN DE LOTES: los tokens que salen del pool son (fiscalmente) los
+  // mismos que entraron — consumimos sus lotes por FIFO y trasladamos esa
+  // base al lote de salida. Así la base total NO se duplica en el ciclo
+  // deposit→withdraw (antes se creaba un lote a FMV dejando vivo el original:
+  // base fantasma sistemática). La parte no cubierta por lotes (tokens
+  // aparecidos por IL o cuya base entró vía rebalanceo con depositedDelta)
+  // se valora a FMV y queda anotada para revisión.
+  const fifo = applyFifo(symbol, amount, currentLots);
+  const uncoveredAmount = Math.max(0, amount - fifo.consumedAmount);
+  const uncoveredEur = roundEur(usdToEur(uncoveredAmount * spotUsd, rate));
+  const carriedBasisEur = roundEur(fifo.consumedCostEur + uncoveredEur);
+
+  const notes = uncoveredAmount > 0.00000001
+    ? `LP remove: recibido ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Base trasladada de lotes FIFO: ${fifo.consumedCostEur} € + ${uncoveredEur} € a FMV por ${uncoveredAmount.toFixed(8)} ${symbol} sin lote previo (IL/rebalanceo) — revisar si procede.`
+    : `LP remove: recibido ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Lote rotado con base trasladada: ${carriedBasisEur} € (sin duplicación de base).`;
+
   const description = buildHumanDescription({
     category: "lp_remove",
     walletKind,
@@ -747,9 +774,9 @@ function handleLpWithdraw(
       category: "lp_remove",
       incomeType: "none",
       valueEur,
-      costBasisEur: 0,
+      costBasisEur: carriedBasisEur,
       realizedGainEur: 0,
-      notes: `LP remove: recibido ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Nuevo lote con cost basis = FMV recepción.`,
+      notes,
       taxable: false,
       humanLabel: getCategoryLabel("lp_remove"),
       humanDescription: description,
@@ -760,14 +787,14 @@ function handleLpWithdraw(
       {
         tokenSymbol: symbol,
         amount,
-        costBasisEur: valueEur,
+        costBasisEur: carriedBasisEur,
         acquiredAt: tx.transactionDate,
         acquiredViaEvent: "lp_remove",
         acquiredViaTransactionId: tx.id ?? null,
       },
     ],
     taxEvents: [],
-    consumedLotUpdates: [],
+    consumedLotUpdates: fifo.lotUpdates,
   };
 }
 
@@ -887,6 +914,9 @@ export function categorizeTransactionsSequence(
     fxRateUsdToEur: number;
     initialLots: TaxLot[];
     walletProtocolResolver?: (protocol: string) => WalletProtocolMeta | null;
+    /** Tipo de cambio USD→EUR por fecha ("YYYY-MM-DD"). Si una fecha no está,
+     *  se usa fxRateUsdToEur (tipo actual) como aproximación. */
+    fxRateByDate?: Map<string, number>;
   },
 ): {
   results: Array<CategorizationResult & { txIndex: number }>;
@@ -903,8 +933,9 @@ export function categorizeTransactionsSequence(
 
   for (let i = 0; i < sorted.length; i++) {
     const tx = sorted[i];
+    const dayRate = options.fxRateByDate?.get(tx.transactionDate.slice(0, 10));
     const result = categorizeTransaction(tx, {
-      fxRateUsdToEur: options.fxRateUsdToEur,
+      fxRateUsdToEur: dayRate ?? options.fxRateUsdToEur,
       currentLots: lots,
       walletProtocol: options.walletProtocolResolver
         ? options.walletProtocolResolver(tx.protocol)

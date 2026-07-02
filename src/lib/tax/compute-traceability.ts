@@ -1,8 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { categorizeTransactionsSequence } from "@/lib/tax/categorize";
-import { getWalletProtocolMetaSync } from "@/lib/tax/wallet-classification";
-import { fetchCurrentEurRate } from "@/lib/tax/eur-conversion";
+import { getWalletProtocolMetaSync, preloadWalletCatalog } from "@/lib/tax/wallet-classification";
+import { fetchCurrentEurRate, fetchEurRatesByDate } from "@/lib/tax/eur-conversion";
 import type { CategorizeInput, FiscalAnnotation, WalletKind } from "@/lib/tax/types";
 
 export interface TraceabilityEntry {
@@ -31,6 +31,9 @@ export interface TraceabilityResult {
   walletSummary: WalletSummaryEntry[];
   eurRate: number;
   total: number;
+  /** Origen del tipo de cambio: histórico por fecha (BCE), actual, o
+   *  constante de emergencia (mostrar aviso en la UI si es "fallback"). */
+  fxSource: "historical" | "current" | "fallback";
 }
 
 function getClient(): SupabaseClient {
@@ -63,10 +66,21 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
   }
 
   if (!rows || rows.length === 0) {
-    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0 };
+    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0, fxSource: "current" };
   }
 
-  const eurRate = (await fetchCurrentEurRate()) ?? 0.92;
+  // Catálogo fiscal de custodios desde BD (las clasificaciones hechas por el
+  // gestor en wallet_protocols mandan sobre el catálogo embebido).
+  await preloadWalletCatalog(client);
+
+  // Tipo de cambio: HISTÓRICO por fecha de operación (BCE vía Frankfurter).
+  // El tipo actual queda como aproximación para fechas sin cotización y como
+  // fallback si la API falla (comportamiento anterior, ahora señalizado).
+  const currentRate = await fetchCurrentEurRate();
+  const eurRate = currentRate ?? 0.92;
+  const rateByDate = await fetchEurRatesByDate(rows.map((r) => r.transaction_date as string));
+  const fxSource: TraceabilityResult["fxSource"] =
+    rateByDate.size > 0 ? "historical" : currentRate != null ? "current" : "fallback";
 
   const inputs: CategorizeInput[] = (rows as Array<{
     id: string;
@@ -101,6 +115,7 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
     fxRateUsdToEur: eurRate,
     initialLots: [],
     walletProtocolResolver: (protocol) => getWalletProtocolMetaSync(protocol),
+    fxRateByDate: rateByDate,
   });
 
   const entries: TraceabilityEntry[] = results
@@ -132,5 +147,5 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
   }
   const walletSummary = Array.from(walletCounter.values()).sort((a, b) => b.count - a.count);
 
-  return { entries, walletSummary, eurRate, total: entries.length };
+  return { entries, walletSummary, eurRate, total: entries.length, fxSource };
 }
