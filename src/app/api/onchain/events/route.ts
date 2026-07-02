@@ -34,6 +34,9 @@ const PROTOCOL_SLUGS: Record<string, string> = {
   "pancakeswap v3": "pancakeswap-v3",
   "uniswap v3": "uniswap-v3",
   projectx: "projectx",
+  "aave v3": "aave", // position_ref = wallet → `${chain}:aave:${wallet}`
+  wallet: "hold", // holds: position_ref = token address/mint → `${chain}:hold:${ref}`
+  bitcoin: "hold", // position_ref = address → `bitcoin:hold:${address}`
 };
 function eventOnchainId(ev: { chain: string; protocol: string; position_ref: string | null }): string | null {
   const slug = PROTOCOL_SLUGS[ev.protocol.toLowerCase()];
@@ -92,6 +95,8 @@ export async function PATCH(request: NextRequest) {
     positionId?: string;
     protocol?: string;
     positionType?: string;
+    /** Crear una posición contable nueva a partir del evento (alta automática). */
+    createNew?: boolean;
   };
   try {
     body = await request.json();
@@ -141,6 +146,20 @@ export async function PATCH(request: NextRequest) {
       positionType = link.position_type;
     }
   }
+  // Alta automática: crear la posición contable a partir del propio evento
+  // (las posiciones son implícitas: nacen con su primera transacción). Así una
+  // posición abierta on-chain entra en contabilidad sin ningún formulario.
+  if ((!positionId || !protocol) && body.createNew === true) {
+    const kindForType = (ev.kind as string) ?? "harvest";
+    positionType = kindForType.startsWith("lending_")
+      ? "Lending"
+      : kindForType.startsWith("transfer_")
+        ? "Hold"
+        : "Liquidity Pool";
+    protocol = ev.protocol;
+    const refPart = (ev.position_ref ?? crypto.randomUUID().slice(0, 8)).toString().slice(-24);
+    positionId = `${(ev.label ?? "onchain").toString().replace(/[^\w/.-]+/g, "-")}-${refPart}`;
+  }
   if (!positionId || !protocol) {
     return NextResponse.json({ error: "Registrar requiere positionId y protocol (o un enlace en position_links)." }, { status: 400 });
   }
@@ -152,16 +171,47 @@ export async function PATCH(request: NextRequest) {
   }
 
   const timestamp = ev.block_time ?? new Date().toISOString();
-  // Tipo contable según el evento detectado (Fase C1):
+  // Tipo contable según el evento detectado (Fases C1/C2):
   //   harvest → harvest (token_in), deposit → lp_deposit (token_in),
-  //   withdraw → lp_withdraw (token_out). Misma semántica que el flujo manual
-  //   auditado: deposited += in*spot / deposited -= out*spot.
+  //   withdraw → lp_withdraw (token_out); Aave: lending_supply/withdraw (colateral
+  //   in/out) y lending_borrow con token_in (borrow) o token_out (repay), la
+  //   misma semántica que el ajuste lending manual auditado.
   const kind = (ev.kind as string) ?? "harvest";
-  const TX_TYPE: Record<string, string> = { harvest: "harvest", deposit: "lp_deposit", withdraw: "lp_withdraw" };
+  const TX_TYPE: Record<string, string> = {
+    harvest: "harvest",
+    deposit: "lp_deposit",
+    withdraw: "lp_withdraw",
+    lending_supply: "lending_supply",
+    lending_withdraw: "lending_withdraw",
+    lending_borrow: "lending_borrow",
+    lending_repay: "lending_borrow",
+    transfer_in: "deposit",
+    transfer_out: "withdrawal",
+  };
   const txType = TX_TYPE[kind];
   if (!txType) return NextResponse.json({ error: `Tipo de evento no soportado: ${kind}.` }, { status: 400 });
-  const NOTE_LABEL: Record<string, string> = { harvest: "Harvest", deposit: "Depósito", withdraw: "Retirada" };
-  const isOut = kind === "withdraw";
+  const NOTE_LABEL: Record<string, string> = {
+    harvest: "Harvest",
+    deposit: "Depósito",
+    withdraw: "Retirada",
+    lending_supply: "+Colateral",
+    lending_withdraw: "-Colateral",
+    lending_borrow: "+Préstamo",
+    lending_repay: "-Préstamo",
+    transfer_in: "Entrada",
+    transfer_out: "Salida",
+  };
+  // token_out en retiradas de LP, retirada de colateral, repago y salidas.
+  const isOut = kind === "withdraw" || kind === "lending_withdraw" || kind === "lending_repay" || kind === "transfer_out";
+  // metadata.adjustType: mismo contrato que el flujo manual de lending_adjust.
+  const ADJUST_TYPE: Record<string, string> = {
+    lending_supply: "add_collateral",
+    lending_withdraw: "remove_collateral",
+    lending_borrow: "add_debt",
+    lending_repay: "repay_debt",
+  };
+  if (kind.startsWith("lending_") && positionType === "Liquidity Pool") positionType = "Lending";
+  if (kind.startsWith("transfer_") && positionType === "Liquidity Pool") positionType = "Hold";
 
   // Mismo grupo de operación → el botón "Deshacer" revierte la operación completa.
   const operationGroupId = crypto.randomUUID();
@@ -180,7 +230,14 @@ export async function PATCH(request: NextRequest) {
     protocol,
     position_id: positionId,
     position_type: positionType,
-    metadata: { source: "onchain_ingest", eventId: ev.id, txHash: ev.tx_hash, chain: ev.chain, nftId: ev.position_ref },
+    metadata: {
+      source: "onchain_ingest",
+      eventId: ev.id,
+      txHash: ev.tx_hash,
+      chain: ev.chain,
+      nftId: ev.position_ref,
+      ...(ADJUST_TYPE[kind] ? { adjustType: ADJUST_TYPE[kind] } : {}),
+    },
   }));
 
   const { error: txErr } = await client.from("transactions").insert(rows);

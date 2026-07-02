@@ -5,6 +5,35 @@
 > secciones separadas de Pools (LP), Lending, Hold y Staking — pero con los datos
 > recogidos on-chain.
 
+## Estado (2026-07-02) — TODAS LAS FASES IMPLEMENTADAS
+
+- **Fase A ✅** — el panel carga al instante desde snapshot (`onchain_cache`
+  source `snapshot`, lo escribe cada lectura en vivo); si el snapshot tiene
+  >15 min se refresca solo en segundo plano. Secciones agrupadas con subtotal.
+- **Fase B ✅** — `position_links` (phase26) + API `/api/onchain/links` +
+  aprendizaje automático al ingerir + UI de enlace en la conciliación.
+- **Fase C1 ✅** — Increase/DecreaseLiquidity V3 → `lp_deposit`/`lp_withdraw`
+  (fees separadas del principal en el Collect).
+- **Fase C2 ✅** — Aave Supply/Withdraw/Borrow/Repay → `lending_*` con el mismo
+  contrato (`metadata.adjustType`) que el ajuste manual auditado.
+- **Fase C3 ✅** — transferencias de holds: Bitcoin (mempool.space), EVM
+  (Zerion send/receive) y Solana (Helius TRANSFER, delta neto por token) →
+  `deposit`/`withdrawal` en Hold. *Hueco conocido*: los eventos LP de
+  Orca/Kamino (depósito/retirada/collect) aún no se escanean — Kamino
+  auto-compone (sus recompensas ya se ven en el panel vía caché) y las fees de
+  Orca también; la ingesta de esos eventos queda para el rodaje de Fase E.
+- **Fase D ✅** — sección "Conciliación on-chain ↔ contabilidad" en el panel:
+  valor real vs contable por enlace, desvío %, huérfanas en ambos sentidos.
+- **Notificaciones (opcional) ✅** — `scripts/onchain-notify.mjs`: email con los
+  eventos pendientes por portfolio. Se activa añadiendo los secrets
+  `RESEND_API_KEY` (resend.com, gratis) y `NOTIFY_EMAIL` en GitHub.
+- **Fase E** — pendiente de rodaje: cuando la conciliación lleve unas semanas
+  sin desvíos, poner `auto_ingest=true` en los enlaces y jubilar los formularios.
+
+Robustez del escáner: si un tramo de `getLogs` falla, el cursor NO avanza (se
+reintenta en el siguiente run); los HTTP 500 activan la reducción adaptativa
+del tramo. Nada se pierde y nada se duplica (event_key idempotente).
+
 ## Dónde estamos (2026-07-01)
 
 Lo ya construido y en producción:

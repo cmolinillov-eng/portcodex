@@ -143,6 +143,28 @@ const erc20Abi = [
   { name: "decimals", type: "function", stateMutability: "view", inputs: [], outputs: [{ type: "uint8" }] },
 ];
 
+// ── Aave V3: Supply/Withdraw/Borrow/Repay (Fase C2) ──────────────────────────
+// Pool por cadena (mismos que src/lib/onchain/evm/aave.ts).
+const AAVE_POOLS = {
+  ethereum: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
+  arbitrum: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  base: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+  polygon: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+  bsc: "0x6807dc923806fE8Fd134338EABCA509979a7e0cB",
+};
+const aaveSupplyEvent = parseAbiItem(
+  "event Supply(address indexed reserve, address user, address indexed onBehalfOf, uint256 amount, uint16 indexed referralCode)",
+);
+const aaveWithdrawEvent = parseAbiItem(
+  "event Withdraw(address indexed reserve, address indexed user, address indexed to, uint256 amount)",
+);
+const aaveBorrowEvent = parseAbiItem(
+  "event Borrow(address indexed reserve, address user, address indexed onBehalfOf, uint256 amount, uint8 interestRateMode, uint256 borrowRate, uint16 indexed referralCode)",
+);
+const aaveRepayEvent = parseAbiItem(
+  "event Repay(address indexed reserve, address indexed user, address indexed repayer, uint256 amount, bool useATokens)",
+);
+
 const CHUNK = 9000n; // rango máximo de getLogs en RPCs públicos
 // Primer escaneo: ventana hacia atrás (override con LOOKBACK_BLOCKS). Los runs
 // siguientes son incrementales desde last_block, así que da igual que sea grande.
@@ -254,6 +276,7 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
 
   let chunk = CHUNK; // adaptativo: los RPCs públicos limitan el rango de getLogs
   let start = from;
+  let firstFailed = null; // primer bloque de un tramo fallido: el cursor no lo salta
   while (start <= latest) {
     const end = start + chunk > latest ? latest : start + chunk;
     let collects = [];
@@ -267,11 +290,14 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
       ]);
     } catch (e) {
       const msg = String(e.message);
-      if (/exceed|limit|range|too (large|many)|response size/i.test(msg) && chunk > 500n) {
-        chunk = chunk / 2n; // reintenta el mismo tramo con la mitad de rango
+      // Tramo demasiado grande o RPC saturado (los 500 suelen ser por tamaño
+      // de respuesta): reintenta el mismo tramo con la mitad de rango.
+      if (/exceed|limit|range|too (large|many)|response size|http request failed|internal/i.test(msg) && chunk > 500n) {
+        chunk = chunk / 2n;
         continue;
       }
       console.error(`  getLogs ${chainName} ${protocol.name} [${start}-${end}]: ${msg.slice(0, 100)}`);
+      if (firstFailed == null) firstFailed = start; // se reintentará en el siguiente run
       start = end + 1n;
       continue;
     }
@@ -300,23 +326,377 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
     start = end + 1n;
   }
 
-  // Guardar hasta dónde hemos escaneado.
+  // Guardar hasta dónde hemos escaneado (sin saltar tramos fallidos: si algo
+  // falló, el cursor se queda justo antes y el siguiente run lo reintenta).
+  const cursor = firstFailed != null ? firstFailed - 1n : latest;
+  if (cursor >= from) {
+    await sb.from("onchain_scan_state").upsert(
+      { portfolio_id: portfolioId, chain: chainName, protocol: protocol.name, last_block: Number(cursor), updated_at: new Date().toISOString() },
+      { onConflict: "portfolio_id,chain,protocol" },
+    );
+  }
+  return found;
+}
+
+// Escanea el Pool de Aave V3 de una cadena para una wallet: cada Supply /
+// Withdraw / Borrow / Repay se guarda como evento pendiente con su tipo
+// contable (lending_supply / lending_withdraw / lending_borrow / lending_repay).
+async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
+  const pool = AAVE_POOLS[chainName];
+  if (!pool) return 0;
+
+  const latest = await client.getBlockNumber();
+  const { data: state } = await sb
+    .from("onchain_scan_state")
+    .select("last_block")
+    .eq("portfolio_id", portfolioId).eq("chain", chainName).eq("protocol", "Aave V3")
+    .maybeSingle();
+  let from = state?.last_block != null ? BigInt(state.last_block) + 1n : latest - DEFAULT_LOOKBACK;
+  if (from < 0n) from = 0n;
+  if (from > latest) return 0;
+
+  // symbol/decimals del token subyacente (reserve), cacheado.
+  const reserveMeta = new Map();
+  async function metaFor(reserve) {
+    const k = reserve.toLowerCase();
+    if (reserveMeta.has(k)) return reserveMeta.get(k);
+    const [dec, sym] = await Promise.all([
+      client.readContract({ address: reserve, abi: erc20Abi, functionName: "decimals" }),
+      client.readContract({ address: reserve, abi: erc20Abi, functionName: "symbol" }),
+    ]);
+    const m = { dec: Number(dec), sym };
+    reserveMeta.set(k, m);
+    return m;
+  }
+
+  let found = 0;
+  async function emit(kind, log, reserve, rawAmount) {
+    const m = await metaFor(reserve);
+    const block = await client.getBlock({ blockNumber: log.blockNumber });
+    const tsSec = Number(block.timestamp);
+    const amount = Number(rawAmount) / 10 ** m.dec;
+    if (amount <= 0) return;
+    const price = await llamaPrice(cfg.llama, reserve, tsSec);
+    const valueUsd = price != null ? amount * price : null;
+    if (valueUsd != null && valueUsd < 0.01) return; // polvo
+
+    const { error: insErr } = await sb.from("onchain_events").upsert({
+      portfolio_id: portfolioId,
+      event_key: `${chainName}:${log.transactionHash}:${log.logIndex}:${kind}`,
+      kind,
+      chain: chainName,
+      protocol: "Aave V3",
+      wallet_address: walletAddr,
+      position_ref: walletAddr, // LivePosition.id de Aave = `${chain}:aave:${wallet}`
+      label: `Aave · ${m.sym}`,
+      tokens: [{ symbol: m.sym, amount, priceUsd: price, valueUsd }],
+      value_usd: valueUsd,
+      block_time: new Date(tsSec * 1000).toISOString(),
+      tx_hash: log.transactionHash,
+      includes_principal: false,
+    }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+    if (insErr) console.error(`  insert evento aave: ${insErr.message}`);
+    else found++;
+  }
+
+  let chunk = CHUNK;
+  let start = from;
+  let firstFailed = null;
+  while (start <= latest) {
+    const end = start + chunk > latest ? latest : start + chunk;
+    let supplies = [];
+    let withdraws = [];
+    let borrows = [];
+    let repays = [];
+    try {
+      // Solo se puede filtrar por args indexados: onBehalfOf (Supply/Borrow)
+      // y user (Withdraw/Repay) — en todos los casos, la wallet del portfolio.
+      [supplies, withdraws, borrows, repays] = await Promise.all([
+        client.getLogs({ address: pool, event: aaveSupplyEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
+        client.getLogs({ address: pool, event: aaveWithdrawEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
+        client.getLogs({ address: pool, event: aaveBorrowEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
+        client.getLogs({ address: pool, event: aaveRepayEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
+      ]);
+    } catch (e) {
+      const msg = String(e.message);
+      if (/exceed|limit|range|too (large|many)|response size|http request failed|internal/i.test(msg) && chunk > 500n) {
+        chunk = chunk / 2n;
+        continue;
+      }
+      console.error(`  getLogs ${chainName} Aave [${start}-${end}]: ${msg.slice(0, 100)}`);
+      if (firstFailed == null) firstFailed = start;
+      start = end + 1n;
+      continue;
+    }
+
+    try {
+      for (const log of supplies) await emit("lending_supply", log, log.args.reserve, log.args.amount);
+      for (const log of withdraws) await emit("lending_withdraw", log, log.args.reserve, log.args.amount);
+      for (const log of borrows) await emit("lending_borrow", log, log.args.reserve, log.args.amount);
+      for (const log of repays) await emit("lending_repay", log, log.args.reserve, log.args.amount);
+    } catch (e) {
+      console.error(`  eventos aave ${chainName}: ${String(e.message).slice(0, 100)}`);
+    }
+    start = end + 1n;
+  }
+
+  const cursor = firstFailed != null ? firstFailed - 1n : latest;
+  if (cursor >= from) {
+    await sb.from("onchain_scan_state").upsert(
+      { portfolio_id: portfolioId, chain: chainName, protocol: "Aave V3", last_block: Number(cursor), updated_at: new Date().toISOString() },
+      { onConflict: "portfolio_id,chain,protocol" },
+    );
+  }
+  return found;
+}
+
+// ── Fase C3: transferencias de holds (entradas/salidas de la wallet) ────────
+// kind transfer_in / transfer_out → transacciones deposit / withdrawal (Hold).
+
+// Estado de escaneo genérico (last_block reutilizado como cursor numérico).
+async function getScanCursor(portfolioId, chain, protocol) {
+  const { data } = await sb
+    .from("onchain_scan_state")
+    .select("last_block")
+    .eq("portfolio_id", portfolioId).eq("chain", chain).eq("protocol", protocol)
+    .maybeSingle();
+  return data?.last_block ?? null;
+}
+async function setScanCursor(portfolioId, chain, protocol, cursor) {
   await sb.from("onchain_scan_state").upsert(
-    { portfolio_id: portfolioId, chain: chainName, protocol: protocol.name, last_block: Number(latest), updated_at: new Date().toISOString() },
+    { portfolio_id: portfolioId, chain, protocol, last_block: cursor, updated_at: new Date().toISOString() },
     { onConflict: "portfolio_id,chain,protocol" },
   );
+}
+
+async function insertTransferEvent({ portfolioId, eventKey, kind, chain, protocol, walletAddr, positionRef, symbol, amount, price, tsSec, txHash }) {
+  const valueUsd = price != null ? amount * price : null;
+  if (valueUsd != null && valueUsd < 1) return false; // polvo/spam (< $1)
+  const { error } = await sb.from("onchain_events").upsert({
+    portfolio_id: portfolioId,
+    event_key: eventKey,
+    kind,
+    chain,
+    protocol,
+    wallet_address: walletAddr,
+    position_ref: positionRef,
+    label: symbol,
+    tokens: [{ symbol, amount, priceUsd: price, valueUsd }],
+    value_usd: valueUsd,
+    block_time: new Date(tsSec * 1000).toISOString(),
+    tx_hash: txHash,
+    includes_principal: false,
+  }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+  if (error) { console.error(`  insert transfer: ${error.message}`); return false; }
+  return true;
+}
+
+// Bitcoin (Ledger en hold): transacciones confirmadas vía mempool.space (gratis).
+async function scanBitcoin(portfolioId, addr) {
+  const res = await fetch(`https://mempool.space/api/address/${addr}/txs`);
+  if (!res.ok) throw new Error(`mempool.space ${res.status}`);
+  const txs = await res.json();
+  const last = Number(await getScanCursor(portfolioId, "bitcoin", "Bitcoin") ?? 0);
+
+  let found = 0;
+  let maxHeight = last;
+  for (const tx of txs) {
+    if (!tx.status?.confirmed) continue;
+    const height = tx.status.block_height ?? 0;
+    if (height <= last) continue;
+    if (height > maxHeight) maxHeight = height;
+
+    // Delta neto de la wallet en la tx (sats): entradas − salidas.
+    const inSats = tx.vout.filter((v) => v.scriptpubkey_address === addr).reduce((s, v) => s + v.value, 0);
+    const outSats = tx.vin.filter((v) => v.prevout?.scriptpubkey_address === addr).reduce((s, v) => s + (v.prevout?.value ?? 0), 0);
+    const net = (inSats - outSats) / 1e8;
+    if (net === 0) continue;
+
+    const tsSec = tx.status.block_time ?? Math.floor(Date.now() / 1000);
+    const price = await llamaPrice("coingecko", "bitcoin", tsSec);
+    const kind = net > 0 ? "transfer_in" : "transfer_out";
+    const ok = await insertTransferEvent({
+      portfolioId,
+      eventKey: `bitcoin:${tx.txid}:${addr}:${kind}`,
+      kind,
+      chain: "bitcoin",
+      protocol: "Bitcoin",
+      walletAddr: addr,
+      positionRef: addr, // hold id = `bitcoin:hold:${address}`
+      symbol: "BTC",
+      amount: Math.abs(net),
+      price,
+      tsSec,
+      txHash: tx.txid,
+    });
+    if (ok) found++;
+  }
+  if (maxHeight > last) await setScanCursor(portfolioId, "bitcoin", "Bitcoin", maxHeight);
+  return found;
+}
+
+// EVM: envíos/recepciones de la wallet vía Zerion (send/receive ya parseados,
+// con símbolo y precio; excluye operaciones DeFi, que van por los escáneres
+// de protocolo). Cursor = mined_at (epoch) de la tx más reciente vista.
+async function scanEvmTransfers(portfolioId, addr) {
+  const key = process.env.ZERION_API_KEY;
+  if (!key) return 0;
+  const auth = Buffer.from(`${key}:`).toString("base64");
+  const res = await fetch(
+    `https://api.zerion.io/v1/wallets/${addr}/transactions/?currency=usd&page[size]=100&filter[operation_types]=send,receive&filter[trash]=only_non_trash`,
+    { headers: { Authorization: `Basic ${auth}`, accept: "application/json" } },
+  );
+  if (!res.ok) throw new Error(`Zerion txs ${res.status}`);
+  const json = await res.json();
+  const last = Number(await getScanCursor(portfolioId, "evm", "Wallet") ?? 0);
+
+  let found = 0;
+  let maxTs = last;
+  for (const tx of json.data ?? []) {
+    const a = tx.attributes ?? {};
+    const tsSec = a.mined_at ? Math.floor(new Date(a.mined_at).getTime() / 1000) : 0;
+    if (!tsSec || tsSec <= last) continue;
+    if (a.status && a.status !== "confirmed") continue;
+    if (maxTs < tsSec) maxTs = tsSec;
+    const chain = CHAIN_ALIASES[tx.relationships?.chain?.data?.id] ?? tx.relationships?.chain?.data?.id ?? "evm";
+
+    for (const [i, tr] of (a.transfers ?? []).entries()) {
+      const dir = tr.direction; // in | out
+      if (dir !== "in" && dir !== "out") continue;
+      const symbol = tr.fungible_info?.symbol ?? "?";
+      const amount = Number(tr.quantity?.float ?? 0);
+      if (!(amount > 0)) continue;
+      // Tokens contables internos de protocolos (aTokens/deuda de Aave…): no
+      // son movimientos del hold, los cubren los escáneres de protocolo.
+      if (/^(a|variableDebt|stableDebt)[A-Z]/.test(symbol) || symbol === "?") continue;
+      const price = tr.price != null ? Number(tr.price) : (tr.value != null ? Number(tr.value) / amount : null);
+      if (price == null) continue; // sin precio = spam o token interno
+      // position_ref = address del token en esa cadena (los holds usan
+      // `${chain}:hold:${tokenAddress ?? symbol}` como id en vivo).
+      const impl = (tr.fungible_info?.implementations ?? []).find((m) => (CHAIN_ALIASES[m.chain_id] ?? m.chain_id) === chain);
+      const positionRef = impl?.address ?? symbol;
+      const kind = dir === "in" ? "transfer_in" : "transfer_out";
+      const ok = await insertTransferEvent({
+        portfolioId,
+        eventKey: `${chain}:${a.hash}:${i}:${kind}`,
+        kind,
+        chain,
+        protocol: "Wallet",
+        walletAddr: addr,
+        positionRef,
+        symbol,
+        amount,
+        price,
+        tsSec,
+        txHash: a.hash ?? null,
+      });
+      if (ok) found++;
+    }
+  }
+  if (maxTs > last) await setScanCursor(portfolioId, "evm", "Wallet", maxTs);
+  return found;
+}
+
+// Solana: transferencias parseadas vía Helius (gratis con la key existente).
+// Cursor = slot de la tx más reciente vista.
+const SOL_MINTS = {
+  So11111111111111111111111111111111111111112: "SOL",
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "JITOSOL",
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "MSOL",
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "JUP",
+  "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R": "RAY",
+  orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE: "ORCA",
+};
+async function scanSolanaTransfers(portfolioId, addr) {
+  const key = process.env.HELIUS_API_KEY;
+  if (!key) return 0;
+  const res = await fetch(`https://api.helius.xyz/v0/addresses/${addr}/transactions?api-key=${key}&limit=100&type=TRANSFER`);
+  if (!res.ok) throw new Error(`Helius ${res.status}`);
+  const txs = await res.json();
+  const last = Number(await getScanCursor(portfolioId, "solana", "Wallet") ?? 0);
+
+  let found = 0;
+  let maxSlot = last;
+  for (const tx of Array.isArray(txs) ? txs : []) {
+    const slot = Number(tx.slot ?? 0);
+    if (!slot || slot <= last) continue;
+    if (tx.transactionError) continue;
+    if (maxSlot < slot) maxSlot = slot;
+    const tsSec = Number(tx.timestamp ?? Math.floor(Date.now() / 1000));
+
+    // Delta neto por token para la wallet en la tx.
+    const net = new Map(); // mint|SOL → amount neto
+    for (const t of tx.nativeTransfers ?? []) {
+      const amt = Number(t.amount ?? 0) / 1e9;
+      if (t.toUserAccount === addr) net.set("SOL", (net.get("SOL") ?? 0) + amt);
+      if (t.fromUserAccount === addr) net.set("SOL", (net.get("SOL") ?? 0) - amt);
+    }
+    for (const t of tx.tokenTransfers ?? []) {
+      const amt = Number(t.tokenAmount ?? 0);
+      if (!(amt > 0)) continue;
+      if (t.toUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) + amt);
+      if (t.fromUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) - amt);
+    }
+
+    for (const [mint, delta] of net) {
+      const amount = Math.abs(delta);
+      if (!(amount > 0)) continue;
+      const isSol = mint === "SOL";
+      const symbol = isSol ? "SOL" : (SOL_MINTS[mint] ?? `${mint.slice(0, 4)}…`);
+      const price = isSol
+        ? await llamaPrice("coingecko", "solana", tsSec)
+        : await llamaPrice("solana", mint, tsSec);
+      if (price == null) continue; // sin precio conocido = casi seguro spam/airdrop
+      const kind = delta > 0 ? "transfer_in" : "transfer_out";
+      const ok = await insertTransferEvent({
+        portfolioId,
+        eventKey: `solana:${tx.signature}:${mint}:${kind}`,
+        kind,
+        chain: "solana",
+        protocol: "Wallet",
+        walletAddr: addr,
+        positionRef: isSol ? "SOL" : mint, // hold id = `solana:hold:${mint ?? symbol}`
+        symbol,
+        amount,
+        price,
+        tsSec,
+        txHash: tx.signature ?? null,
+      });
+      if (ok) found++;
+    }
+  }
+  if (maxSlot > last) await setScanCursor(portfolioId, "solana", "Wallet", maxSlot);
   return found;
 }
 
 async function main() {
   const { data: wallets, error } = await sb
     .from("portfolio_wallets")
-    .select("portfolio_id, address")
-    .eq("chain_kind", "evm")
+    .select("portfolio_id, address, chain_kind")
     .eq("is_active", true);
   if (error) { console.error("Error leyendo portfolio_wallets:", error.message); process.exit(1); }
 
+  // Bitcoin y Solana: transferencias de holds (Fase C3).
   for (const w of wallets ?? []) {
+    try {
+      if (w.chain_kind === "bitcoin") {
+        const n = await scanBitcoin(w.portfolio_id, w.address);
+        if (n > 0) console.log(`  bitcoin ${w.address.slice(0, 8)} → ${n} transferencias`);
+      } else if (w.chain_kind === "solana") {
+        const n = await scanSolanaTransfers(w.portfolio_id, w.address);
+        if (n > 0) console.log(`  solana ${w.address.slice(0, 8)} → ${n} transferencias`);
+      } else if (w.chain_kind === "evm") {
+        const n = await scanEvmTransfers(w.portfolio_id, w.address);
+        if (n > 0) console.log(`  evm ${w.address.slice(0, 8)} → ${n} transferencias`);
+      }
+    } catch (e) {
+      console.error(`  transfers ${w.chain_kind} ${w.address.slice(0, 8)}: ${String(e.message).slice(0, 120)}`);
+    }
+  }
+
+  for (const w of (wallets ?? []).filter((x) => x.chain_kind === "evm")) {
     // tokenIds en farming (staked): el NFT no está en la wallet; los da Zerion.
     const farmingIds = await zerionNftIds(w.address);
     for (const protocol of PROTOCOLS) {
@@ -332,6 +712,20 @@ async function main() {
         } catch (e) {
           console.error(`  ${chainName} ${protocol.name}: ${String(e.message).slice(0, 120)}`);
         }
+      }
+    }
+
+    // Aave V3 (Fase C2): supply/withdraw/borrow/repay por cadena.
+    for (const chainName of Object.keys(AAVE_POOLS)) {
+      if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
+      const cfg = CHAINS[chainName];
+      if (!cfg) continue;
+      const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: true }) });
+      try {
+        const n = await scanAave(client, cfg, w.portfolio_id, w.address, chainName);
+        if (n > 0) console.log(`  ${chainName} Aave V3 ${w.address.slice(0, 8)} → ${n} eventos detectados`);
+      } catch (e) {
+        console.error(`  ${chainName} Aave V3: ${String(e.message).slice(0, 120)}`);
       }
     }
   }

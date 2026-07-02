@@ -1819,6 +1819,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                     positionId: p.positionId,
                     positionType: p.positionType,
                     label: `${p.protocol} · ${p.tokenSymbol}`,
+                    valueUsd: p.currentValue,
                   },
                 ]),
             ).values(),
