@@ -70,6 +70,40 @@ export async function GET(request: NextRequest) {
 
     const result = await syncPortfolioLive(portfolioId);
 
+    // Refrescar cached_prices con los precios reales de la lectura on-chain
+    // (valueUsd/amount por token). Cubre TODOS los tokens del portfolio —
+    // PYUSD, USDS, JITOSOL, cbBTC… — sin depender del mapa de CoinGecko, y
+    // mantiene vivos los precios de la contabilidad al jubilar la entrada
+    // manual (que era quien los escribía al operar).
+    try {
+      const nowIso = new Date().toISOString();
+      const bySymbol = new Map<string, { price: number; valueUsd: number }>();
+      for (const p of result.positions) {
+        for (const t of p.tokens ?? []) {
+          const amount = Math.abs(Number(t.amount ?? 0));
+          const valueUsd = Math.abs(Number(t.valueUsd ?? 0));
+          if (!(amount > 0) || !(valueUsd > 0.01)) continue;
+          const symbol = (t.symbol ?? "").replace(/^-/, "").trim().toUpperCase();
+          if (!symbol || symbol.length > 12) continue;
+          const price = valueUsd / amount;
+          if (!Number.isFinite(price) || price <= 0) continue;
+          // Ante varias posiciones con el mismo token, gana la de mayor valor.
+          const prev = bySymbol.get(symbol);
+          if (!prev || valueUsd > prev.valueUsd) bySymbol.set(symbol, { price, valueUsd });
+        }
+      }
+      const priceRows = [...bySymbol.entries()].map(([token_symbol, v]) => ({
+        token_symbol,
+        price: v.price,
+        last_updated: nowIso,
+      }));
+      if (priceRows.length > 0) {
+        await getClient().from("cached_prices").upsert(priceRows, { onConflict: "token_symbol" });
+      }
+    } catch {
+      /* mejor esfuerzo: el refresco de CoinGecko sigue existiendo */
+    }
+
     // Guardar snapshot (mejor esfuerzo) para que la próxima carga sea
     // instantánea. NUNCA con una lectura degradada (Zerion caído): eso
     // machacaría el último snapshot bueno con datos incompletos.

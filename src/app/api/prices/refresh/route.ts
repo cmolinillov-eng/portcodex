@@ -98,6 +98,21 @@ const symbolToCoinGeckoId: Record<string, string> = {
   DYM: "dymension",
   BOME: "book-of-meme",
   MEW: "cat-in-a-dogs-world",
+  // Tokens reales del portfolio (Kamino/Orca/Pancake/holds) que faltaban:
+  // sin ellos cached_prices se congelaba al desaparecer la entrada manual
+  // (que era quien escribía estos precios al operar).
+  PYUSD: "paypal-usd",
+  USDS: "usds",
+  JITOSOL: "jito-staked-sol",
+  JUPSOL: "jupiter-staked-sol",
+  ORCA: "orca",
+  CAKE: "pancakeswap-token",
+  CBBTC: "coinbase-wrapped-btc",
+  WBETH: "wrapped-beacon-eth",
+  USDT0: "tether",
+  WBNB: "binancecoin",
+  WETH: "ethereum",
+  WBTC: "wrapped-bitcoin",
 };
 
 function normalizeSymbol(value: string | null): string | null {
