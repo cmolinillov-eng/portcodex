@@ -70,21 +70,26 @@ export async function GET(request: NextRequest) {
 
     const result = await syncPortfolioLive(portfolioId);
 
-    // Guardar snapshot (mejor esfuerzo) para que la próxima carga sea instantánea.
-    try {
-      await getClient()
-        .from("onchain_cache")
-        .upsert(
-          {
-            portfolio_id: portfolioId,
-            source: "snapshot",
-            positions: result as unknown as Record<string, unknown>,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "portfolio_id,source" },
-        );
-    } catch {
-      /* la caché es opcional */
+    // Guardar snapshot (mejor esfuerzo) para que la próxima carga sea
+    // instantánea. NUNCA con una lectura degradada (Zerion caído): eso
+    // machacaría el último snapshot bueno con datos incompletos.
+    const degraded = result.warnings.some((w) => /zerion/i.test(w));
+    if (!degraded) {
+      try {
+        await getClient()
+          .from("onchain_cache")
+          .upsert(
+            {
+              portfolio_id: portfolioId,
+              source: "snapshot",
+              positions: result as unknown as Record<string, unknown>,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "portfolio_id,source" },
+          );
+      } catch {
+        /* la caché es opcional */
+      }
     }
 
     return NextResponse.json({ ...result, cached: false });
