@@ -111,8 +111,6 @@ const symbolToCoinGeckoId: Record<string, string> = {
   WBETH: "wrapped-beacon-eth",
   USDT0: "tether",
   WBNB: "binancecoin",
-  WETH: "ethereum",
-  WBTC: "wrapped-bitcoin",
 };
 
 function normalizeSymbol(value: string | null): string | null {
