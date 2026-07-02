@@ -51,13 +51,26 @@ export async function fetchZerionPositions(
     `https://api.zerion.io/v1/wallets/${address}/positions/` +
     `?currency=${currency}&filter%5Bpositions%5D=${filter}&sync=true`;
 
-  const res = await fetch(url, {
-    headers: { Authorization: `Basic ${auth}`, accept: "application/json" },
-    // Datos de mercado: no cachear agresivamente.
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw new Error(`Zerion ${res.status}: ${await res.text().catch(() => "")}`.slice(0, 200));
+  // Reintentos con backoff: Zerion sufre 5xx/504 puntuales (Cloudflare) y sin
+  // él desaparecerían las posiciones EVM del panel.
+  let res: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    try {
+      res = await fetch(url, {
+        headers: { Authorization: `Basic ${auth}`, accept: "application/json" },
+        // Datos de mercado: no cachear agresivamente.
+        cache: "no-store",
+      });
+    } catch {
+      res = null;
+      continue;
+    }
+    if (res.ok || (res.status < 500 && res.status !== 429)) break; // 4xx no transitorio: no reintentar
+  }
+  if (!res || !res.ok) {
+    const detail = res ? `${res.status}: ${await res.text().catch(() => "")}` : "sin respuesta";
+    throw new Error(`Zerion ${detail}`.slice(0, 200));
   }
   const json = (await res.json()) as { data?: Array<{ attributes?: Record<string, unknown>; relationships?: Record<string, unknown> }> };
   const out: ZerionPosition[] = [];

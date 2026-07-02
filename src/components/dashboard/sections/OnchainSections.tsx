@@ -207,7 +207,14 @@ export function OnchainSections({
                 <tbody>
                   {rows.map((p) => {
                     const manual = linkedManual(p);
-                    const deposited = manual?.depositedValue ?? null;
+                    // Holds: la posición contable puede tener más/menos saldo
+                    // que esta wallet (p.ej. BTC repartido) → el depositado se
+                    // prorratea con el precio medio de entrada × cantidad real.
+                    const onchainAmount = p.tokens?.[0]?.amount ?? null;
+                    const deposited =
+                      p.kind === "wallet" && manual?.averageEntryPrice && onchainAmount != null && manual.averageEntryPrice > 0
+                        ? manual.averageEntryPrice * Math.abs(onchainAmount)
+                        : manual?.depositedValue ?? null;
                     const harvested = manual?.totalHarvested ?? 0;
                     const value = p.valueUsd ?? 0;
                     const pnl = deposited != null && deposited > 0 ? value - deposited : null;

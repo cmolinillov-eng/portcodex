@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
+import { capturePortfolioSnapshot } from "@/lib/snapshots/capture";
 
 /**
  * Harvests detectados on-chain (tabla onchain_events, rellenada por el worker).
@@ -226,6 +227,16 @@ export async function GET(request: NextRequest) {
       }
     }
     events.push({ ...raw, link });
+  }
+
+  // La evolución del portfolio recoge las operaciones automáticas del día
+  // (además del snapshot diario de medianoche).
+  if (autoIngested > 0) {
+    try {
+      await capturePortfolioSnapshot({ client: getClient(), portfolioId, trigger: "post_operation", notes: "auto-ingesta on-chain" });
+    } catch {
+      /* mejor esfuerzo */
+    }
   }
 
   return NextResponse.json({ events, autoIngested });

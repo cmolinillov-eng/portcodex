@@ -221,6 +221,9 @@ export type ManualPositionRef = {
   totalHarvested?: number;
   /** Par de tokens de la posición ("USDC/SOL") para el auto-enlace. */
   tokenSymbol?: string;
+  /** Precio medio de entrada: para holds el depositado se prorratea por la
+   *  cantidad real en la wallet (la contable puede tener más/menos saldo). */
+  averageEntryPrice?: number;
 };
 
 /** Harvests detectados on-chain, pendientes de registrar en la contabilidad. */

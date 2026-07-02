@@ -1828,6 +1828,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                         : p.averageEntryPrice * p.currentBalance,
                     totalHarvested: p.totalHarvested,
                     tokenSymbol: p.tokenSymbol,
+                    averageEntryPrice: p.averageEntryPrice,
                   },
                 ]),
             ).values(),

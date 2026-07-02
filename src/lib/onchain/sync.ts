@@ -1,5 +1,6 @@
 import { getActiveWallets } from "./wallets";
 import { fetchZerionPositions, type ZerionPosition } from "./discovery/zerion";
+import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 import { enrichPancakeV3 } from "./evm/pancakeswap-v3";
 import { enrichUniswapV3 } from "./evm/uniswap-v3";
 import { enrichAave } from "./evm/aave";
@@ -43,6 +44,33 @@ function holdsToPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[
     }));
 }
 
+/**
+ * Respaldo ante caídas del descubridor (Zerion 5xx): reutiliza las posiciones
+ * de esa wallet del último snapshot guardado, para que el panel nunca se
+ * quede vacío por un fallo transitorio de un tercero.
+ */
+async function snapshotFallback(
+  portfolioId: string,
+  walletAddress: string,
+  onlyKind?: string,
+): Promise<LivePosition[]> {
+  try {
+    const client = getSupabaseServiceClient() ?? getSupabaseServerClient();
+    const { data } = await client
+      .from("onchain_cache")
+      .select("positions")
+      .eq("portfolio_id", portfolioId)
+      .eq("source", "snapshot")
+      .maybeSingle();
+    const snap = data?.positions as { positions?: LivePosition[] } | undefined;
+    return (snap?.positions ?? []).filter(
+      (p) => p.walletAddress === walletAddress && (!onlyKind || p.kind === onlyKind),
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[]; warnings: string[] }> {
   const positions: LivePosition[] = [];
   const warnings: string[] = [];
@@ -51,7 +79,13 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
   try {
     zerion = await fetchZerionPositions(w.address, { filter: "no_filter" }); // balances + DeFi
   } catch (e) {
-    return { positions, warnings: [`Zerion falló para ${w.address}: ${(e as Error).message}`.slice(0, 160)] };
+    const cached = await snapshotFallback(w.portfolioId, w.address);
+    return {
+      positions: cached,
+      warnings: [
+        `Zerion caído para ${w.address.slice(0, 8)}… (${(e as Error).message.slice(0, 60)}) — mostrando el último snapshot de esa wallet.`,
+      ],
+    };
   }
 
   // Hold (tokens sueltos)
@@ -88,7 +122,13 @@ async function syncSolanaWallet(w: WalletRef): Promise<{ positions: LivePosition
     const zerion = await fetchZerionPositions(w.address, { filter: "only_simple" });
     positions.push(...holdsToPositions(zerion, w));
   } catch (e) {
-    warnings.push(`Zerion Solana falló para ${w.address}: ${(e as Error).message}`.slice(0, 160));
+    // Zerion caído: recupera los holds de esta wallet del último snapshot
+    // (los adaptadores DeFi de abajo no dependen de Zerion y siguen en vivo).
+    const cached = await snapshotFallback(w.portfolioId, w.address, "wallet");
+    positions.push(...cached);
+    warnings.push(
+      `Zerion Solana caído para ${w.address.slice(0, 8)}… (${(e as Error).message.slice(0, 60)}) — holds del último snapshot.`,
+    );
   }
 
   // Adaptadores DeFi de Solana (cada uno consulta la API pública del protocolo):
