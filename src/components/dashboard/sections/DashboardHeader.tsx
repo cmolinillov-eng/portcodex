@@ -225,10 +225,25 @@ export function DashboardHeader({
             />
 
             <p className="relative text-[10px] uppercase font-mono tracking-[0.3em] text-[var(--muted)] font-medium">
-              Saldo Total del Portfolio
+              Valor total del patrimonio
             </p>
-            <h1 className="text-hero relative mt-2 text-5xl tracking-tight font-semibold md:text-6xl lg:text-[4rem]">
-              {currency(summary.totalValueUsd)}
+            <h1 className="text-hero relative mt-2 text-5xl tracking-tight md:text-6xl lg:text-[4.5rem]">
+              {(() => {
+                // El gran número: enteros a plena voz, decimales que susurran,
+                // el símbolo en el acento (única aparición del verde en la cifra).
+                const value = summary.totalValueUsd;
+                const [intPart, decPart] = Math.abs(value)
+                  .toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  .split(".");
+                return (
+                  <>
+                    {value < 0 ? "−" : ""}
+                    {intPart}
+                    <span className="text-[0.55em] font-semibold text-[var(--ink-2)]">,{decPart}</span>
+                    <span className="ml-2 text-[0.5em] font-semibold text-[var(--accent-primary)]">$</span>
+                  </>
+                );
+              })()}
             </h1>
 
             {/* Shimmer line under balance */}

@@ -173,10 +173,7 @@ export function OnchainSections({
         return (
           <section key={key} className={`glass-panel page-section-card card-section-${key} p-5 md:p-6 mb-6`} aria-label={`Sección on-chain ${meta.label}`}>
             <div className="section-header-row mb-5 flex items-center justify-between gap-3 flex-wrap">
-              <h2
-                className={`font-designer text-2xl font-semibold tracking-tight ${meta.glowClass}`}
-                style={{ textShadow: `0 0 30px ${meta.color}22` }}
-              >
+              <h2 className="font-designer text-2xl font-semibold tracking-tight text-[var(--foreground)]">
                 {meta.label}
               </h2>
               <div className="flex items-center gap-2">
@@ -269,12 +266,9 @@ export function OnchainSections({
                           </div>
                         </td>
 
-                        {/* PROTOCOLO */}
+                        {/* PROTOCOLO — pill de contorno neutro (única caja de la fila) */}
                         <td className="px-4 py-4">
-                          <span
-                            className="inline-flex w-fit items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium shadow-none"
-                            style={{ borderColor: `${meta.color}44`, backgroundColor: `${meta.color}12`, color: meta.color }}
-                          >
+                          <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full border border-[var(--glass-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)]">
                             {p.protocol ?? "Wallet"}
                           </span>
                         </td>
