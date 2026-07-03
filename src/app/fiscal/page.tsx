@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Download, Scale, Layers, Info } from "lucide-react";
+import { Download, Info } from "lucide-react";
 import { getFiscalContext } from "@/lib/fiscal/get-fiscal-context";
 import { computeTraceability } from "@/lib/tax/compute-traceability";
 import {
@@ -97,21 +97,23 @@ export default async function ResumenFiscalPage({
       <div className="mx-auto max-w-5xl space-y-6 px-7 py-7">
         {/* Selector de ejercicio fiscal */}
         {years.length > 0 ? (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">Ejercicio</span>
-            {years.map((y) => (
-              <Link
-                key={y}
-                href={yearHref(y)}
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  y === selectedYear
-                    ? "border-[rgba(111,174,143,0.55)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
-                    : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--foreground)]"
-                }`}
-              >
-                {y}
-              </Link>
-            ))}
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)]">Ejercicio</span>
+            <div className="inline-flex items-center gap-0.5 rounded-lg border border-[var(--line)] bg-[var(--void-elevated)] p-0.5">
+              {years.map((y) => (
+                <Link
+                  key={y}
+                  href={yearHref(y)}
+                  className={`rounded-md px-3 py-1.5 font-mono text-xs font-medium tracking-wide transition-colors ${
+                    y === selectedYear
+                      ? "bg-[rgba(111,174,143,0.16)] text-[var(--foreground)]"
+                      : "text-[var(--muted)] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
             <span className="text-xs text-[var(--muted)]">· {yearEntries.length} operaciones en {selectedYear}</span>
           </div>
         ) : null}
@@ -125,18 +127,16 @@ export default async function ResumenFiscalPage({
         {/* Tarjetas base */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <BaseCard
-            icon={<Scale className="h-5 w-5" />}
             label="Base del ahorro"
             value={totalBaseAhorro}
             note="GP transmisión/permuta + RCM + derivados"
-            accent="rgba(111,174,143,0.5)"
+            dot="var(--accent-primary)"
           />
           <BaseCard
-            icon={<Layers className="h-5 w-5" />}
             label="Base general"
             value={totalBaseGeneral}
             note="Airdrops · forks · salario · actividad"
-            accent="rgba(201,164,94,0.5)"
+            dot="var(--warn)"
           />
         </div>
 
@@ -218,29 +218,36 @@ export default async function ResumenFiscalPage({
 }
 
 function BaseCard({
-  icon,
   label,
   value,
   note,
-  accent,
+  dot,
 }: {
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
   value: number;
   note: string;
-  accent: string;
+  accent?: string;
+  dot: string;
 }) {
+  // Gran número al estilo «Instrumento»: etiqueta con punto de color, cifra
+  // grande en Archivo con los decimales y el € que susurran.
+  const [intPart, decPart] = Math.abs(value)
+    .toLocaleString("es-ES", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .split(",");
   return (
-    <div
-      className="relative overflow-hidden rounded-2xl border bg-[var(--void-surface)] px-5 py-5"
-      style={{ borderColor: accent }}
-    >
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--muted)]">{label}</p>
-        <span className="text-[var(--muted)]">{icon}</span>
-      </div>
-      <p className="mt-2 text-3xl font-bold tracking-tight text-[var(--foreground)] tabular-nums">{formatEur(value)}</p>
-      <p className="mt-1.5 text-xs text-[var(--muted)]">{note}</p>
+    <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--void-surface)] px-6 py-6">
+      <p className="flex items-center gap-2 text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)]">
+        <span className="h-1.5 w-1.5 rounded-full" style={{ background: dot }} />
+        {label}
+      </p>
+      <p className="mt-3 font-designer text-5xl font-bold tracking-tight text-[var(--foreground)]">
+        {value < 0 ? "−" : ""}
+        {intPart}
+        <span className="text-[0.5em] font-semibold text-[var(--ink-2)]">,{decPart}</span>
+        <span className="ml-2 text-[0.42em] font-semibold text-[var(--muted)]">€</span>
+      </p>
+      <p className="mt-2 text-xs text-[var(--muted)]">{note}</p>
     </div>
   );
 }

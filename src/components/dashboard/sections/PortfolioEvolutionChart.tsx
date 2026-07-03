@@ -14,6 +14,7 @@ import {
 import { TrendingUp, TrendingDown, BarChart3, Activity } from "lucide-react";
 import { useMoneyFormatters } from "../utils/currency-context";
 import { plainPercent } from "../utils/formatters";
+import { Segmented } from "@/components/ui/Segmented";
 
 interface SnapshotPoint {
   date: string;
@@ -131,30 +132,11 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <Activity className="h-5 w-5 text-[#6FAE8F] opacity-70" aria-hidden="true" />
-          <h2
-            className="text-xl font-semibold tracking-tight text-[#CEC8F0]"
-            style={{ textShadow: "0 0 30px rgba(167,155,224,0.22)" }}
-          >
-            Evolución del Portfolio
+          <h2 className="font-designer text-xl font-semibold tracking-tight text-[var(--foreground)]">
+            Evolución del patrimonio
           </h2>
         </div>
-        <div className="inline-flex items-center rounded-lg border border-[var(--line)] bg-black/30 p-0.5 text-xs">
-          {RANGES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              onClick={() => setRange(r.key)}
-              className={`rounded-md px-3 py-1.5 font-medium transition ${
-                range === r.key
-                  ? "bg-[rgba(111,174,143,0.18)] text-[#6FAE8F]"
-                  : "text-[var(--muted)] hover:text-[var(--foreground)]"
-              }`}
-              aria-pressed={range === r.key}
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
+        <Segmented options={RANGES} value={range} onChange={setRange} ariaLabel="Rango temporal" />
       </div>
 
       {/* Loading state */}
