@@ -95,7 +95,7 @@ export function ReinvestHarvestModal({
               return <p className="text-xs text-rose-400">No hay harvest pendiente en esta posición.</p>;
             }
             return (
-              <div className="rounded-lg border border-[rgba(140,109,63,0.35)] bg-[rgba(140,109,63,0.08)] px-3 py-2 text-xs text-[var(--muted)]">
+              <div className="rounded-lg border border-[rgba(79,135,112,0.35)] bg-[rgba(79,135,112,0.08)] px-3 py-2 text-xs text-[var(--muted)]">
                 <div>Harvest pendiente: <span className="text-white font-medium">{currency(harvestInfo.pendingUsd)}</span></div>
                 {harvestInfo.pendingByToken.length > 0 ? (
                   <div className="mt-1 text-[11px] opacity-80">
@@ -164,7 +164,7 @@ export function ReinvestHarvestModal({
             type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="flex-1 rounded-lg bg-[rgba(140,109,63,0.9)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
+            className="flex-1 rounded-lg bg-[rgba(79,135,112,0.9)] px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
           >
             {isSaving ? "Guardando..." : "Reinvertir"}
           </button>

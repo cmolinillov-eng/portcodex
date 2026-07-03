@@ -26,10 +26,10 @@ interface PositionSectionCardProps {
 
 // Per-section visual identity (anchor: top-border gradient + header accent)
 const SECTION_META: Record<string, { label: string; color: string; glowClass: string }> = {
-  wallet:         { label: "Wallet",         color: "#97AAC1", glowClass: "text-[#97AAC1]" },
-  staking:        { label: "Staking",        color: "#A79BE0", glowClass: "text-[#A79BE0]" },
-  lending:        { label: "Lending",        color: "#E8A855", glowClass: "text-[#E8A855]" },
-  liquidity_pools: { label: "Liquidity Pools", color: "#4FDF9D", glowClass: "text-[#4FDF9D]" },
+  wallet:         { label: "Wallet",         color: "#8CA0B3", glowClass: "text-[#8CA0B3]" },
+  staking:        { label: "Staking",        color: "#8CA0B3", glowClass: "text-[#8CA0B3]" },
+  lending:        { label: "Lending",        color: "#C9A45E", glowClass: "text-[#C9A45E]" },
+  liquidity_pools: { label: "Liquidity Pools", color: "#6FAE8F", glowClass: "text-[#6FAE8F]" },
 };
 
 function formatTokenAmount(amount: number): string {
@@ -56,10 +56,10 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
   const utilization = details.ltvUtilization;
   // Color de utilización: 0-0.7 verde, 0.7-0.9 amarillo, 0.9-1 rojo, >=1 liquidación
   const utilColor =
-    utilization >= 1 ? "rgb(239,68,68)"
-    : utilization >= 0.9 ? "rgb(248,113,113)"
-    : utilization >= 0.7 ? "rgb(245,158,11)"
-    : "rgb(16,185,129)";
+    utilization >= 1 ? "rgb(206,139,130)"
+    : utilization >= 0.9 ? "rgb(206,139,130)"
+    : utilization >= 0.7 ? "rgb(201,164,94)"
+    : "rgb(111,174,143)";
   const utilLabel =
     utilization >= 1 ? "Liquidación"
     : utilization >= 0.9 ? "Crítico"
@@ -73,7 +73,7 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
   const hasDebt = details.totalDebtUsd > 0;
 
   return (
-    <tr className="border-t border-[var(--line)] bg-[rgba(252,211,77,0.025)]">
+    <tr className="border-t border-[var(--line)] bg-[rgba(201,164,94,0.025)]">
       <td colSpan={colSpan} className="px-4 py-4">
         <div className="grid gap-5 md:grid-cols-3">
           {/* Net Value */}
@@ -81,7 +81,7 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
             <p className="text-[10px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] mb-2">
               Posición neta
             </p>
-            <p className={`text-xl font-semibold tabular-nums ${details.netValueUsd >= 0 ? "text-[#E8A855]" : "text-rose-300"}`}>
+            <p className={`text-xl font-semibold tabular-nums ${details.netValueUsd >= 0 ? "text-[#C9A45E]" : "text-rose-300"}`}>
               {currency(details.netValueUsd)}
             </p>
             <div className="mt-2 space-y-1 text-[11px] text-[var(--muted)]">
@@ -161,10 +161,10 @@ function LendingDetailsPanel({ position, colSpan }: { position: DefiPosition; co
                   const drop = risk.dropPercent;
                   const liqColor =
                     drop === null ? "var(--muted)"
-                    : drop < 0 ? "rgb(239,68,68)"
-                    : drop < 10 ? "rgb(248,113,113)"
-                    : drop < 25 ? "rgb(245,158,11)"
-                    : "rgb(16,185,129)";
+                    : drop < 0 ? "rgb(206,139,130)"
+                    : drop < 10 ? "rgb(206,139,130)"
+                    : drop < 25 ? "rgb(201,164,94)"
+                    : "rgb(111,174,143)";
                   return (
                     <div key={risk.tokenSymbol} className="flex items-center justify-between gap-3 text-[11px]">
                       <span className="token-emphasis tabular-nums">{risk.tokenSymbol}</span>
@@ -254,7 +254,7 @@ function LpRangeBar({ position }: { position: DefiPosition }) {
     return (
       <div className="space-y-1">
         {position.lpRangeStatus === "out_of_range" ? (
-          <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.12)] px-2 py-0.5 text-[11px] font-medium text-red-300">
+          <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(206,139,130,0.12)] px-2 py-0.5 text-[11px] font-medium text-red-300">
             Fuera de rango
           </span>
         ) : (
@@ -286,9 +286,9 @@ function LpRangeBar({ position }: { position: DefiPosition }) {
   const upperPercent = ((upper - visualMin) / visualSpan) * 100;
   const rangeWidth = upperPercent - lowerPercent;
 
-  const barColor = isInRange ? "rgb(16,185,129)" : "rgb(239,68,68)";
-  const barColorMuted = isInRange ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)";
-  const markerGlow = isInRange ? "rgba(16,185,129,0.5)" : "rgba(239,68,68,0.5)";
+  const barColor = isInRange ? "rgb(111,174,143)" : "rgb(206,139,130)";
+  const barColorMuted = isInRange ? "rgba(111,174,143,0.25)" : "rgba(206,139,130,0.25)";
+  const markerGlow = isInRange ? "rgba(111,174,143,0.5)" : "rgba(206,139,130,0.5)";
 
   const formatNum = (n: number) =>
     n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 1 })
@@ -370,7 +370,7 @@ export function PositionSectionCard({
   const showYieldColumn = section.key !== "wallet";
   const showActionsColumn = viewer.canOperate;
   const sectionToneClass = `card-section-${section.key}`;
-  const meta = SECTION_META[section.key] ?? { label: section.title, color: "#E6C173", glowClass: "text-[#E6C173]" };
+  const meta = SECTION_META[section.key] ?? { label: section.title, color: "#6FAE8F", glowClass: "text-[#6FAE8F]" };
 
   const thClass = "px-4 py-3 font-mono text-[11px] font-medium tracking-[0.14em] text-[var(--muted)]";
 
@@ -541,7 +541,7 @@ export function PositionSectionCard({
                   {showYieldColumn ? (
                     <td className="px-4 py-4">
                       {position.totalHarvested > 0 ? (
-                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#E6C173]">
+                        <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#6FAE8F]">
                           <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
                           {currency(position.totalHarvested)}
                         </span>
@@ -587,7 +587,7 @@ export function PositionSectionCard({
                         <span className="text-xs text-[var(--muted)]">N/A</span>
                       ) : position.healthStatus === "critical" ? (
                         <span
-                          className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400"
+                          className="inline-flex whitespace-nowrap rounded-md bg-[rgba(206,139,130,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400"
                           aria-label={`Health factor: ${position.healthFactor.toFixed(2)} — ${position.healthStatus}`}
                         >
                           {position.healthFactor.toFixed(2)}
@@ -632,7 +632,7 @@ export function PositionSectionCard({
                               type="button"
                               onClick={() => deletePosition(position)}
                               disabled={isDeletingPositionKey === positionCompositeUiKey(position)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-[rgba(248,113,113,0.4)] bg-[rgba(248,113,113,0.1)] px-2.5 py-1.5 text-xs text-rose-300 transition hover:bg-[rgba(248,113,113,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+                              className="inline-flex items-center gap-1 rounded-lg border border-[rgba(206,139,130,0.4)] bg-[rgba(206,139,130,0.1)] px-2.5 py-1.5 text-xs text-rose-300 transition hover:bg-[rgba(206,139,130,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
                               aria-label={`Eliminar posición ${position.tokenSymbol}`}
                             >
                               <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
@@ -647,7 +647,7 @@ export function PositionSectionCard({
                             <button
                               type="button"
                               onClick={() => openQuickHarvest(position)}
-                              className="inline-flex items-center gap-1 rounded-md border border-[rgba(230,193,115,0.35)] bg-[rgba(230,193,115,0.08)] px-2 py-1 text-[11px] text-[#E6C173] transition hover:bg-[rgba(230,193,115,0.16)] hover:border-[rgba(230,193,115,0.55)]"
+                              className="inline-flex items-center gap-1 rounded-md border border-[rgba(111,174,143,0.35)] bg-[rgba(111,174,143,0.08)] px-2 py-1 text-[11px] text-[#6FAE8F] transition hover:bg-[rgba(111,174,143,0.16)] hover:border-[rgba(111,174,143,0.55)]"
                               aria-label={`Registrar harvest para ${position.tokenSymbol}`}
                               style={{ transition: "all 0.3s var(--ease)" }}
                             >
@@ -663,7 +663,7 @@ export function PositionSectionCard({
                                 <button
                                   type="button"
                                   onClick={() => openReinvestHarvest(position)}
-                                  className="inline-flex items-center gap-1 rounded-md border border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.1)] px-2 py-1 text-[11px] text-[#F4E3BC] transition hover:bg-[rgba(140,109,63,0.2)] hover:border-[rgba(140,109,63,0.65)]"
+                                  className="inline-flex items-center gap-1 rounded-md border border-[rgba(79,135,112,0.45)] bg-[rgba(79,135,112,0.1)] px-2 py-1 text-[11px] text-[#A9D4BF] transition hover:bg-[rgba(79,135,112,0.2)] hover:border-[rgba(79,135,112,0.65)]"
                                   aria-label={`Reinvertir harvest pendiente de ${position.tokenSymbol}`}
                                   style={{ transition: "all 0.3s var(--ease)" }}
                                 >

@@ -73,7 +73,7 @@ export function FiscalSidebar({ portfolios, activePortfolioId }: Props) {
         href={withPortfolio(item.href)}
         className={`group relative flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors ${
           active
-            ? "bg-[rgba(230,193,115,0.10)] text-[var(--foreground)]"
+            ? "bg-[rgba(111,174,143,0.10)] text-[var(--foreground)]"
             : "text-[var(--muted)] hover:bg-white/[0.04] hover:text-[var(--foreground)]"
         }`}
       >
@@ -108,7 +108,7 @@ export function FiscalSidebar({ portfolios, activePortfolioId }: Props) {
             value={effectiveActive ?? ""}
             onChange={(e) => onChangePortfolio(e.target.value)}
             disabled={portfolios.length <= 1}
-            className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] focus:border-[rgba(230,193,115,0.55)] focus:outline-none disabled:opacity-70"
+            className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-elevated)] px-2.5 py-2 text-xs text-[var(--foreground)] focus:border-[rgba(111,174,143,0.55)] focus:outline-none disabled:opacity-70"
           >
             {portfolios.map((p) => (
               <option key={p.id} value={p.id}>

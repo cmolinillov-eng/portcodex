@@ -119,7 +119,7 @@ export function RecentActivity({
                 <td className="px-6 py-10 text-center" colSpan={colCount}>
                   <div className="flex flex-col items-center gap-2 text-[var(--muted)]">
                     <div
-                      className="h-10 w-10 rounded-full border border-[var(--line)] bg-[rgba(230,193,115,0.05)] flex items-center justify-center"
+                      className="h-10 w-10 rounded-full border border-[var(--line)] bg-[rgba(111,174,143,0.05)] flex items-center justify-center"
                       aria-hidden="true"
                     >
                       <FileSpreadsheet className="h-5 w-5 opacity-40" />

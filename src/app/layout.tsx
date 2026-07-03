@@ -1,31 +1,33 @@
 import type { Metadata } from "next";
-import { Geist, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { Archivo, Public_Sans, Spline_Sans_Mono } from "next/font/google";
 import "./globals.css";
 
-const uiFont = Geist({
+// Sistema «Instrumento» — tres voces tipográficas:
+// Public Sans (UI) · Spline Sans Mono (datos) · Archivo (display).
+const uiFont = Public_Sans({
   variable: "--font-ui",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
-const monoFont = JetBrains_Mono({
+const monoFont = Spline_Sans_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
   weight: ["400", "500", "600"],
   display: "swap",
 });
 
-const designerFont = Space_Grotesk({
+const designerFont = Archivo({
   variable: "--font-designer",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["500", "600", "700", "800"],
   display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "PortCodex | Claridad y Control",
-  description: "Elite Crypto Portfolio Tracker",
+  description: "Gestión profesional de patrimonio DeFi",
 };
 
 export default function RootLayout({
@@ -35,7 +37,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="dark">
-      <body className={`${uiFont.variable} ${monoFont.variable} ${designerFont.variable} antialiased bg-[#08090b] text-[#eaebee]`}>
+      <body className={`${uiFont.variable} ${monoFont.variable} ${designerFont.variable} antialiased bg-[#101318] text-[#edf0f3]`}>
         {children}
       </body>
     </html>

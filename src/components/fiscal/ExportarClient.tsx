@@ -30,7 +30,7 @@ export function ExportarClient({ entries }: { entries: TraceabilityEntry[] }) {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* CSV CoinTracking */}
         <div className="rounded-2xl border border-[var(--line)] bg-[var(--void-surface)] p-5">
-          <div className="flex items-center gap-2 text-[#E6C173]">
+          <div className="flex items-center gap-2 text-[#6FAE8F]">
             <FileSpreadsheet className="h-5 w-5" />
             <h2 className="text-sm font-semibold text-[var(--foreground)]">CSV CoinTracking (recomendado)</h2>
           </div>
@@ -41,7 +41,7 @@ export function ExportarClient({ entries }: { entries: TraceabilityEntry[] }) {
             type="button"
             disabled={disabled}
             onClick={() => downloadCsv(buildCointrackingCsv(entries), `cointracking-${stamp}.csv`)}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(230,193,115,0.5)] bg-[rgba(230,193,115,0.12)] px-4 py-2.5 text-sm font-medium text-[#E6C173] transition-colors hover:bg-[rgba(230,193,115,0.2)] disabled:opacity-50"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg border border-[rgba(111,174,143,0.5)] bg-[rgba(111,174,143,0.12)] px-4 py-2.5 text-sm font-medium text-[#6FAE8F] transition-colors hover:bg-[rgba(111,174,143,0.2)] disabled:opacity-50"
           >
             <Download className="h-4 w-4" /> Descargar CSV
           </button>
@@ -77,7 +77,7 @@ export function ExportarClient({ entries }: { entries: TraceabilityEntry[] }) {
           type="button"
           disabled={disabled}
           onClick={() => downloadCsv(buildTraceabilityCsv(entries), `trazabilidad-fiscal-${stamp}.csv`)}
-          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--void-elevated)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[rgba(230,193,115,0.45)] disabled:opacity-50"
+          className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--void-elevated)] px-4 py-2.5 text-sm font-medium text-[var(--foreground)] transition-colors hover:border-[rgba(111,174,143,0.45)] disabled:opacity-50"
         >
           <Download className="h-4 w-4" /> Descargar CSV completo
         </button>

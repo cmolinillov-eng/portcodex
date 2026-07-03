@@ -117,7 +117,7 @@ function WalletManager({ portfolioId }: { portfolioId: string }) {
             type="button"
             onClick={() => toggleActive(w)}
             className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] ${w.is_active
-              ? "border-[rgba(16,185,129,0.35)] bg-[rgba(16,185,129,0.08)] text-emerald-300"
+              ? "border-[rgba(111,174,143,0.35)] bg-[rgba(111,174,143,0.08)] text-emerald-300"
               : "border-[var(--line)] text-[var(--muted)]"}`}
           >
             {w.is_active ? "Activa" : "Inactiva"}
@@ -285,7 +285,7 @@ function HarvestInbox({
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-[rgba(16,185,129,0.25)] bg-[rgba(16,185,129,0.04)] p-4">
+    <div className="mb-5 rounded-xl border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.04)] p-4">
       <div className="flex items-center gap-2 mb-2">
         <Sprout className="h-4 w-4 text-emerald-400" aria-hidden="true" />
         <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -504,7 +504,7 @@ function ReconcileSection({
     // Solo la alerta (desvío grande) conserva fondo suave; el resto, texto coloreado.
     if (abs > 8) {
       return (
-        <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(244,63,94,0.12)] px-2 py-0.5 text-[10px] font-mono tabular-nums text-rose-300">
+        <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(206,139,130,0.12)] px-2 py-0.5 text-[10px] font-mono tabular-nums text-rose-300">
           {drift > 0 ? "+" : ""}{drift.toFixed(1)}%
         </span>
       );

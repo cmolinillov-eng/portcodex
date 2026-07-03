@@ -253,7 +253,7 @@ export function GlosarioClient() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Buscar término, concepto o casilla…"
-          className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[rgba(230,193,115,0.55)] focus:outline-none"
+          className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[rgba(111,174,143,0.55)] focus:outline-none"
         />
       </div>
 
@@ -283,7 +283,7 @@ export function GlosarioClient() {
             >
               <div className="flex items-start justify-between gap-3">
                 <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                  <BookOpen className="h-4 w-4 text-[#E6C173]" />
+                  <BookOpen className="h-4 w-4 text-[#6FAE8F]" />
                   {t.term}
                 </h3>
                 <span className="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wide text-[var(--muted)]">
@@ -292,8 +292,8 @@ export function GlosarioClient() {
               </div>
               <p className="mt-2.5 text-sm leading-relaxed text-[var(--muted)]">{t.definition}</p>
               {t.example ? (
-                <p className="mt-3 rounded-lg border border-[rgba(230,193,115,0.18)] bg-[rgba(230,193,115,0.06)] px-3 py-2 text-xs leading-relaxed text-[var(--brand-soft)]">
-                  <span className="font-medium text-[#E6C173]">Ejemplo · </span>
+                <p className="mt-3 rounded-lg border border-[rgba(111,174,143,0.18)] bg-[rgba(111,174,143,0.06)] px-3 py-2 text-xs leading-relaxed text-[var(--brand-soft)]">
+                  <span className="font-medium text-[#6FAE8F]">Ejemplo · </span>
                   {t.example}
                 </p>
               ) : null}
@@ -330,8 +330,8 @@ function CategoryChip({
       onClick={onClick}
       className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
         active
-          ? "border-[rgba(230,193,115,0.5)] bg-[rgba(230,193,115,0.14)] text-[#E6C173]"
-          : "border-[var(--line)] bg-[var(--void-surface)] text-[var(--muted)] hover:border-[rgba(230,193,115,0.3)]"
+          ? "border-[rgba(111,174,143,0.5)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
+          : "border-[var(--line)] bg-[var(--void-surface)] text-[var(--muted)] hover:border-[rgba(111,174,143,0.3)]"
       }`}
     >
       {label}

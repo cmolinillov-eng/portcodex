@@ -115,7 +115,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
             type="button"
             onClick={() => canEdit && setEditing((v) => !v)}
             disabled={!canEdit}
-            className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium text-[#A79BE0]/80 hover:text-[#CEC8F0] disabled:cursor-default"
+            className="inline-flex items-center gap-1 whitespace-nowrap text-[10px] font-medium text-[#8CA0B3]/80 hover:text-[#CEC8F0] disabled:cursor-default"
             title={canEdit ? "Click para cambiar la etiqueta" : currentTag}
           >
             <Tag className="h-2.5 w-2.5" aria-hidden="true" />
@@ -216,7 +216,7 @@ export function StrategyTagBadge({ currentTag, canEdit, onChange }: Props) {
                     type="button"
                     onClick={() => commit(null)}
                     disabled={saving}
-                    className="rounded-md border border-[rgba(248,113,113,0.35)] px-2 py-1 text-[10px] text-rose-300 hover:bg-[rgba(248,113,113,0.1)] disabled:opacity-50"
+                    className="rounded-md border border-[rgba(206,139,130,0.35)] px-2 py-1 text-[10px] text-rose-300 hover:bg-[rgba(206,139,130,0.1)] disabled:opacity-50"
                   >
                     Quitar
                   </button>

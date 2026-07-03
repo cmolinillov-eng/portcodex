@@ -180,8 +180,8 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(230,193,115,0.22)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(230,193,115,0.16)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.22)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(111,174,143,0.16)]" aria-hidden="true" />
 
       <section className="page-content">
         <header className="card-premium page-header-card self-start animate-fade-up">
@@ -191,7 +191,7 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
                 ← Admin
               </Link>
               <h1 className="text-xl font-semibold tracking-tight md:text-2xl">Panel de Gestor</h1>
-              <span className="whitespace-nowrap rounded-full border border-[rgba(230,193,115,0.3)] bg-[rgba(230,193,115,0.08)] px-3 py-0.5 text-sm text-[#E6C173]">{managerLabel}</span>
+              <span className="whitespace-nowrap rounded-full border border-[rgba(111,174,143,0.3)] bg-[rgba(111,174,143,0.08)] px-3 py-0.5 text-sm text-[#6FAE8F]">{managerLabel}</span>
             </div>
             <div className="flex items-center gap-2">
               <a href="/api/auth/logout?redirectTo=/login" className="btn-secondary btn-secondary-compact" aria-label="Cerrar sesión">
@@ -203,13 +203,13 @@ export default async function AdminManagerPanelPage({ params }: PageProps) {
 
         <section className="card-premium page-section-card animate-fade-up stagger-2">
           <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.05)] px-4 py-3">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(111,174,143,0.05)] px-4 py-3">
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Rentabilidad media</p>
               <p className={`mt-1 text-xl font-semibold tabular-nums ${pnlTone(averagePnlPercent)}`}>{percent(averagePnlPercent)}</p>
             </div>
-            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.05)] px-4 py-3">
+            <div className="rounded-xl border border-[var(--glass-border)] bg-[rgba(111,174,143,0.05)] px-4 py-3">
               <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">Portfolios gestionados</p>
-              <p className="mt-1 text-xl font-semibold text-[#E6C173]">{rows.length}</p>
+              <p className="mt-1 text-xl font-semibold text-[#6FAE8F]">{rows.length}</p>
             </div>
           </div>
 

@@ -87,7 +87,7 @@ export default async function ResumenFiscalPage({
         action={
           <Link
             href={`/fiscal/exportar${portfolio ? `?portfolio=${portfolio}` : ""}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] px-3.5 py-2 text-sm font-medium text-[#E6C173] transition-colors hover:bg-[rgba(230,193,115,0.18)]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] px-3.5 py-2 text-sm font-medium text-[#6FAE8F] transition-colors hover:bg-[rgba(111,174,143,0.18)]"
           >
             <Download className="h-4 w-4" /> Exportar
           </Link>
@@ -105,7 +105,7 @@ export default async function ResumenFiscalPage({
                 href={yearHref(y)}
                 className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
                   y === selectedYear
-                    ? "border-[rgba(230,193,115,0.55)] bg-[rgba(230,193,115,0.14)] text-[#E6C173]"
+                    ? "border-[rgba(111,174,143,0.55)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
                     : "border-[var(--line)] text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >
@@ -117,7 +117,7 @@ export default async function ResumenFiscalPage({
         ) : null}
 
         {fxSource === "fallback" ? (
-          <p className="rounded-lg border border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.08)] px-4 py-2.5 text-xs text-amber-300">
+          <p className="rounded-lg border border-[rgba(201,164,94,0.4)] bg-[rgba(201,164,94,0.08)] px-4 py-2.5 text-xs text-amber-300">
             ⚠️ No se pudo obtener el tipo de cambio EUR/USD (ni histórico ni actual): los importes usan un tipo aproximado. Reintenta más tarde antes de exportar.
           </p>
         ) : null}
@@ -129,14 +129,14 @@ export default async function ResumenFiscalPage({
             label="Base del ahorro"
             value={totalBaseAhorro}
             note="GP transmisión/permuta + RCM + derivados"
-            accent="rgba(16,185,129,0.5)"
+            accent="rgba(111,174,143,0.5)"
           />
           <BaseCard
             icon={<Layers className="h-5 w-5" />}
             label="Base general"
             value={totalBaseGeneral}
             note="Airdrops · forks · salario · actividad"
-            accent="rgba(245,158,11,0.5)"
+            accent="rgba(201,164,94,0.5)"
           />
         </div>
 

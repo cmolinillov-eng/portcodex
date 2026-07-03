@@ -162,7 +162,7 @@ export function EditModal({
   const isLending = position.positionType.toLowerCase().includes("lending");
   const isLp = position.positionType.toLowerCase().includes("liquidity") || position.positionType.toLowerCase().includes("pool");
   const adjustLabels: Record<string, { label: string; color: string; bg: string; border: string }> = {
-    add_collateral: { label: "+Colateral", color: "text-[#E6C173]", bg: "bg-[rgba(230,193,115,0.1)]", border: "border-[rgba(230,193,115,0.3)]" },
+    add_collateral: { label: "+Colateral", color: "text-[#6FAE8F]", bg: "bg-[rgba(111,174,143,0.1)]", border: "border-[rgba(111,174,143,0.3)]" },
     remove_collateral: { label: "−Colateral", color: "text-rose-300", bg: "bg-rose-500/10", border: "border-rose-500/30" },
     add_debt: { label: "+Préstamo", color: "text-amber-300", bg: "bg-amber-500/10", border: "border-amber-500/30" },
     repay_debt: { label: "−Préstamo", color: "text-indigo-300", bg: "bg-indigo-500/10", border: "border-indigo-500/30" },

@@ -30,8 +30,8 @@ export function HealthFactorAlertBanner({ sections }: { sections: PositionSectio
 
   const tone = hasCritical
     ? {
-        border: "rgba(239,68,68,0.55)",
-        bg: "rgba(239,68,68,0.10)",
+        border: "rgba(206,139,130,0.55)",
+        bg: "rgba(206,139,130,0.10)",
         text: "text-red-300",
         title: "text-red-200",
         Icon: ShieldAlert,
@@ -40,8 +40,8 @@ export function HealthFactorAlertBanner({ sections }: { sections: PositionSectio
           : `${alerts.length} posiciones de lending en riesgo crítico`,
       }
     : {
-        border: "rgba(245,158,11,0.5)",
-        bg: "rgba(245,158,11,0.08)",
+        border: "rgba(201,164,94,0.5)",
+        bg: "rgba(201,164,94,0.08)",
         text: "text-amber-200",
         title: "text-amber-100",
         Icon: AlertTriangle,

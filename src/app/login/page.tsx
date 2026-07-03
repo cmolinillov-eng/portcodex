@@ -11,7 +11,7 @@ export default async function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen bg-[#08090b] selection:bg-[rgba(230,193,115,0.3)]">
+    <main className="min-h-screen bg-[#101318] selection:bg-[rgba(111,174,143,0.3)]">
       <LandingPageContainer />
     </main>
   );

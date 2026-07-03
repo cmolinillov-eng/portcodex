@@ -22,11 +22,11 @@ export type OnchainLinkRow = {
 };
 
 const SECTION_META: Record<string, { label: string; color: string; glowClass: string; kinds: string[] }> = {
-  liquidity_pools: { label: "Liquidity Pools", color: "#4FDF9D", glowClass: "text-[#4FDF9D]", kinds: ["liquidity"] },
-  lending: { label: "Lending", color: "#E8A855", glowClass: "text-[#E8A855]", kinds: ["lending_supply", "lending_borrow"] },
-  staking: { label: "Staking", color: "#A79BE0", glowClass: "text-[#A79BE0]", kinds: ["staking", "reward"] },
-  wallet: { label: "Hold", color: "#97AAC1", glowClass: "text-[#97AAC1]", kinds: ["wallet"] },
-  other: { label: "Otros", color: "#E6C173", glowClass: "text-[#E6C173]", kinds: ["perp", "other"] },
+  liquidity_pools: { label: "Liquidity Pools", color: "#6FAE8F", glowClass: "text-[#6FAE8F]", kinds: ["liquidity"] },
+  lending: { label: "Lending", color: "#C9A45E", glowClass: "text-[#C9A45E]", kinds: ["lending_supply", "lending_borrow"] },
+  staking: { label: "Staking", color: "#8CA0B3", glowClass: "text-[#8CA0B3]", kinds: ["staking", "reward"] },
+  wallet: { label: "Hold", color: "#8CA0B3", glowClass: "text-[#8CA0B3]", kinds: ["wallet"] },
+  other: { label: "Otros", color: "#6FAE8F", glowClass: "text-[#6FAE8F]", kinds: ["perp", "other"] },
 };
 
 const currency = (n: number | null | undefined) =>
@@ -89,8 +89,8 @@ function RangeBar({ range, label }: { range: NonNullable<LivePosition["range"]>;
   const lowerPercent = ((lower - visualMin) / visualSpan) * 100;
   const rangeWidth = ((upper - lower) / visualSpan) * 100;
 
-  const barColor = inRange ? "rgb(16,185,129)" : "rgb(239,68,68)";
-  const barColorMuted = inRange ? "rgba(16,185,129,0.25)" : "rgba(239,68,68,0.25)";
+  const barColor = inRange ? "rgb(111,174,143)" : "rgb(206,139,130)";
+  const barColorMuted = inRange ? "rgba(111,174,143,0.25)" : "rgba(206,139,130,0.25)";
 
   const formatNum = (n: number) =>
     n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 1 })
@@ -284,7 +284,7 @@ export function OnchainSections({
                           <td className="px-4 py-4">
                             <div className="space-y-1">
                               {harvested > 0 ? (
-                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#E6C173]">
+                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#6FAE8F]">
                                   <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
                                   {currency(harvested)}
                                 </span>
@@ -330,7 +330,7 @@ export function OnchainSections({
                             {hf == null ? (
                               <span className="text-xs text-[var(--muted)]">N/A</span>
                             ) : hf < 1.2 ? (
-                              <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(239,68,68,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400">
+                              <span className="inline-flex whitespace-nowrap rounded-md bg-[rgba(206,139,130,0.14)] px-2 py-0.5 text-xs font-semibold tabular-nums text-red-400">
                                 {hf.toFixed(2)}
                               </span>
                             ) : (

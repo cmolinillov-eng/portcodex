@@ -96,19 +96,19 @@ export function DashboardHeader({
       <div
         className="pointer-events-none absolute -top-20 -right-20 h-[560px] w-[560px]"
         style={{
-          background: "radial-gradient(ellipse at 70% 20%, rgba(230,193,115,0.09), transparent 50%)",
+          background: "radial-gradient(ellipse at 70% 20%, rgba(111,174,143,0.09), transparent 50%)",
         }}
       />
       <div
         className="pointer-events-none absolute -bottom-16 -left-16 h-[400px] w-[400px]"
         style={{
-          background: "radial-gradient(ellipse at 30% 80%, rgba(140,109,63,0.07), transparent 55%)",
+          background: "radial-gradient(ellipse at 30% 80%, rgba(79,135,112,0.07), transparent 55%)",
         }}
       />
       <div
         className="pointer-events-none absolute top-1/2 left-1/2 h-[300px] w-[600px] -translate-x-1/2 -translate-y-1/2"
         style={{
-          background: "radial-gradient(ellipse, rgba(230,193,115,0.03), transparent 60%)",
+          background: "radial-gradient(ellipse, rgba(111,174,143,0.03), transparent 60%)",
         }}
       />
 
@@ -173,7 +173,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("USD")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "USD"
-                ? "bg-[rgba(230,193,115,0.18)] text-[#E6C173]"
+                ? "bg-[rgba(111,174,143,0.18)] text-[#6FAE8F]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "USD"}
@@ -186,7 +186,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("EUR")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "EUR"
-                ? "bg-[rgba(230,193,115,0.18)] text-[#E6C173]"
+                ? "bg-[rgba(111,174,143,0.18)] text-[#6FAE8F]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "EUR"}
@@ -220,7 +220,7 @@ export function DashboardHeader({
             <div
               className="header-balance-glow pointer-events-none absolute -top-8 -left-6 h-40 w-64 rounded-full"
               style={{
-                background: "radial-gradient(ellipse, rgba(230,193,115,0.2), transparent 70%)",
+                background: "radial-gradient(ellipse, rgba(111,174,143,0.2), transparent 70%)",
               }}
             />
 
@@ -277,8 +277,8 @@ export function DashboardHeader({
                   : viewer.role === "cliente"
                     ? "text-amber-300"
                     : viewer.role === "admin"
-                      ? "text-[#E6C173]"
-                      : "text-[#A79BE0]"
+                      ? "text-[#6FAE8F]"
+                      : "text-[#8CA0B3]"
               }`}
             >
               <span className="h-1 w-1 rounded-full bg-current" aria-hidden="true" />
@@ -325,14 +325,14 @@ export function DashboardHeader({
                   <circle
                     cx="120" cy="120" r="116"
                     fill="none"
-                    stroke="rgba(230,193,115,0.08)"
+                    stroke="rgba(111,174,143,0.08)"
                     strokeWidth="0.5"
                     strokeDasharray="4 12"
                   />
                   {/* Orbital dots */}
-                  <circle cx="120" cy="4" r="1.5" fill="rgba(230,193,115,0.35)" />
-                  <circle cx="236" cy="120" r="1" fill="rgba(140,109,63,0.3)" />
-                  <circle cx="120" cy="236" r="1.5" fill="rgba(230,193,115,0.25)" />
+                  <circle cx="120" cy="4" r="1.5" fill="rgba(111,174,143,0.35)" />
+                  <circle cx="236" cy="120" r="1" fill="rgba(79,135,112,0.3)" />
+                  <circle cx="120" cy="236" r="1.5" fill="rgba(111,174,143,0.25)" />
                 </svg>
 
                 {/* Inner orbital ring — counter-rotate */}
@@ -344,11 +344,11 @@ export function DashboardHeader({
                   <circle
                     cx="120" cy="120" r="112"
                     fill="none"
-                    stroke="rgba(140,109,63,0.06)"
+                    stroke="rgba(79,135,112,0.06)"
                     strokeWidth="0.5"
                     strokeDasharray="2 18"
                   />
-                  <circle cx="8" cy="120" r="1" fill="rgba(140,109,63,0.2)" />
+                  <circle cx="8" cy="120" r="1" fill="rgba(79,135,112,0.2)" />
                 </svg>
 
                 {/* Main donut SVG */}
@@ -356,7 +356,7 @@ export function DashboardHeader({
                   viewBox="0 0 220 220"
                   className="relative h-56 w-56"
                   aria-hidden="true"
-                  style={{ filter: "drop-shadow(0 0 20px rgba(230,193,115,0.18))" }}
+                  style={{ filter: "drop-shadow(0 0 20px rgba(111,174,143,0.18))" }}
                 >
                   {/* Track */}
                   <circle
@@ -518,12 +518,12 @@ export function DashboardHeader({
             </div>
 
             {/* Harvest */}
-            <div className="header-stat-row" style={{ "--stat-accent": "#E6C173" } as React.CSSProperties}>
+            <div className="header-stat-row" style={{ "--stat-accent": "#6FAE8F" } as React.CSSProperties}>
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">Harvest</span>
-                <BadgeDollarSign className="h-3 w-3 text-[#E6C173] opacity-50" aria-hidden="true" />
+                <BadgeDollarSign className="h-3 w-3 text-[#6FAE8F] opacity-50" aria-hidden="true" />
               </div>
-              <p className="mt-0.5 text-xl font-semibold leading-tight text-[#E6C173] tabular-nums">
+              <p className="mt-0.5 text-xl font-semibold leading-tight text-[#6FAE8F] tabular-nums">
                 {currencyCompact(summary.totalHarvestUsd)}
               </p>
             </div>

@@ -54,7 +54,7 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
       >
         <div
           className="flex h-full flex-col bg-[rgba(5,8,18,0.94)] backdrop-blur-2xl border-l border-white/[0.07]"
-          style={{ boxShadow: "-20px 0 80px rgba(0,0,0,0.85), -4px 0 0 rgba(230,193,115,0.04)" }}
+          style={{ boxShadow: "-20px 0 80px rgba(0,0,0,0.85), -4px 0 0 rgba(111,174,143,0.04)" }}
         >
           {/* Iridescent ola top border */}
           <div className="ola-border flex-shrink-0" />
@@ -66,18 +66,18 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
               <div
                 className="h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: "linear-gradient(135deg, rgba(230,193,115,0.18), rgba(140,109,63,0.18))",
-                  border: "1px solid rgba(230,193,115,0.22)",
+                  background: "linear-gradient(135deg, rgba(111,174,143,0.18), rgba(79,135,112,0.18))",
+                  border: "1px solid rgba(111,174,143,0.22)",
                 }}
                 aria-hidden="true"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#E6C173" opacity="0.85" />
-                  <rect x="8" y="10" width="4" height="2" fill="#8C6D3F" opacity="0.85" />
+                  <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#6FAE8F" opacity="0.85" />
+                  <rect x="8" y="10" width="4" height="2" fill="#4F8770" opacity="0.85" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-[16px] font-[300] bg-gradient-to-r from-[#E6C173] to-[#F4E3BC] bg-clip-text text-transparent tracking-tight leading-tight">
+                <h2 className="text-[16px] font-[300] bg-gradient-to-r from-[#6FAE8F] to-[#A9D4BF] bg-clip-text text-transparent tracking-tight leading-tight">
                   Portcodex
                 </h2>
                 <p className="text-[11px] font-[200] text-white/35 tracking-[0.06em]">
@@ -97,7 +97,7 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
           {/* Form — scrollable */}
           <div className="flex-1 overflow-y-auto px-7 py-6 min-h-0">
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6"
-                 style={{ boxShadow: "inset 0 1px 0 rgba(230,193,115,0.06)" }}>
+                 style={{ boxShadow: "inset 0 1px 0 rgba(111,174,143,0.06)" }}>
               {isOpen && (
                 <LoginForm
                   initialView={view === "recover" ? "recover" : view === "register" ? "register" : "login"}

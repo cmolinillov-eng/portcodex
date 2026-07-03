@@ -38,12 +38,12 @@ function displayName(fullName: string, email: string): string {
 
 function roleBadgeClasses(role: Role): string {
   if (role === "cliente") {
-    return "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300";
+    return "border-[rgba(201,164,94,0.45)] bg-[rgba(201,164,94,0.12)] text-amber-300";
   }
   if (role === "admin") {
-    return "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] text-[#E6C173]";
+    return "border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] text-[#6FAE8F]";
   }
-  return "border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] text-[#A79BE0]";
+  return "border-[rgba(79,135,112,0.45)] bg-[rgba(79,135,112,0.12)] text-[#8CA0B3]";
 }
 
 
@@ -130,8 +130,8 @@ export function AdminUsersPanel({
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(230,193,115,0.18)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(140,109,63,0.12)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.18)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(79,135,112,0.12)]" aria-hidden="true" />
 
       <section className="page-content">
         <header className="card-premium page-header-card animate-fade-up">
@@ -153,10 +153,10 @@ export function AdminUsersPanel({
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2 text-xs">
-            <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "all" ? "border-[rgba(230,193,115,0.4)] bg-[rgba(230,193,115,0.12)]" : ""}`}>Todos ({counts.all})</button>
-            <button type="button" onClick={() => setFilter("admin")} aria-pressed={filter === "admin"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "admin" ? "border-[rgba(230,193,115,0.4)] bg-[rgba(230,193,115,0.12)]" : ""}`}>Gestores ({counts.admin})</button>
-            <button type="button" onClick={() => setFilter("cliente")} aria-pressed={filter === "cliente"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "cliente" ? "border-[rgba(245,158,11,0.4)] bg-[rgba(245,158,11,0.10)]" : ""}`}>Clientes ({counts.cliente})</button>
-            <button type="button" onClick={() => setFilter("autonomo")} aria-pressed={filter === "autonomo"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "autonomo" ? "border-[rgba(140,109,63,0.4)] bg-[rgba(140,109,63,0.10)]" : ""}`}>Autónomos ({counts.autonomo})</button>
+            <button type="button" onClick={() => setFilter("all")} aria-pressed={filter === "all"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "all" ? "border-[rgba(111,174,143,0.4)] bg-[rgba(111,174,143,0.12)]" : ""}`}>Todos ({counts.all})</button>
+            <button type="button" onClick={() => setFilter("admin")} aria-pressed={filter === "admin"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "admin" ? "border-[rgba(111,174,143,0.4)] bg-[rgba(111,174,143,0.12)]" : ""}`}>Gestores ({counts.admin})</button>
+            <button type="button" onClick={() => setFilter("cliente")} aria-pressed={filter === "cliente"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "cliente" ? "border-[rgba(201,164,94,0.4)] bg-[rgba(201,164,94,0.10)]" : ""}`}>Clientes ({counts.cliente})</button>
+            <button type="button" onClick={() => setFilter("autonomo")} aria-pressed={filter === "autonomo"} className={`btn-secondary btn-secondary-compact transition-all ${filter === "autonomo" ? "border-[rgba(79,135,112,0.4)] bg-[rgba(79,135,112,0.10)]" : ""}`}>Autónomos ({counts.autonomo})</button>
           </div>
 
           <div className="page-table-shell overflow-hidden rounded-[1rem] border border-[var(--glass-border)]">
@@ -202,16 +202,16 @@ export function AdminUsersPanel({
                         {userPortfolios.length === 0 ? (
                           <span className="text-[var(--muted)]">Sin portfolio</span>
                         ) : user.role === "admin" ? (
-                          <Link href={`/admin/managers/${user.id}`} className="text-[#E6C173] underline underline-offset-2">
+                          <Link href={`/admin/managers/${user.id}`} className="text-[#6FAE8F] underline underline-offset-2">
                             {userPortfolios.length} portfolio(s)
                           </Link>
                         ) : userPortfolios.length === 1 ? (
-                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-[#E6C173] underline underline-offset-2">
+                          <Link href={`/admin/users/${user.id}?portfolioId=${userPortfolios[0].id}`} className="text-[#6FAE8F] underline underline-offset-2">
                             {userPortfolios[0].name}
                           </Link>
                         ) : (
                           <details>
-                            <summary className="cursor-pointer list-none text-[#E6C173]">
+                            <summary className="cursor-pointer list-none text-[#6FAE8F]">
                               {userPortfolios.length} portfolio(s)
                             </summary>
                             <div className="mt-1 space-y-1 text-xs text-[var(--muted)]">

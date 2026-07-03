@@ -35,9 +35,9 @@ type ManagedClientPortfolio = {
 };
 
 function roleBadgeClasses(role: Role): string {
-  if (role === "cliente") return "border-[rgba(245,158,11,0.45)] bg-[rgba(245,158,11,0.12)] text-amber-300";
-  if (role === "admin") return "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.10)] text-[#E6C173]";
-  return "border-[rgba(140,109,63,0.45)] bg-[rgba(140,109,63,0.12)] text-[#A79BE0]";
+  if (role === "cliente") return "border-[rgba(201,164,94,0.45)] bg-[rgba(201,164,94,0.12)] text-amber-300";
+  if (role === "admin") return "border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] text-[#6FAE8F]";
+  return "border-[rgba(79,135,112,0.45)] bg-[rgba(79,135,112,0.12)] text-[#8CA0B3]";
 }
 
 function uniqueByOwner(portfolios: ManagedClientPortfolio[]): ManagedClientPortfolio[] {
@@ -184,8 +184,8 @@ export function AdminUserEditForm({
 
   return (
     <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(230,193,115,0.15)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(140,109,63,0.10)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.15)]" aria-hidden="true" />
+      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(79,135,112,0.10)]" aria-hidden="true" />
 
       <section className="page-content">
         <header className="card-premium page-header-card animate-fade-up">
@@ -202,7 +202,7 @@ export function AdminUserEditForm({
               <input
                 value={fullName}
                 onChange={(event) => setFullName(event.target.value)}
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(111,174,143,0.15)]"
               />
             </label>
             <label className="text-sm">
@@ -211,7 +211,7 @@ export function AdminUserEditForm({
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
-                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
+                className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(111,174,143,0.15)]"
               />
             </label>
           </div>
@@ -245,7 +245,7 @@ export function AdminUserEditForm({
           ) : null}
 
           {role === "cliente" ? (
-            <div className="mt-6 rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.04)] p-4">
+            <div className="mt-6 rounded-xl border border-[var(--glass-border)] bg-[rgba(111,174,143,0.04)] p-4">
               <h3 className="text-sm font-semibold">Asociar gestor (cliente)</h3>
               {ownedPortfolios.length === 0 ? (
                 <p className="mt-2 text-sm text-[var(--muted)]">Este cliente no tiene portfolio todavía.</p>
@@ -279,7 +279,7 @@ export function AdminUserEditForm({
           ) : null}
 
           {role === "admin" ? (
-            <div className="mt-6 rounded-xl border border-[var(--glass-border)] bg-[rgba(230,193,115,0.04)] p-4">
+            <div className="mt-6 rounded-xl border border-[var(--glass-border)] bg-[rgba(111,174,143,0.04)] p-4">
               <h3 className="text-sm font-semibold">Clientes del gestor</h3>
 
               <div className="mt-3">
@@ -289,7 +289,7 @@ export function AdminUserEditForm({
                     value={selectedClientPortfolioId}
                     onChange={(event) => setSelectedClientPortfolioId(event.target.value)}
                     aria-label="Seleccionar cliente para añadir"
-                    className="min-w-[280px] rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(230,193,115,0.15)]"
+                    className="min-w-[280px] rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2 text-sm transition-colors focus:border-[var(--accent-primary)] focus:outline-none focus:ring-1 focus:ring-[rgba(111,174,143,0.15)]"
                   >
                     <option value="">Seleccionar cliente/portfolio</option>
                     {addableClientPortfolios.map((portfolio) => (
@@ -329,7 +329,7 @@ export function AdminUserEditForm({
                           void assignPortfolioManager(portfolio.id, null);
                         }}
                         aria-label={`Quitar cliente ${portfolio.ownerLabel}`}
-                        className="rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.12)] px-2 py-1 text-xs text-rose-300 transition-colors hover:bg-[rgba(248,113,113,0.20)] disabled:opacity-60"
+                        className="rounded-lg border border-[rgba(206,139,130,0.45)] bg-[rgba(206,139,130,0.12)] px-2 py-1 text-xs text-rose-300 transition-colors hover:bg-[rgba(206,139,130,0.20)] disabled:opacity-60"
                       >
                         Quitar cliente
                       </button>
@@ -341,13 +341,13 @@ export function AdminUserEditForm({
           ) : null}
 
           {message ? (
-            <p className="mt-4 rounded-lg border border-[rgba(16,185,129,0.45)] bg-[rgba(16,185,129,0.12)] px-3 py-2 text-sm text-emerald-300">
+            <p className="mt-4 rounded-lg border border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.12)] px-3 py-2 text-sm text-emerald-300">
               {message}
             </p>
           ) : null}
 
           {errorMessage ? (
-            <p className="mt-4 rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.12)] px-3 py-2 text-sm text-rose-300">
+            <p className="mt-4 rounded-lg border border-[rgba(206,139,130,0.45)] bg-[rgba(206,139,130,0.12)] px-3 py-2 text-sm text-rose-300">
               {errorMessage}
             </p>
           ) : null}
@@ -360,7 +360,7 @@ export function AdminUserEditForm({
               }}
               disabled={isDeleting}
               aria-label="Eliminar usuario permanentemente"
-              className="rounded-lg border border-[rgba(248,113,113,0.45)] bg-[rgba(248,113,113,0.12)] px-3 py-2 text-sm text-rose-300 transition-colors hover:bg-[rgba(248,113,113,0.20)] disabled:opacity-60"
+              className="rounded-lg border border-[rgba(206,139,130,0.45)] bg-[rgba(206,139,130,0.12)] px-3 py-2 text-sm text-rose-300 transition-colors hover:bg-[rgba(206,139,130,0.20)] disabled:opacity-60"
             >
               {isDeleting ? "Eliminando..." : "Eliminar usuario"}
             </button>

@@ -86,7 +86,7 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
 
   return (
     <>
-      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(230,193,115,0.45)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
+      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(111,174,143,0.45)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
         <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm">
           <Link href="/admin" className="btn-secondary btn-secondary-compact">
             Volver a Admin
@@ -106,7 +106,7 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
                   href={`/admin/users/${userId}?portfolioId=${portfolio.id ?? ""}`}
                   className={`inline-flex rounded-md border px-2 py-1 ${
                     portfolio.id === selectedPortfolioId
-                      ? "border-[rgba(230,193,115,0.45)] bg-[rgba(230,193,115,0.14)] text-[#E6C173]"
+                      ? "border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
                       : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:text-foreground"
                   }`}
                 >
