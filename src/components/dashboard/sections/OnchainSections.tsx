@@ -132,6 +132,82 @@ function RangeBar({ range, label }: { range: NonNullable<LivePosition["range"]>;
   );
 }
 
+type RowMetrics = {
+  deposited: number | null;
+  harvested: number;
+  value: number;
+  pnl: number | null;
+  roi: number | null;
+  allocation: number;
+  hf: number | null;
+};
+
+/** Métricas derivadas de una posición (compartidas por tabla y tarjeta móvil). */
+function computeMetrics(p: LivePosition, manual: ManualPositionRef | null, total: number): RowMetrics {
+  const onchainAmount = p.tokens?.[0]?.amount ?? null;
+  const deposited =
+    p.kind === "wallet" && manual?.averageEntryPrice && onchainAmount != null && manual.averageEntryPrice > 0
+      ? manual.averageEntryPrice * Math.abs(onchainAmount)
+      : manual?.depositedValue ?? null;
+  const value = p.valueUsd ?? 0;
+  const pnl = deposited != null && deposited > 0 ? value - deposited : null;
+  const roi = pnl != null && deposited ? (pnl / deposited) * 100 : null;
+  const allocation = total > 0 ? (value / total) * 100 : 0;
+  const hf = typeof p.meta?.healthFactor === "number" ? (p.meta.healthFactor as number) : null;
+  return { deposited, harvested: manual?.totalHarvested ?? 0, value, pnl, roi, allocation, hf };
+}
+
+/** Fila colapsada en tarjeta para móvil (≤ md), como la pantalla 390 del mockup. */
+function MobilePositionCard({ p, m, showRange }: { p: LivePosition; m: RowMetrics; showRange: boolean }) {
+  return (
+    <div className="border-t border-[var(--line)] px-4 py-4 first:border-t-0">
+      {/* Fila 1: activo + protocolo (izq) · valor + P&L (der) */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="token-emphasis text-sm">{p.label}</p>
+          <p className="truncate text-[11px] text-[var(--muted)]">
+            {p.protocol ?? "Wallet"}
+            {p.chain ? ` · ${p.chain}` : ""}
+            {p.walletLabel ? ` · ${p.walletLabel}` : ""}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="value-emphasis text-sm font-semibold tabular-nums">{currency(m.value)}</p>
+          {m.roi != null ? (
+            <p className={`text-[11px] tabular-nums ${m.roi >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {m.roi >= 0 ? "+" : ""}{m.roi.toFixed(2)}%
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Fila 2: depositado · asignación · yield, en mono tenue */}
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-[var(--muted)] tabular-nums">
+        {m.deposited != null ? (
+          <span>dep <span className="text-[var(--ink-2)]">{currency(m.deposited)}</span></span>
+        ) : null}
+        <span>asig <span className="text-[var(--ink-2)]">{m.allocation.toFixed(2)}%</span></span>
+        {m.harvested > 0 ? (
+          <span>yield <span className="text-[#6FAE8F]">+{currency(m.harvested)}</span></span>
+        ) : null}
+        {p.unclaimedUsd && p.unclaimedUsd > 0.01 ? (
+          <span className="text-emerald-300">+{currency(p.unclaimedUsd)} s/reclamar</span>
+        ) : null}
+        {m.hf != null ? (
+          <span>HF <span className={m.hf < 1.2 ? "text-red-400" : m.hf < 2 ? "text-amber-300" : "text-emerald-400"}>{m.hf.toFixed(2)}</span></span>
+        ) : null}
+      </div>
+
+      {/* Fila 3: rango full-width (solo pools con rango) */}
+      {showRange && p.range ? (
+        <div className="mt-3">
+          <RangeBar range={p.range} label={p.label} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function OnchainSections({
   positions,
   links,
@@ -185,7 +261,15 @@ export function OnchainSections({
               </div>
             </div>
 
-            <div className="page-table-shell overflow-x-auto rounded-[1rem] border border-[var(--glass-border)]">
+            {/* Móvil: tarjetas apiladas (≤ md) */}
+            <div className="rounded-[1rem] border border-[var(--glass-border)] md:hidden">
+              {rows.map((p) => (
+                <MobilePositionCard key={p.id} p={p} m={computeMetrics(p, linkedManual(p), total)} showRange={isPools} />
+              ))}
+            </div>
+
+            {/* Desktop: tabla completa (≥ md) */}
+            <div className="page-table-shell hidden overflow-x-auto rounded-[1rem] border border-[var(--glass-border)] md:block">
               <table className="w-full min-w-[900px] border-collapse">
                 <thead className="bg-[rgba(10,11,14,0.55)] text-left backdrop-blur-md">
                   <tr>
@@ -203,21 +287,7 @@ export function OnchainSections({
                 </thead>
                 <tbody>
                   {rows.map((p) => {
-                    const manual = linkedManual(p);
-                    // Holds: la posición contable puede tener más/menos saldo
-                    // que esta wallet (p.ej. BTC repartido) → el depositado se
-                    // prorratea con el precio medio de entrada × cantidad real.
-                    const onchainAmount = p.tokens?.[0]?.amount ?? null;
-                    const deposited =
-                      p.kind === "wallet" && manual?.averageEntryPrice && onchainAmount != null && manual.averageEntryPrice > 0
-                        ? manual.averageEntryPrice * Math.abs(onchainAmount)
-                        : manual?.depositedValue ?? null;
-                    const harvested = manual?.totalHarvested ?? 0;
-                    const value = p.valueUsd ?? 0;
-                    const pnl = deposited != null && deposited > 0 ? value - deposited : null;
-                    const roi = pnl != null && deposited ? (pnl / deposited) * 100 : null;
-                    const allocation = total > 0 ? (value / total) * 100 : 0;
-                    const hf = typeof p.meta?.healthFactor === "number" ? (p.meta.healthFactor as number) : null;
+                    const { deposited, harvested, value, pnl, roi, allocation, hf } = computeMetrics(p, linkedManual(p), total);
 
                     return (
                       <tr key={p.id} className="border-t border-[var(--line)]">
