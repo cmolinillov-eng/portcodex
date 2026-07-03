@@ -26,6 +26,7 @@ import { EditModal } from "./modals/edit-modal";
 import { CsvModal } from "./modals/csv-modal";
 import { ManualPriceModal } from "./modals/manual-price-modal";
 import { DashboardHeader } from "./sections/DashboardHeader";
+import { AppSidebar } from "./AppSidebar";
 import { HealthFactorAlertBanner } from "./sections/HealthFactorAlertBanner";
 import { StrategyComposition } from "./sections/StrategyComposition";
 import { PortfolioEvolutionChart } from "./sections/PortfolioEvolutionChart";
@@ -1734,11 +1735,17 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
 
   return (
-    <main className="page-shell">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(41,234,217,0.07)]" aria-hidden="true" />
+    <div className="flex min-h-screen">
+      <AppSidebar
+        portfolioId={(portfolioContext?.portfolioId ?? "").trim()}
+        ownerName={portfolioContext?.ownerName || portfolioContext?.ownerEmail || "Portfolio"}
+        role={viewer.role}
+      />
+      <main className="page-shell min-w-0 flex-1">
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.06)]" aria-hidden="true" />
       <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(140,160,179,0.05)]" aria-hidden="true" />
 
-      <section className="page-content">
+      <section className="page-content" id="dashboard-top">
         <DashboardHeader
           summary={summary}
           portfolioContext={portfolioContext}
@@ -1783,6 +1790,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
             la on-chain (OnchainLivePanel), que ya presenta las posiciones con
             la misma estética y se enriquece con la contabilidad vía enlaces.
             La entrada manual queda como excepción en "Nueva operación". */}
+        <div id="dashboard-positions" className="scroll-mt-6" />
         <OnchainLivePanel
           portfolioId={(portfolioContext?.portfolioId ?? "").trim()}
           canManage={viewer.canDeletePosition}
@@ -1813,6 +1821,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
           )}
         />
 
+        <div id="dashboard-activity" className="scroll-mt-6" />
         <RecentActivity
           recentActivity={recentActivity}
           visibleRecentActivity={visibleRecentActivity}
@@ -3204,5 +3213,6 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
       {isReinvestHarvestOpen && reinvestHarvestSourcePosition && <ReinvestHarvestModal isOpen={isReinvestHarvestOpen} onClose={() => { setIsReinvestHarvestOpen(false); setReinvestHarvestSourcePosition(null); setErrorMessage(""); }} position={reinvestHarvestSourcePosition} harvestByPosition={harvestByPosition} baseDepositTargets={baseDepositTargets} onSuccess={() => { setIsReinvestHarvestOpen(false); setReinvestHarvestSourcePosition(null); router.refresh(); }} />}
 
     </main>
+    </div>
   );
   }
