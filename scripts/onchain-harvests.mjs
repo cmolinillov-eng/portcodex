@@ -730,6 +730,27 @@ async function scanSolanaTransfers(portfolioId, addr) {
       if (t.toUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) + amt);
       if (t.fromUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) - amt);
     }
+    // Dedupe SOL/wSOL: al operar con pools, Helius reporta el wSOL del vault
+    // Y su (des)envoltura como transferencia nativa — el mismo dinero dos
+    // veces. Si ambos van en el mismo sentido con importe ~igual, es unwrap.
+    const WSOL = "So11111111111111111111111111111111111111112";
+    const wsol = net.get(WSOL) ?? 0;
+    if (wsol !== 0) {
+      net.delete(WSOL);
+      const sol = net.get("SOL") ?? 0;
+      let merged;
+      if (
+        sol !== 0 &&
+        Math.sign(sol) === Math.sign(wsol) &&
+        Math.abs(Math.abs(sol) - Math.abs(wsol)) / Math.max(Math.abs(sol), Math.abs(wsol)) < 0.1
+      ) {
+        merged = Math.sign(sol) * Math.max(Math.abs(sol), Math.abs(wsol)); // unwrap duplicado
+      } else {
+        merged = sol + wsol;
+      }
+      if (merged !== 0) net.set("SOL", merged);
+      else net.delete("SOL");
+    }
     if (!net.size) continue;
 
     // Tokens del delta con precio histórico.

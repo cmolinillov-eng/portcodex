@@ -424,9 +424,14 @@ export function OnchainLivePanel({
       const attempted = new Set(autoLinked);
       for (const p of targets) {
         attempted.add(p.id);
-        const candidates = manualPositions.filter(
-          (m) => kindMatchesType(p.kind, m.positionType) && (p.kind === "wallet" || protocolsMatch(p.protocol, m.protocol)),
-        );
+        const candidates = manualPositions.filter((m) => {
+          if (!kindMatchesType(p.kind, m.positionType)) return false;
+          // Holds: solo casar con posiciones contables cuyo protocolo sea una
+          // wallet de verdad (Wallet/Ledger/Phantom…), nunca protocolos DeFi
+          // registrados como Hold (p.ej. "Variational · USDC").
+          if (p.kind === "wallet") return /wallet|ledger|phantom|rabby|metamask|hold/i.test(m.protocol);
+          return protocolsMatch(p.protocol, m.protocol);
+        });
         const pKey = tokenSetKey(p.label);
         const byTokens = candidates.filter((m) => tokenSetKey(m.tokenSymbol ?? m.label) === pKey);
         // Único match por tokens → enlace directo; si no, único candidato del
