@@ -358,6 +358,11 @@ async function meteoraPositions(portfolioId, owner) {
         const feeX = Number(pd.feeX?.toString?.() ?? pd.feeX ?? 0) / 10 ** decX;
         const feeY = Number(pd.feeY?.toString?.() ?? pd.feeY ?? 0) / 10 ** decY;
         const unclaimedUsd = (pxX != null ? feeX * pxX : 0) + (pxY != null ? feeY * pxY : 0);
+        // Fees COBRADAS acumuladas (lifetime): su incremento entre lecturas es
+        // un harvest. Helius da UNKNOWN a los claims de Meteora, así que esta
+        // es la señal fiable (equivalente al COLLECT_FEES nativo de Orca).
+        const claimedX = Number(pd.totalClaimedFeeXAmount?.toString?.() ?? 0) / 10 ** decX;
+        const claimedY = Number(pd.totalClaimedFeeYAmount?.toString?.() ?? 0) / 10 ** decY;
 
         // Rango por bins.
         let range = null;
@@ -388,7 +393,12 @@ async function meteoraPositions(portfolioId, owner) {
           valueUsd: valueUsd || null,
           range,
           unclaimedUsd: unclaimedUsd > 0 ? unclaimedUsd : null,
-          meta: { pair: pairAddr, position: lbPos.publicKey.toString() },
+          meta: {
+            pair: pairAddr,
+            position: lbPos.publicKey.toString(),
+            mintX, mintY, decX, decY, symX, symY,
+            claimedX, claimedY, // acumulado cobrado → delta = harvest
+          },
           source: "meteora",
         });
       } catch (e) {
@@ -453,10 +463,54 @@ async function main() {
     else console.log(`  ✅ orca_fees ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.unclaimedUsd ?? 0), 0).toFixed(2)} sin reclamar)`);
   }
   // Meteora: siempre se hace upsert (incluso 0 pos) para limpiar la caché al
-  // cerrar la última posición.
+  // cerrar la última posición. ANTES de sobrescribir, comparamos las fees
+  // cobradas acumuladas con la lectura anterior → cada incremento es un
+  // harvest, que se emite como onchain_event (señal fiable; Helius no parsea).
   const meteoraPids = new Set([...meteoraByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
   for (const portfolioId of meteoraPids) {
     const positions = meteoraByPortfolio.get(portfolioId) ?? [];
+
+    // Lectura anterior: mapa posición → {claimedX, claimedY}.
+    let prev = new Map();
+    try {
+      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "meteora").maybeSingle();
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p.meta ?? {});
+    } catch { /* sin previo */ }
+
+    for (const p of positions) {
+      const before = prev.get(p.id);
+      if (!before) continue; // primera vez que vemos la posición: sin base de comparación
+      const dX = Math.max(0, (p.meta.claimedX ?? 0) - (before.claimedX ?? 0));
+      const dY = Math.max(0, (p.meta.claimedY ?? 0) - (before.claimedY ?? 0));
+      if (dX <= 0 && dY <= 0) continue;
+      const px = await jupPrices([p.meta.mintX, p.meta.mintY]);
+      const pxX = px.get(p.meta.mintX)?.usdPrice ?? null;
+      const pxY = px.get(p.meta.mintY)?.usdPrice ?? null;
+      const tokens = [];
+      if (dX > 0) tokens.push({ symbol: p.meta.symX, amount: dX, priceUsd: pxX, valueUsd: pxX != null ? dX * pxX : null });
+      if (dY > 0) tokens.push({ symbol: p.meta.symY, amount: dY, priceUsd: pxY, valueUsd: pxY != null ? dY * pxY : null });
+      const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
+      if (valueUsd < 0.5) continue;
+      // event_key con la marca temporal de esta lectura → idempotente por run.
+      const stamp = Math.floor(Date.now() / 1000);
+      await sb.from("onchain_events").upsert({
+        portfolio_id: portfolioId,
+        event_key: `solana:meteora-claim:${p.id}:${stamp}`,
+        kind: "harvest",
+        chain: "solana",
+        protocol: "Meteora",
+        wallet_address: p.walletAddress,
+        position_ref: p.id, // LivePosition.id → auto-enlace/auto-ingesta
+        label: p.label,
+        tokens,
+        value_usd: valueUsd,
+        block_time: new Date().toISOString(),
+        tx_hash: null,
+        includes_principal: false,
+      }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+      console.log(`  🌾 meteora harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+    }
+
     const { error: upErr } = await sb
       .from("onchain_cache")
       .upsert({ portfolio_id: portfolioId, source: "meteora", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });

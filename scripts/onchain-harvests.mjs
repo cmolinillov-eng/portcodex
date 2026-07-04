@@ -800,12 +800,14 @@ async function scanSolanaTransfers(portfolioId, addr) {
 
     if (isLpTx) {
       // ── Evento de LP: harvest / deposit / withdraw ─────────────────────
-      // Meteora reporta el cobro de fees como un CLAIM_FEE (type) sin
-      // COLLECT_FEES; si el flujo neto es positivo sin retirar principal, el
-      // clasificador por signo lo trata como withdraw — pero un claim de
-      // fees pequeño se detecta por type. Orca sí trae COLLECT_FEES nativo.
-      const isMeteoraClaim = isMeteora && /claim/i.test(type);
-      const kind = isOrcaCollect || isMeteoraClaim ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
+      // Helius NO parsea las tx de Meteora (type=UNKNOWN): un cobro de fees y
+      // una retirada de principal se ven igual (dinero entrante). Por eso los
+      // HARVESTS de Meteora los detecta el worker de caché comparando las
+      // fees cobradas acumuladas (fiable). Aquí, para Meteora, solo emitimos
+      // DEPÓSITOS (dinero saliente = añadir liquidez); el money-in se ignora
+      // para no confundir un claim con una retirada.
+      if (isMeteora && totalUsd >= 0) continue;
+      const kind = isOrcaCollect ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
       const symbols = new Set(tokens.map((t) => t.symbol.toUpperCase()));
       // Casar con la posición viva por conjunto de tokens (⊆).
       const candidates = lpPositions.filter((p) => [...symbols].every((s) => p.symbols.has(s)));
