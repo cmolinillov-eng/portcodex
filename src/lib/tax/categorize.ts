@@ -224,18 +224,18 @@ export function categorizeTransaction(
 
   switch (txType) {
     case "deposit":
-      return handleDeposit(tx, fxRateUsdToEur, walletKind, walletName);
+      return handleDeposit(tx, currentLots, fxRateUsdToEur, walletKind, walletName);
 
     case "withdrawal":
       return handleWithdrawal(tx, currentLots, fxRateUsdToEur, walletKind, walletName);
 
     case "staking_deposit":
     case "staking_withdrawal":
-      return handleStakingMovement(tx, walletKind, walletName, txType);
+      return handleStakingMovement(tx, currentLots, fxRateUsdToEur, walletKind, walletName, txType);
 
     case "lending_supply":
     case "lending_withdraw":
-      return handleLendingMovement(tx, walletKind, walletName, txType);
+      return handleLendingMovement(tx, currentLots, fxRateUsdToEur, walletKind, walletName, txType);
 
     case "lending_borrow":
       return handleLendingBorrow(tx, walletKind, walletName);
@@ -275,6 +275,7 @@ export function categorizeTransaction(
 
 function handleDeposit(
   tx: CategorizeInput,
+  currentLots: TaxLot[],
   rate: number,
   walletKind: WalletKind | null,
   walletName: string,
@@ -310,6 +311,54 @@ function handleDeposit(
   const meta = tx.metadata ?? {};
   const rebalanceSource = typeof meta.source === "string" ? meta.source : null;
   if (rebalanceSource === "rebalance_transfer") {
+    // Permuta implícita en el rebalanceo (metadata.swapLegs): el token que
+    // entra difiere del que salió del origen. Consumimos por FIFO los lotes
+    // del vendido y creamos el de este token con la base trasladada — la
+    // fila de salida del origen NO consume lotes, lo hace este leg.
+    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, "el rebalanceo");
+    if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
+      return reinvestSwapResult(rebalanceSwap, {
+        symbol,
+        amount,
+        valueEur,
+        baseNote: `Destino de rebalanceo: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Movimiento interno; la base viaja del origen.`,
+        walletKind,
+        walletName,
+      });
+    }
+    // rebalanceSwapChecked sin legs = el token es el MISMO que salió del
+    // origen: su lote original sigue vivo y viaja con él. Crear aquí otro
+    // lote (comportamiento legacy con depositedDelta) duplicaría la base.
+    if (meta.rebalanceSwapChecked === true) {
+      const description = buildHumanDescription({
+        category: "non_taxable_transfer",
+        walletKind,
+        walletName,
+        tokenSymbol: symbol,
+        amount,
+        valueEur,
+      });
+      return {
+        annotation: {
+          category: "non_taxable_transfer",
+          incomeType: "none",
+          valueEur,
+          costBasisEur: 0,
+          realizedGainEur: 0,
+          notes: `Destino de rebalanceo: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Mismo token que en el origen: su lote FIFO original sigue vivo y viaja con él (no se crea lote nuevo).`,
+          taxable: false,
+          humanLabel: getCategoryLabel("non_taxable_transfer"),
+          humanDescription: description,
+          inferred: true,
+          walletKind,
+        },
+        newLots: [],
+        taxEvents: [],
+        consumedLotUpdates: [],
+      };
+    }
+    // Filas legacy (sin anotación de permuta del rebalanceo): comportamiento
+    // anterior — lote con la base heredada vía depositedDelta.
     const depositedDeltaUsd =
       typeof meta.depositedDelta === "number" ? (meta.depositedDelta as number) : null;
     const costBasisEur =
@@ -351,6 +400,23 @@ function handleDeposit(
       taxEvents: [],
       consumedLotUpdates: [],
     };
+  }
+
+  // ─── CASO ESPECIAL: reinversión de harvest con permuta implícita ────────
+  // Reinversión manual hacia Hold en la que el token que entra difiere del
+  // cobrado en el harvest (metadata.swapLegs): se consume el lote del cobrado
+  // y se traslada su base al que entra. NO es una compra nueva — sin este
+  // corte, la rama "buy" crearía un lote a FMV duplicando la base.
+  const depositSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate);
+  if (depositSwap.newLots.length > 0 || depositSwap.lotUpdates.length > 0) {
+    return reinvestSwapResult(depositSwap, {
+      symbol,
+      amount,
+      valueEur,
+      baseNote: `Reinversión de harvest: entran ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Movimiento interno, sin hecho imponible.`,
+      walletKind,
+      walletName,
+    });
   }
 
   // ─── CASO A: Compra real (CEX, broker, payment app) ─────────────────────
@@ -445,6 +511,45 @@ function handleWithdrawal(
     );
   }
 
+  // ─── CASO ESPECIAL: salida de rebalanceo desde una posición Hold ────────
+  // Movimiento interno: el valor entra en la posición destino en la misma
+  // operación. Sin esta rama, un origen Hold en CEX se categorizaba como
+  // VENTA tributable (incoherente con handleLpWithdraw/handleDeposit, que sí
+  // tratan el rebalanceo como interno). Los lotes NO se consumen aquí: los
+  // consume la fila destino vía metadata.swapLegs si el token cambió, o
+  // siguen vivos y viajan si es el mismo token.
+  const wMeta = tx.metadata ?? {};
+  const wReason = typeof wMeta.reason === "string" ? wMeta.reason : null;
+  if (wReason === "rebalance_transfer" || wReason === "rebalance_harvest_out") {
+    const rebalanceValueEur = roundEur(usdToEur(amount * spotUsd, rate));
+    const rebalanceDescription = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur: rebalanceValueEur,
+    });
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur: rebalanceValueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `Salida por rebalanceo: ${amount} ${symbol} desde ${walletName} (FMV ${rebalanceValueEur} €). La base se traslada al destino del rebalanceo.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: rebalanceDescription,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   // Salidas detectadas on-chain: transferencia de wallet propia, nunca venta
   // (aunque el protocolo no esté catalogado). El gestor puede recategorizar.
   const isOnchainTransfer = (tx.metadata?.source as string | undefined) === "onchain_ingest";
@@ -537,6 +642,8 @@ function handleWithdrawal(
 
 function handleStakingMovement(
   tx: CategorizeInput,
+  currentLots: TaxLot[],
+  rate: number,
   walletKind: WalletKind | null,
   walletName: string,
   txType: string,
@@ -544,6 +651,25 @@ function handleStakingMovement(
   const symbol = (tx.tokenInSymbol ?? tx.tokenOutSymbol ?? "").toUpperCase();
   const amount = Number(tx.tokenInAmount ?? tx.tokenOutAmount ?? 0);
   const action = txType === "staking_deposit" ? "Bloqueaste" : "Desbloqueaste";
+  // Permuta implícita (metadata.swapLegs) al entrar un token distinto del de
+  // origen — por reinversión de harvest o por rebalanceo hacia staking:
+  // traslada la base del vendido al que entra.
+  if (txType === "staking_deposit" && symbol) {
+    const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
+    const contextLabel = isRebalanceIn ? "el rebalanceo" : "la reinversión";
+    const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
+    if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
+      const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
+      return reinvestSwapResult(swap, {
+        symbol,
+        amount,
+        valueEur,
+        baseNote: `${isRebalanceIn ? "Destino de rebalanceo" : "Reinversión de harvest"}: bloqueaste ${amount} ${symbol} en staking (${walletName}, FMV ${valueEur} €). No hay cambio de titularidad.`,
+        walletKind,
+        walletName,
+      });
+    }
+  }
   return emptyResult(
     "non_taxable_transfer",
     "none",
@@ -555,6 +681,8 @@ function handleStakingMovement(
 
 function handleLendingMovement(
   tx: CategorizeInput,
+  currentLots: TaxLot[],
+  rate: number,
   walletKind: WalletKind | null,
   walletName: string,
   txType: string,
@@ -562,6 +690,25 @@ function handleLendingMovement(
   const symbol = (tx.tokenInSymbol ?? tx.tokenOutSymbol ?? "").toUpperCase();
   const amount = Number(tx.tokenInAmount ?? tx.tokenOutAmount ?? 0);
   const action = txType === "lending_supply" ? "Depositaste" : "Retiraste";
+  // Permuta implícita (metadata.swapLegs) al entrar colateral distinto del
+  // token de origen — por reinversión de harvest o por rebalanceo hacia
+  // lending: traslada la base del vendido al colateral que entra.
+  if (txType === "lending_supply" && symbol) {
+    const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
+    const contextLabel = isRebalanceIn ? "el rebalanceo" : "la reinversión";
+    const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
+    if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
+      const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
+      return reinvestSwapResult(swap, {
+        symbol,
+        amount,
+        valueEur,
+        baseNote: `${isRebalanceIn ? "Destino de rebalanceo" : "Reinversión de harvest"}: depositaste ${amount} ${symbol} como colateral en ${walletName} (FMV ${valueEur} €). No hay transmisión patrimonial en el supply.`,
+        walletKind,
+        walletName,
+      });
+    }
+  }
   return emptyResult(
     "non_taxable_transfer",
     "none",
@@ -616,7 +763,7 @@ function handleLendingBorrow(
  */
 function handleLpDeposit(
   tx: CategorizeInput,
-  _currentLots: TaxLot[],
+  currentLots: TaxLot[],
   rate: number,
   walletKind: WalletKind | null,
   walletName: string,
@@ -646,6 +793,23 @@ function handleLpDeposit(
   // cuando salga, `handleLpWithdraw` creará el lote con FMV).
   const lpMeta = tx.metadata ?? {};
   if (typeof lpMeta.source === "string" && lpMeta.source === "rebalance_transfer") {
+    // Permuta implícita en el rebalanceo (metadata.swapLegs): este token del
+    // LP destino no salió del origen — se compró vendiendo lo que sí salió.
+    // Consumimos los lotes del vendido y creamos el de este token con base
+    // trasladada; la rotación del futuro lp_withdraw lo encontrará. Sin legs
+    // (mismo token o fila legacy) se mantiene el comportamiento de siempre:
+    // sin lote, la base viaja con los lotes originales.
+    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, "el rebalanceo");
+    if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
+      return reinvestSwapResult(rebalanceSwap, {
+        symbol,
+        amount,
+        valueEur,
+        baseNote: `Aportación al LP recibida vía rebalanceo (${amount} ${symbol} en ${walletName}, FMV ${valueEur} €). Movimiento interno.`,
+        walletKind,
+        walletName,
+      });
+    }
     const description = buildHumanDescription({
       category: "non_taxable_transfer",
       walletKind,
@@ -674,7 +838,14 @@ function handleLpDeposit(
     };
   }
 
-  const notes = `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). No se materializa ganancia/pérdida hasta retirar la liquidez. Si tu asesor aplica criterio DGT de permuta, deberá calcularse aparte.`;
+  // ─── PERMUTA IMPLÍCITA EN REINVERSIÓN (metadata.swapLegs) ───────────────
+  const {
+    newLots: swapNewLots,
+    lotUpdates: swapLotUpdates,
+    notes: swapNotes,
+  } = applyReinvestSwapLegs(tx, symbol, currentLots, rate);
+
+  const notes = `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). No se materializa ganancia/pérdida hasta retirar la liquidez. Si tu asesor aplica criterio DGT de permuta, deberá calcularse aparte.${swapNotes}`;
 
   const description = buildHumanDescription({
     category: "lp_provide",
@@ -699,10 +870,144 @@ function handleLpDeposit(
       inferred: true,
       walletKind,
     },
-    newLots: [],
+    newLots: swapNewLots,
     taxEvents: [],
-    consumedLotUpdates: [],
+    consumedLotUpdates: swapLotUpdates,
   };
+}
+
+/**
+ * PERMUTA IMPLÍCITA EN REINVERSIÓN (metadata.swapLegs).
+ *
+ * En una reinversión de harvest el token que entra a la posición destino
+ * puede diferir del cobrado: parte del harvest se permutó dentro de la misma
+ * operación. Los legs los anotan el ingestor on-chain
+ * (src/app/api/onchain/events/route.ts) y el flujo manual de reinversión
+ * (src/app/api/transactions/route.ts). Cada leg consume por FIFO los lotes
+ * del token VENDIDO y crea un lote del token COMPRADO (el de esta fila) con
+ * la base trasladada. Sin esto el lote del vendido quedaría vivo y los
+ * tokens comprados saldrían de la posición sin lote (base a FMV): base
+ * duplicada. Coherente con la filosofía del módulo, NO se materializa
+ * ganancia aquí (permuta a criterio del asesor; la ventana
+ * harvest→redepósito es de minutos, diferencia ≈ 0).
+ */
+function applyReinvestSwapLegs(
+  tx: CategorizeInput,
+  boughtSymbol: string,
+  currentLots: TaxLot[],
+  rate: number,
+  contextLabel: string = "la reinversión",
+): {
+  newLots: CategorizationResult["newLots"];
+  lotUpdates: CategorizationResult["consumedLotUpdates"];
+  notes: string;
+} {
+  const newLots: CategorizationResult["newLots"] = [];
+  const lotUpdates: CategorizationResult["consumedLotUpdates"] = [];
+  const swapLegs = parseSwapLegs((tx.metadata ?? {}).swapLegs);
+  let notes = "";
+  if (swapLegs.length > 0) {
+    let boughtAmount = 0;
+    let carriedEur = 0;
+    let uncoveredNote = "";
+    const soldParts: string[] = [];
+    for (const leg of swapLegs) {
+      const fifo = applyFifo(leg.soldSymbol, leg.soldAmount, currentLots);
+      lotUpdates.push(...fifo.lotUpdates);
+      const uncovered = Math.max(0, leg.soldAmount - fifo.consumedAmount);
+      const uncoveredEur = roundEur(usdToEur(uncovered * leg.soldPriceUsd, rate));
+      carriedEur += fifo.consumedCostEur + uncoveredEur;
+      if (uncovered > 1e-9) {
+        uncoveredNote = ` ⚠️ Lotes FIFO insuficientes en ${leg.soldSymbol}; la parte sin lote se valora a FMV.`;
+      }
+      boughtAmount += leg.boughtAmount;
+      soldParts.push(`${leg.soldAmount.toFixed(8)} ${leg.soldSymbol}`);
+    }
+    if (boughtAmount > 1e-9) {
+      newLots.push({
+        tokenSymbol: boughtSymbol,
+        amount: boughtAmount,
+        costBasisEur: roundEur(carriedEur),
+        acquiredAt: tx.transactionDate,
+        acquiredViaEvent: "swap_in",
+        acquiredViaTransactionId: tx.id ?? null,
+      });
+      notes = ` Incluye permuta implícita en ${contextLabel}: ${soldParts.join(" + ")} → ${boughtAmount.toFixed(8)} ${boughtSymbol}; lotes del vendido consumidos por FIFO y base trasladada de ${roundEur(carriedEur)} € al comprado.${uncoveredNote}`;
+    }
+  }
+  return { newLots, lotUpdates, notes };
+}
+
+/**
+ * Resultado para un depósito/supply de reinversión con permuta implícita:
+ * movimiento interno (non_taxable_transfer) cuyo único efecto en lotes es el
+ * traslado de base calculado por applyReinvestSwapLegs. NO crea lote a FMV
+ * del token que entra (lo crea el propio leg con la base del vendido).
+ */
+function reinvestSwapResult(
+  swap: ReturnType<typeof applyReinvestSwapLegs>,
+  args: {
+    symbol: string;
+    amount: number;
+    valueEur: number;
+    baseNote: string;
+    walletKind: WalletKind | null;
+    walletName: string;
+  },
+): CategorizationResult {
+  return {
+    annotation: {
+      category: "non_taxable_transfer",
+      incomeType: "none",
+      valueEur: args.valueEur,
+      costBasisEur: 0,
+      realizedGainEur: 0,
+      notes: `${args.baseNote}${swap.notes}`,
+      taxable: false,
+      humanLabel: getCategoryLabel("non_taxable_transfer"),
+      humanDescription: buildHumanDescription({
+        category: "non_taxable_transfer",
+        walletKind: args.walletKind,
+        walletName: args.walletName,
+        tokenSymbol: args.symbol,
+        amount: args.amount,
+        valueEur: args.valueEur,
+      }),
+      inferred: true,
+      walletKind: args.walletKind,
+    },
+    newLots: swap.newLots,
+    taxEvents: [],
+    consumedLotUpdates: swap.lotUpdates,
+  };
+}
+
+/**
+ * Legs de la permuta implícita anotada en `metadata.swapLegs` (ingestor
+ * on-chain y flujo manual de reinversión). Se agregan
+ * por token vendido para no consumir dos veces el mismo lote dentro de la
+ * misma fila (applyFifo trabaja sobre una vista inmutable de los lotes).
+ */
+function parseSwapLegs(raw: unknown): Array<{ soldSymbol: string; soldAmount: number; soldPriceUsd: number; boughtAmount: number }> {
+  if (!Array.isArray(raw)) return [];
+  const bySold = new Map<string, { soldSymbol: string; soldAmount: number; soldPriceUsd: number; boughtAmount: number }>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const leg = item as Record<string, unknown>;
+    const soldSymbol = typeof leg.soldSymbol === "string" ? leg.soldSymbol.trim().toUpperCase() : "";
+    const soldAmount = typeof leg.soldAmount === "number" && Number.isFinite(leg.soldAmount) ? leg.soldAmount : 0;
+    const soldPriceUsd = typeof leg.soldPriceUsd === "number" && Number.isFinite(leg.soldPriceUsd) ? leg.soldPriceUsd : 0;
+    const boughtAmount = typeof leg.boughtAmount === "number" && Number.isFinite(leg.boughtAmount) ? leg.boughtAmount : 0;
+    if (!soldSymbol || soldAmount <= 0 || soldPriceUsd <= 0 || boughtAmount <= 0) continue;
+    const cur = bySold.get(soldSymbol);
+    if (cur) {
+      cur.soldAmount += soldAmount;
+      cur.boughtAmount += boughtAmount;
+    } else {
+      bySold.set(soldSymbol, { soldSymbol, soldAmount, soldPriceUsd, boughtAmount });
+    }
+  }
+  return [...bySold.values()];
 }
 
 function handleLpWithdraw(

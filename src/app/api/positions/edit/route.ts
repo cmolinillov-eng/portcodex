@@ -341,6 +341,8 @@ export async function POST(request: NextRequest) {
         protocol,
         positionId,
         positionType,
+        // El snapshot comparte grupo con la edición: "Deshacer" lo revierte junto.
+        operationGroupId: groupId,
         spotPriceFor: (symbol: string) => {
           // En edit usamos el spot_price tecleado por el usuario como referencia.
           // Si no coincide con el símbolo objetivo, devolvemos 0 (no penaliza el cierre).

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 import { capturePortfolioSnapshot } from "@/lib/snapshots/capture";
+import { computeReinvestSplit, type ReinvestSplit, type SwapLeg } from "@/lib/onchain/reinvest-split";
 
 /**
  * Harvests detectados on-chain (tabla onchain_events, rellenada por el worker).
@@ -49,6 +50,8 @@ function eventOnchainId(ev: { chain: string; protocol: string; position_ref: str
   return `${ev.chain}:${slug}:${ev.position_ref}`;
 }
 
+// La comparación de cestas harvest↔redepósito (permuta implícita + exceso de
+// capital) vive en un módulo puro para poder testearla de forma aislada.
 type LinkInfo = { protocol: string; position_id: string; position_type: string; auto_ingest: boolean; created_at?: string };
 
 async function getLinks(portfolioId: string): Promise<Map<string, LinkInfo>> {
@@ -172,12 +175,13 @@ async function performIngest(
   // auditada (metadata.source = "harvest_reinvest") para que el capital
   // aportado NO se infle — el yield suma al valor, no al depositado.
   let isReinvest = false;
+  let reinvestSplit: ReinvestSplit | null = null;
   if (kind === "deposit" && ev.block_time && ev.value_usd != null) {
     try {
       const windowStart = new Date(new Date(ev.block_time).getTime() - 45 * 60_000).toISOString();
       const { data: recentHarvests } = await client
         .from("onchain_events")
-        .select("id, value_usd")
+        .select("id, value_usd, tokens")
         .eq("portfolio_id", portfolioId)
         .eq("kind", "harvest")
         .eq("position_ref", ev.position_ref ?? "")
@@ -188,7 +192,16 @@ async function performIngest(
         const hv = Number(h.value_usd ?? 0);
         return hv > 0 && Math.abs(Number(ev.value_usd) - hv) / hv <= 0.5;
       });
-      if (match) isReinvest = true;
+      if (match) {
+        isReinvest = true;
+        // La cesta redepositada puede diferir de la cobrada: detectar la
+        // permuta implícita (swapLegs) y el exceso aportado como capital.
+        reinvestSplit = computeReinvestSplit(
+          ((match.tokens ?? []) as EventToken[]),
+          usable,
+          Number(match.value_usd ?? 0),
+        );
+      }
     } catch {
       /* sin detección: se registra como depósito normal */
     }
@@ -196,17 +209,18 @@ async function performIngest(
 
   // Mismo grupo de operación → el botón "Deshacer" revierte la operación completa.
   const operationGroupId = crypto.randomUUID();
-  const rows = usable.map((t) => ({
+  const noteTail = `on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim();
+  const buildRow = (t: EventToken, amount: number, reinvest: boolean, swapLegs?: SwapLeg[], noteLabel?: string) => ({
     portfolio_id: portfolioId,
     type: txType,
     operation_group_id: operationGroupId,
     token_in_symbol: isOut ? null : t.symbol.toUpperCase(),
-    token_in_amount: isOut ? null : t.amount,
+    token_in_amount: isOut ? null : amount,
     token_out_symbol: isOut ? t.symbol.toUpperCase() : null,
-    token_out_amount: isOut ? t.amount : null,
+    token_out_amount: isOut ? amount : null,
     spot_price: t.priceUsd as number,
     fee_amount: 0,
-    notes: `${isReinvest ? "Reinversión de harvest" : NOTE_LABEL[kind]} on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim(),
+    notes: `${noteLabel ?? (reinvest ? "Reinversión de harvest" : NOTE_LABEL[kind])} ${noteTail}`.trim(),
     transaction_date: timestamp,
     protocol,
     position_id: positionId,
@@ -215,16 +229,44 @@ async function performIngest(
       ...(lpMeta ? { lp: lpMeta } : {}),
       // harvest_reinvest: el motor contable lo excluye del capital aportado
       // (isHarvestReinvestInternal) y consume el harvest pendiente.
-      source: isReinvest ? "harvest_reinvest" : "onchain_ingest",
+      source: reinvest ? "harvest_reinvest" : "onchain_ingest",
       onchainIngest: true,
       eventId: ev.id,
       txHash: ev.tx_hash,
       chain: ev.chain,
       nftId: ev.position_ref,
-      ...(isReinvest ? { sourcePositionId: positionId, sourceProtocol: protocol } : {}),
+      ...(reinvest ? { sourcePositionId: positionId, sourceProtocol: protocol } : {}),
+      // swapLegs: permuta implícita dentro de la reinversión (cesta
+      // redepositada ≠ cesta cobrada). El motor fiscal consume por FIFO el
+      // lote del vendido y crea el del comprado con base trasladada; el
+      // dashboard mueve el pending del harvest de un token al otro.
+      ...(swapLegs && swapLegs.length > 0 ? { swapLegs } : {}),
       ...(ADJUST_TYPE[kind] ? { adjustType: ADJUST_TYPE[kind] } : {}),
     },
-  }));
+  });
+
+  const rows: Array<ReturnType<typeof buildRow>> = [];
+  for (const t of usable) {
+    if (!isReinvest) {
+      rows.push(buildRow(t, t.amount, false));
+      continue;
+    }
+    // Porción cubierta por el harvest → reinversión (movimiento interno);
+    // porción que excede su valor → aportación genuina de capital (antes la
+    // tolerancia ±50% del match la absorbía y el depositado quedaba corto).
+    const sym = t.symbol.toUpperCase();
+    const capitalAmount = reinvestSplit?.capitalBySymbol.get(sym) ?? 0;
+    const reinvestAmount = t.amount - capitalAmount;
+    if (reinvestAmount > 0) {
+      rows.push(buildRow(t, reinvestAmount, true, reinvestSplit?.swapLegsBySymbol.get(sym)));
+    }
+    if (capitalAmount > 0) {
+      rows.push(buildRow(t, capitalAmount, false, undefined, "Aportación de capital junto a reinversión (exceso sobre el harvest)"));
+    }
+  }
+  if (!rows.length) {
+    return { ok: false, error: "La reinversión no generó filas contables; regístralo a mano.", status: 400 };
+  }
 
   const { error: txErr } = await client.from("transactions").insert(rows);
   if (txErr) return { ok: false, error: `No se pudo crear la transacción: ${txErr.message}`, status: 500 };

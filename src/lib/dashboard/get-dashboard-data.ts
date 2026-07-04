@@ -341,6 +341,38 @@ function getMetadataNumber(
   return null;
 }
 
+/**
+ * Legs de la permuta implícita de una reinversión on-chain
+ * (metadata.swapLegs, ver src/app/api/onchain/events/route.ts): parte del
+ * harvest se vendió dentro de la misma tx para comprar el otro token de la
+ * cesta. Para el pending del harvest, lo vendido sale y lo comprado entra.
+ */
+type ReinvestSwapLeg = { soldSymbol: string; soldAmount: number; boughtSymbol: string; boughtAmount: number };
+function getSwapLegs(metadata: unknown, notes: string | null): ReinvestSwapLeg[] {
+  const obj = parseJsonObject(metadata) ?? parseJsonObject(notes);
+  const raw = obj?.swapLegs;
+  if (!Array.isArray(raw)) return [];
+  const legs: ReinvestSwapLeg[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const leg = item as Record<string, unknown>;
+    if (
+      typeof leg.soldSymbol === "string" &&
+      typeof leg.boughtSymbol === "string" &&
+      typeof leg.soldAmount === "number" && Number.isFinite(leg.soldAmount) && leg.soldAmount > 0 &&
+      typeof leg.boughtAmount === "number" && Number.isFinite(leg.boughtAmount) && leg.boughtAmount > 0
+    ) {
+      legs.push({
+        soldSymbol: leg.soldSymbol.trim().toUpperCase(),
+        soldAmount: leg.soldAmount,
+        boughtSymbol: leg.boughtSymbol.trim().toUpperCase(),
+        boughtAmount: leg.boughtAmount,
+      });
+    }
+  }
+  return legs;
+}
+
 function isMissingColumnError(message: string, column: string): boolean {
   return message.toLowerCase().includes(column.toLowerCase());
 }
@@ -1624,6 +1656,15 @@ export async function getDashboardData(options?: {
           }
           harvestByPositionAcc[srcKey].pendingByToken[inSymbol] =
             (harvestByPositionAcc[srcKey].pendingByToken[inSymbol] ?? 0) - inAmount;
+          // Permuta implícita dentro de la reinversión: lo vendido sale del
+          // pending y lo comprado entra (compensa que el depósito descuenta
+          // el token comprado, que nunca se cobró en el harvest).
+          for (const leg of getSwapLegs(tx.metadata, tx.notes)) {
+            harvestByPositionAcc[srcKey].pendingByToken[leg.soldSymbol] =
+              (harvestByPositionAcc[srcKey].pendingByToken[leg.soldSymbol] ?? 0) - leg.soldAmount;
+            harvestByPositionAcc[srcKey].pendingByToken[leg.boughtSymbol] =
+              (harvestByPositionAcc[srcKey].pendingByToken[leg.boughtSymbol] ?? 0) + leg.boughtAmount;
+          }
         }
       }
       continue;
@@ -1650,6 +1691,26 @@ export async function getDashboardData(options?: {
           depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + depositedDelta);
         }
       }
+      // Harvest arrastrado al destino de un rebalance: sale del pending del
+      // origen — su valor pasa a formar parte de la posición destino. Sin
+      // este descuento se contaría DOBLE en totalValueUsd (valor en destino
+      // + pending vivo en origen).
+      if (isRebalanceHarvestOut && portfolioId && positionId) {
+        const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
+        if (outSymbol && outAmount > 0) {
+          if (!harvestByPositionAcc[positionKey]) {
+            harvestByPositionAcc[positionKey] = {
+              portfolioId,
+              protocol,
+              positionId,
+              harvestedUsd: 0,
+              pendingByToken: {},
+            };
+          }
+          harvestByPositionAcc[positionKey].pendingByToken[outSymbol] =
+            (harvestByPositionAcc[positionKey].pendingByToken[outSymbol] ?? 0) - outAmount;
+        }
+      }
       // Nota: ya no usamos las withdrawals con reason=harvest_reinvest para descontar
       // el pending (el descuento se hace al registrar el depósito de reinversión).
       // Las filas legacy con ese reason serán eliminadas por migración SQL.
@@ -1673,9 +1734,16 @@ export async function getDashboardData(options?: {
     const pendingByToken = Object.entries(entry.pendingByToken)
       .filter(([, amount]) => amount > 0)
       .map(([tokenSymbol, amount]) => ({ tokenSymbol, amount }));
-    const pendingUsd = pendingByToken.reduce(
-      (acc, item) => acc + item.amount * (cachedPrices.pricesBySymbol.get(item.tokenSymbol) ?? 0),
+    // El USD pendiente netea TODOS los tokens a precio de mercado, incluidos los
+    // saldos negativos (p.ej. tras reinvertir un harvest en otra mezcla de tokens
+    // el token reinvertido queda en negativo y debe descontar del pendiente).
+    // pendingByToken solo lista los positivos porque es lo que se muestra/reinvierte.
+    const pendingUsd = Math.max(
       0,
+      Object.entries(entry.pendingByToken).reduce(
+        (acc, [tokenSymbol, amount]) => acc + amount * (cachedPrices.pricesBySymbol.get(tokenSymbol) ?? 0),
+        0,
+      ),
     );
     return {
       key: `${entry.portfolioId}::${entry.protocol}::${entry.positionId}`,

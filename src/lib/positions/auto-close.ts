@@ -36,6 +36,13 @@ type CloseInput = {
    * que usó la operación que disparó el cierre, para coherencia contable.
    */
   spotPriceFor: (symbol: string) => number;
+  /**
+   * Grupo de la operación que disparó el cierre. Si se pasa, el snapshot se
+   * deshace junto con ella ("Deshacer" borra todo el grupo); sin él, un undo
+   * dejaría vivo un marcador de cierre huérfano que además bloquearía
+   * futuros auto-cierres de la posición.
+   */
+  operationGroupId?: string | null;
 };
 
 const CAPITAL_IN = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
@@ -83,6 +90,7 @@ export async function autoClosePositionIfEmpty({
   positionId,
   positionType,
   spotPriceFor,
+  operationGroupId,
 }: CloseInput): Promise<{ closed: boolean; reason?: string; realizedPnl?: number }> {
   const { data: txs, error } = await client
     .from("transactions")
@@ -163,7 +171,7 @@ export async function autoClosePositionIfEmpty({
   const closureRow = {
     portfolio_id: portfolioId,
     type: "position_closed",
-    operation_group_id: randomUUID(),
+    operation_group_id: operationGroupId ?? randomUUID(),
     token_in_symbol: closureSymbol,
     token_in_amount: 1,
     token_out_symbol: null,

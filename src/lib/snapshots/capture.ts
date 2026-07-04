@@ -163,6 +163,24 @@ export async function capturePortfolioSnapshot({
         const srcPositionId = readFlag(tx.metadata, tx.notes, "sourcePositionId") ?? positionId;
         const srcKey = `${srcPositionId}::${inSymbol}`;
         harvestPendingByKey.set(srcKey, (harvestPendingByKey.get(srcKey) ?? 0) - inAmount);
+        // Permuta implícita dentro de la reinversión (metadata.swapLegs):
+        // lo vendido sale del pending y lo comprado entra — misma semántica
+        // que en get-dashboard-data.ts.
+        const legsRaw = parseObj(tx.metadata)?.swapLegs;
+        if (Array.isArray(legsRaw)) {
+          for (const item of legsRaw) {
+            const leg = (item ?? {}) as Record<string, unknown>;
+            const soldSymbol = typeof leg.soldSymbol === "string" ? leg.soldSymbol.trim().toUpperCase() : "";
+            const boughtSymbol = typeof leg.boughtSymbol === "string" ? leg.boughtSymbol.trim().toUpperCase() : "";
+            const soldAmount = typeof leg.soldAmount === "number" && Number.isFinite(leg.soldAmount) ? leg.soldAmount : 0;
+            const boughtAmount = typeof leg.boughtAmount === "number" && Number.isFinite(leg.boughtAmount) ? leg.boughtAmount : 0;
+            if (!soldSymbol || !boughtSymbol || soldAmount <= 0 || boughtAmount <= 0) continue;
+            const soldKey = `${srcPositionId}::${soldSymbol}`;
+            const boughtKey = `${srcPositionId}::${boughtSymbol}`;
+            harvestPendingByKey.set(soldKey, (harvestPendingByKey.get(soldKey) ?? 0) - soldAmount);
+            harvestPendingByKey.set(boughtKey, (harvestPendingByKey.get(boughtKey) ?? 0) + boughtAmount);
+          }
+        }
       }
       // Rebalance deposited delta no afecta a snapshots globales (es cost basis)
       continue;
@@ -177,6 +195,13 @@ export async function capturePortfolioSnapshot({
         balanceByPositionSymbol.set(key, cur);
       }
       if (!isInternal) totalDepositedUsd -= outAmount * spotPrice;
+      // Harvest arrastrado al destino de un rebalance: sale del pending del
+      // origen (su valor pasa a la posición destino) — misma semántica que
+      // en get-dashboard-data.ts; sin esto se contaría doble.
+      if ((reason === "rebalance_harvest_out" || source === "rebalance_harvest_out") && positionId && outSymbol && outAmount > 0) {
+        const key = `${positionId}::${outSymbol}`;
+        harvestPendingByKey.set(key, (harvestPendingByKey.get(key) ?? 0) - outAmount);
+      }
       continue;
     }
 

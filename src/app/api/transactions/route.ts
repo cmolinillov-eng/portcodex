@@ -3,6 +3,7 @@ import { autoClosePositionIfEmpty } from "@/lib/positions/auto-close";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
+import { computeReinvestSplit, type ReinvestEventToken, type SwapLeg } from "@/lib/onchain/reinvest-split";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
@@ -244,7 +245,17 @@ async function getLatestLpMetadata(
   const error = fallbackQuery?.error ?? withDeletedFilter.error;
   if (error) return null;
   if (!data) return null;
-  return parseObject(data.metadata) ?? parseObject(data.notes);
+  // SOLO la clave lp (rango/ratio/par): es lo único que se hereda entre
+  // depósitos. Devolver el metadata completo arrastraba a filas nuevas las
+  // marcas de la fila anterior (source=harvest_reinvest/rebalance_transfer,
+  // swapLegs, depositedDelta…), con lo que un depósito base posterior podía
+  // quedar marcado como movimiento interno (no sumaba al depositado) o
+  // re-consumir por FIFO legs de una permuta ya procesada.
+  const full = parseObject(data.metadata) ?? parseObject(data.notes);
+  const lp = full && typeof full.lp === "object" && full.lp !== null && !Array.isArray(full.lp)
+    ? (full.lp as Record<string, unknown>)
+    : null;
+  return lp ? { lp } : null;
 }
 
 function createRow(input: Omit<TransactionInsert, "fee_amount" | "transaction_date" | "notes"> & { timestamp: string; notes?: string }): TransactionInsert {
@@ -340,6 +351,40 @@ async function buildRows(
     if (price && price > 0) return price;
     if (fallbackSpotPrice > 0) return fallbackSpotPrice;
     throw new Error(`No hay precio disponible para ${normalizedSymbol} en cached_prices.`);
+  };
+
+  // Permuta implícita en reinversión de harvest: si el token que entra a la
+  // posición destino difiere del cobrado, anotamos metadata.swapLegs para que
+  // el motor fiscal consuma por FIFO el lote del cobrado y traslade su base
+  // al comprado, y dashboard/snapshots muevan el pending de un token al otro
+  // (misma semántica que el ingestor on-chain, src/app/api/onchain/events/route.ts).
+  // Sin precio del token cobrado no se puede valorar la permuta: no se anota.
+  const reinvestSwapLegsFor = (
+    boughtSymbol: string,
+    boughtAmount: number,
+    usdPortion: number,
+  ): { swapLegs?: SwapLeg[] } => {
+    if (!tokenSymbol || boughtSymbol === tokenSymbol || usdPortion <= 0) return {};
+    let soldPriceUsd: number;
+    try {
+      soldPriceUsd = spotPriceFor(tokenSymbol);
+    } catch {
+      return {};
+    }
+    const soldAmount = usdPortion / soldPriceUsd;
+    if (!Number.isFinite(soldAmount) || soldAmount <= 0) return {};
+    return {
+      swapLegs: [
+        {
+          soldSymbol: tokenSymbol,
+          soldAmount,
+          soldPriceUsd,
+          boughtSymbol,
+          boughtAmount,
+          boughtPriceUsd: spotPriceFor(boughtSymbol),
+        },
+      ],
+    };
   };
 
   if (payload.operationType === "base_deposit") {
@@ -734,7 +779,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(tokenA, amountA, usdA) },
           notes: JSON.stringify(metadata),
           timestamp,
         }),
@@ -751,7 +796,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(tokenB, amountB, usdB) },
           notes: JSON.stringify(metadata),
           timestamp,
         }),
@@ -794,7 +839,7 @@ async function buildRows(
             protocol: targetProtocol,
             position_id: targetPositionId,
             position_type: "Lending",
-            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(collateralToken, collateralAmount, collateralUsd) },
             timestamp,
           }),
         );
@@ -805,6 +850,8 @@ async function buildRows(
         if (!Number.isFinite(debtAmount) || debtAmount <= 0) {
           throw new Error("No se pudo calcular la cantidad de deuda a reinvertir.");
         }
+        // Sin swapLegs: el token de deuda entra como préstamo (no procede del
+        // harvest) y lending_borrow no participa en pending ni en lotes FIFO.
         reinvestRows.push(
           makeRow({
             portfolio_id: portfolioId,
@@ -843,7 +890,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: targetMapping.normalizedPositionType,
-          metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(reinvestToken, reinvestAmount, harvestUsdAmount) },
           timestamp,
         }),
       );
@@ -922,7 +969,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(tokenA, amountA, usdA) },
           notes: JSON.stringify(metadata),
           timestamp,
         }),
@@ -937,7 +984,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: "Liquidity Pool",
-          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { ...metadata, source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(tokenB, amountB, usdB) },
           notes: JSON.stringify(metadata),
           timestamp,
         }),
@@ -980,7 +1027,7 @@ async function buildRows(
             protocol: targetProtocol,
             position_id: targetPositionId,
             position_type: "Lending",
-            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+            metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(collateralToken, collateralAmount, collateralUsd) },
             timestamp,
           }),
         );
@@ -991,6 +1038,8 @@ async function buildRows(
         if (!Number.isFinite(debtAmount) || debtAmount <= 0) {
           throw new Error("No se pudo calcular la cantidad de deuda a reinvertir.");
         }
+        // Sin swapLegs: el token de deuda entra como préstamo (no procede del
+        // harvest) y lending_borrow no participa en pending ni en lotes FIFO.
         reinvestRows.push(
           makeRow({
             portfolio_id: portfolioId,
@@ -1029,7 +1078,7 @@ async function buildRows(
           protocol: targetProtocol,
           position_id: targetPositionId,
           position_type: targetMapping.normalizedPositionType,
-          metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol },
+          metadata: { source: "harvest_reinvest", sourcePositionId, sourceProtocol, ...reinvestSwapLegsFor(reinvestToken, reinvestAmount, harvestUsdAmount) },
           timestamp,
         }),
       );
@@ -1490,6 +1539,52 @@ async function buildRows(
       );
     }
 
+    // Permuta implícita del rebalanceo: si la cesta que entra al destino
+    // difiere de la que sale del origen (cambio de token), anotamos
+    // metadata.swapLegs en las filas destino para que el motor fiscal consuma
+    // por FIFO los lotes de lo vendido y cree el lote de lo comprado con la
+    // base trasladada (mismo mecanismo que las reinversiones de harvest). El
+    // harvest arrastrado entra en la cesta origen: su lote (creado al
+    // cobrarlo) también viaja. `rebalanceSwapChecked` distingue "sin legs
+    // porque el token no cambió" (el lote original viaja; no crear otro) de
+    // las filas legacy sin anotación, que conservan el comportamiento previo.
+    try {
+      const sourceBasket: ReinvestEventToken[] = [
+        { symbol: sourceToken, amount: sourceAmount, priceUsd: spotPriceFor(sourceToken) },
+      ];
+      if (sourceMapping.normalizedPositionType === "Liquidity Pool") {
+        sourceBasket.push({ symbol: sourceTokenB, amount: sourceAmountB, priceUsd: spotPriceFor(sourceTokenB) });
+      }
+      for (const h of sourceHarvestTokens) {
+        const sym = sanitizeUppercase(h.tokenSymbol);
+        if (!sym || !(h.amount > 0)) continue;
+        sourceBasket.push({
+          symbol: sym,
+          amount: h.amount,
+          priceUsd: h.spotPriceUsd && h.spotPriceUsd > 0 ? h.spotPriceUsd : spotPriceFor(sym),
+        });
+      }
+      const targetBasket: ReinvestEventToken[] = targetRows.map((row) => ({
+        symbol: (row.token_in_symbol ?? "").toUpperCase(),
+        amount: row.token_in_amount ?? 0,
+        priceUsd: row.spot_price,
+      }));
+      const split = computeReinvestSplit(sourceBasket, targetBasket, rebalanceUsd);
+      if (split) {
+        for (const row of targetRows) {
+          const sym = (row.token_in_symbol ?? "").toUpperCase();
+          const legs = split.swapLegsBySymbol.get(sym) ?? [];
+          row.metadata = {
+            ...(row.metadata ?? {}),
+            rebalanceSwapChecked: true,
+            ...(legs.length > 0 ? { swapLegs: legs } : {}),
+          };
+        }
+      }
+    } catch {
+      // Sin precio de algún token: las filas quedan sin anotación (legacy).
+    }
+
     // Snapshot de cierre SOLO si el rebalanceo vacía la posición de origen.
     // En un rebalanceo el cost basis VIAJA con la posición (vía depositedDelta),
     // así que el PnL realizado es 0: no es una venta a fiat. Registrar aquí un
@@ -1716,6 +1811,8 @@ export async function POST(request: NextRequest) {
             positionId: pos.positionId,
             positionType: pos.positionType,
             spotPriceFor: (symbol: string) => pricesBySymbol.get(symbol.toUpperCase()) ?? 0,
+            // El snapshot comparte grupo con la operación: "Deshacer" lo revierte junto.
+            operationGroupId: mainRows[0]?.operation_group_id ?? null,
           });
         } catch {
           // Auto-close no es crítico: si falla, no rompemos la operación principal.

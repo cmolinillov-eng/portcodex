@@ -886,3 +886,48 @@ test("Modo de fallo: sin restar el préstamo del depositado, pedir prestado pare
   const value = 1000 - 500; // valor resta la deuda
   assert.equal(value - depositedOld, -500); // -500 ficticio (la deuda contada como pérdida)
 });
+
+// ── 6) Harvest pendiente: neteo de tokens negativos tras reinversión ─────────
+// Al reinvertir un harvest la mezcla de tokens reinvertida puede diferir de la
+// cosechada (p.ej. cosecho SOL+USDC pero reinvierto más SOL del cosechado).
+// El token sobre-reinvertido queda con saldo negativo en pendingByToken y debe
+// DESCONTAR del pendiente USD a precio de mercado, no filtrarse. El pendiente
+// mostrado nunca baja de 0.
+
+/**
+ * Réplica de get-dashboard-data.ts (harvestByPosition):
+ * pendingUsd = max(0, Σ amount·precio sobre TODOS los tokens, negativos incluidos).
+ */
+function pendingHarvestUsd(pendingByToken, prices) {
+  return Math.max(
+    0,
+    Object.entries(pendingByToken).reduce(
+      (acc, [symbol, amount]) => acc + amount * (prices[symbol] ?? 0),
+      0,
+    ),
+  );
+}
+
+test("Harvest pendiente netea el token negativo tras reinversión (caso SOL/USDC Orca)", () => {
+  // Cosechado: 157.62 USDC + 0.8595 SOL; reinvertido: 35.875 USDC + 1.4145 SOL
+  // → USDC +157.624, SOL −0.5549. A SOL=$81.84 el neto es ~$112, no ~$157.
+  const pending = { USDC: 157.6240695792492, SOL: -0.554926761 };
+  const usd = pendingHarvestUsd(pending, { USDC: 0.999875, SOL: 81.84 });
+  assert.ok(Math.abs(usd - 112.19) < 0.01);
+});
+
+test("Harvest pendiente nunca queda negativo (sobre-reinversión total)", () => {
+  const usd = pendingHarvestUsd({ SOL: -0.5 }, { SOL: 80 });
+  assert.equal(usd, 0);
+});
+
+test("Modo de fallo: filtrar los negativos inflaba el pendiente ~$45", () => {
+  // Modelo antiguo: solo sumaba los tokens con saldo positivo.
+  const pending = { USDC: 157.6240695792492, SOL: -0.554926761 };
+  const prices = { USDC: 0.999875, SOL: 81.84 };
+  const oldUsd = Object.entries(pending)
+    .filter(([, amount]) => amount > 0)
+    .reduce((acc, [symbol, amount]) => acc + amount * prices[symbol], 0);
+  assert.ok(Math.abs(oldUsd - 157.6) < 0.1); // mostraba ~$157…
+  assert.ok(oldUsd - pendingHarvestUsd(pending, prices) > 45); // …inflando ~$45
+});
