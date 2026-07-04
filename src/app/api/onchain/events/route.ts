@@ -144,6 +144,28 @@ async function performIngest(
   if (kind.startsWith("lending_") && positionType === "Liquidity Pool") positionType = "Lending";
   if (kind.startsWith("transfer_") && positionType === "Liquidity Pool") positionType = "Hold";
 
+  // metadata.lp: el trigger validate_transaction_integrity la exige en
+  // lp_deposit/lp_withdraw (tokenA/B, rango, ratio). Se hereda del último
+  // lp_deposit de la posición — mismo criterio que el flujo manual
+  // (getLatestLpMetadata). Sin depósito previo no hay rango/ratio fiables:
+  // el evento se queda en la bandeja para registrarlo a mano.
+  let lpMeta: Record<string, unknown> | null = null;
+  if (txType === "lp_deposit" || txType === "lp_withdraw") {
+    const { data: lastDep } = await client
+      .from("transactions")
+      .select("metadata")
+      .eq("portfolio_id", portfolioId)
+      .eq("position_id", positionId)
+      .eq("type", "lp_deposit")
+      .order("transaction_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    lpMeta = (lastDep?.metadata as { lp?: Record<string, unknown> } | null)?.lp ?? null;
+    if (!lpMeta) {
+      return { ok: false, error: "La posición no tiene metadata LP previa (rango/ratio); registra este movimiento a mano.", status: 400 };
+    }
+  }
+
   // ─── REINVERSIÓN DE HARVEST ────────────────────────────────────────────
   // Un depósito poco después de un harvest de la MISMA posición y con valor
   // similar es la reinversión del yield: se registra con la semántica manual
@@ -190,6 +212,7 @@ async function performIngest(
     position_id: positionId,
     position_type: positionType,
     metadata: {
+      ...(lpMeta ? { lp: lpMeta } : {}),
       // harvest_reinvest: el motor contable lo excluye del capital aportado
       // (isHarvestReinvestInternal) y consume el harvest pendiente.
       source: isReinvest ? "harvest_reinvest" : "onchain_ingest",
