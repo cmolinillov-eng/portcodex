@@ -357,11 +357,20 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
     } catch (e) {
       console.error(`  eventos ${chainName}: ${String(e.message).slice(0, 100)}`);
     }
+    // Checkpoint por tramo: si el job muere a mitad (timeout del workflow,
+    // cancelación), el siguiente run continúa desde aquí en vez de repetir
+    // toda la ventana. Solo mientras no haya tramos fallidos pendientes.
+    if (firstFailed == null) {
+      await sb.from("onchain_scan_state").upsert(
+        { portfolio_id: portfolioId, chain: chainName, protocol: protocol.name, last_block: Number(end), updated_at: new Date().toISOString() },
+        { onConflict: "portfolio_id,chain,protocol" },
+      );
+    }
     start = end + 1n;
   }
 
-  // Guardar hasta dónde hemos escaneado (sin saltar tramos fallidos: si algo
-  // falló, el cursor se queda justo antes y el siguiente run lo reintenta).
+  // Cursor final (sin saltar tramos fallidos: si algo falló, el cursor se
+  // queda justo antes y el siguiente run lo reintenta).
   const cursor = firstFailed != null ? firstFailed - 1n : latest;
   if (cursor >= from) {
     await sb.from("onchain_scan_state").upsert(
@@ -484,6 +493,13 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
       for (const log of repays) await emit("lending_repay", log, log.args.reserve, log.args.amount);
     } catch (e) {
       console.error(`  eventos aave ${chainName}: ${String(e.message).slice(0, 100)}`);
+    }
+    // Checkpoint por tramo (mismo motivo que en scanWallet).
+    if (firstFailed == null) {
+      await sb.from("onchain_scan_state").upsert(
+        { portfolio_id: portfolioId, chain: chainName, protocol: "Aave V3", last_block: Number(end), updated_at: new Date().toISOString() },
+        { onConflict: "portfolio_id,chain,protocol" },
+      );
     }
     start = end + 1n;
   }

@@ -10,9 +10,18 @@ on:
     - cron: "*/30 * * * *"
   workflow_dispatch: {}
 
+# Un solo run a la vez: los RPC gratuitos no dan para runs solapados, y sin
+# esto cada tick de 30 min apila otro run compitiendo por la misma cuota.
+concurrency:
+  group: onchain-cache
+  cancel-in-progress: false
+
 jobs:
   cache:
     runs-on: ubuntu-latest
+    # La primera pasada EVM puede no caber: no pasa nada, el escáner guarda
+    # checkpoint por tramo y el siguiente run continúa donde se quedó.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
