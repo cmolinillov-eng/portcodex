@@ -682,6 +682,7 @@ const SOL_MINTS = {
 };
 const WHIRLPOOL_PROGRAM = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 const KAMINO_LIQUIDITY_PROGRAM = "6LtLpnUFNByNXLyCoK9wA2MykKAmQNZKBdY8s47dehDc";
+const METEORA_DLMM_PROGRAM = "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo";
 
 // Posiciones LP de Solana conocidas del portfolio (de onchain_cache): para
 // casar cada evento LP con su posición viva → auto-asignación por enlaces.
@@ -692,7 +693,7 @@ async function solanaLpPositions(portfolioId) {
       .from("onchain_cache")
       .select("source, positions")
       .eq("portfolio_id", portfolioId)
-      .in("source", ["kamino", "snapshot"]);
+      .in("source", ["kamino", "meteora", "snapshot"]);
     for (const row of data ?? []) {
       const list = row.source === "snapshot" ? row.positions?.positions ?? [] : row.positions ?? [];
       for (const p of list) {
@@ -789,22 +790,28 @@ async function scanSolanaTransfers(portfolioId, addr) {
     if (!tokens.length) continue;
 
     const isOrcaCollect = type === "COLLECT_FEES";
+    const isMeteora = programs.has(METEORA_DLMM_PROGRAM);
     const isLpTx =
       isOrcaCollect ||
       programs.has(WHIRLPOOL_PROGRAM) ||
       programs.has(KAMINO_LIQUIDITY_PROGRAM) ||
+      isMeteora ||
       source === "KAMINO_FARMS";
 
     if (isLpTx) {
       // ── Evento de LP: harvest / deposit / withdraw ─────────────────────
-      const kind = isOrcaCollect ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
+      // Meteora reporta el cobro de fees como un CLAIM_FEE (type) sin
+      // COLLECT_FEES; si el flujo neto es positivo sin retirar principal, el
+      // clasificador por signo lo trata como withdraw — pero un claim de
+      // fees pequeño se detecta por type. Orca sí trae COLLECT_FEES nativo.
+      const isMeteoraClaim = isMeteora && /claim/i.test(type);
+      const kind = isOrcaCollect || isMeteoraClaim ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
       const symbols = new Set(tokens.map((t) => t.symbol.toUpperCase()));
       // Casar con la posición viva por conjunto de tokens (⊆).
       const candidates = lpPositions.filter((p) => [...symbols].every((s) => p.symbols.has(s)));
       const isOrca = isOrcaCollect || programs.has(WHIRLPOOL_PROGRAM);
-      const byProtocol = candidates.filter((p) =>
-        isOrca ? p.protocol.toLowerCase().includes("orca") && !p.protocol.toLowerCase().includes("kamino") : p.protocol.toLowerCase().includes("kamino"),
-      );
+      const protoNeedle = isOrca ? "orca" : isMeteora ? "meteora" : "kamino";
+      const byProtocol = candidates.filter((p) => p.protocol.toLowerCase().includes(protoNeedle));
       const match = byProtocol.length === 1 ? byProtocol[0] : candidates.length === 1 ? candidates[0] : null;
 
       const evTokens = tokens.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd }));
@@ -815,7 +822,7 @@ async function scanSolanaTransfers(portfolioId, addr) {
         event_key: `solana:${tx.signature}:${kind}`,
         kind,
         chain: "solana",
-        protocol: match?.protocol ?? (isOrca ? "Orca" : "Kamino"),
+        protocol: match?.protocol ?? (isOrca ? "Orca" : isMeteora ? "Meteora" : "Kamino"),
         wallet_address: addr,
         // ref = LivePosition.id completo → el endpoint lo usa tal cual para
         // casar con position_links (auto-asignación y auto-ingesta).

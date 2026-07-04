@@ -10,11 +10,18 @@
 //   HELIUS_API_KEY, JUPITER_API_KEY
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { createClient } from "@supabase/supabase-js";
 import { createSolanaRpc, address } from "@solana/kit";
 import Decimal from "decimal.js";
 import { Kamino, MeteoraService, getMeteoraPriceLowerUpper } from "@kamino-finance/kliquidity-sdk";
 import { Farms } from "@kamino-finance/farms-sdk";
+
+// El SDK de Meteora (DLMM) es CJS con imports de directorio → se carga con
+// require. El módulo exporta la clase DLMM como default.
+const require = createRequire(import.meta.url);
+const DLMM = require("@meteora-ag/dlmm");
+const { Connection, PublicKey } = require("@solana/web3.js");
 import { fetchPositionsForOwner } from "@orca-so/whirlpools";
 import { fetchWhirlpool, fetchTickArray, getTickArrayAddress } from "@orca-so/whirlpools-client";
 import {
@@ -299,6 +306,99 @@ async function orcaUnclaimed(portfolioId, owner) {
   return out;
 }
 
+// ── Posiciones Meteora DLMM standalone: valor + rango + fees sin reclamar ────
+// Símbolos conocidos (fallback = prefijo del mint). El valor y las fees se
+// calculan con precios Jupiter; el rango con la fórmula de bins de Meteora.
+const MET_MINTS = {
+  So11111111111111111111111111111111111111112: "SOL",
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: "USDC",
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: "USDT",
+  J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn: "JITOSOL",
+  mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So: "MSOL",
+  JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "JUP",
+  "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo": "PYUSD",
+  USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA: "USDS",
+};
+const symbolFor = (mint) => MET_MINTS[mint] ?? `${mint.slice(0, 4)}…`;
+// Precio humano de un bin: (1 + binStep/10000)^binId · 10^(decX-decY).
+const binPrice = (binId, binStep, decX, decY) =>
+  Math.pow(1 + Number(binStep) / 10000, Number(binId)) * Math.pow(10, decX - decY);
+
+async function meteoraPositions(portfolioId, owner) {
+  const conn = new Connection(`https://mainnet.helius-rpc.com/?api-key=${HELIUS}`, "confirmed");
+  const byPair = await DLMM.getAllLbPairPositionsByUser(conn, new PublicKey(owner));
+  if (!byPair || byPair.size === 0) return [];
+
+  // Precios de todos los mints implicados.
+  const mints = new Set();
+  for (const info of byPair.values()) {
+    mints.add(info.tokenX.publicKey.toString());
+    mints.add(info.tokenY.publicKey.toString());
+  }
+  const prices = await jupPrices([...mints]);
+
+  const out = [];
+  for (const [pairAddr, info] of byPair) {
+    for (const lbPos of info.lbPairPositionsData ?? []) {
+      try {
+        const pd = lbPos.positionData;
+        const mintX = info.tokenX.publicKey.toString();
+        const mintY = info.tokenY.publicKey.toString();
+        const decX = Number(info.tokenX.mint?.decimals ?? 0);
+        const decY = Number(info.tokenY.mint?.decimals ?? 0);
+        const symX = symbolFor(mintX);
+        const symY = symbolFor(mintY);
+        const pxX = prices.get(mintX)?.usdPrice ?? null;
+        const pxY = prices.get(mintY)?.usdPrice ?? null;
+
+        const amtX = Number(pd.totalXAmount) / 10 ** decX;
+        const amtY = Number(pd.totalYAmount) / 10 ** decY;
+        const valueUsd = (pxX != null ? amtX * pxX : 0) + (pxY != null ? amtY * pxY : 0);
+
+        const feeX = Number(pd.feeX?.toString?.() ?? pd.feeX ?? 0) / 10 ** decX;
+        const feeY = Number(pd.feeY?.toString?.() ?? pd.feeY ?? 0) / 10 ** decY;
+        const unclaimedUsd = (pxX != null ? feeX * pxX : 0) + (pxY != null ? feeY * pxY : 0);
+
+        // Rango por bins.
+        let range = null;
+        try {
+          const binStep = info.lbPair?.binStep;
+          const activeId = info.lbPair?.activeId;
+          if (binStep != null && activeId != null) {
+            const lower = binPrice(pd.lowerBinId, binStep, decX, decY);
+            const upper = binPrice(pd.upperBinId, binStep, decX, decY);
+            const current = binPrice(activeId, binStep, decX, decY);
+            range = { lower, upper, current, inRange: current >= lower && current <= upper };
+          }
+        } catch { /* sin rango */ }
+
+        out.push({
+          id: `solana:meteora:${lbPos.publicKey.toString()}`,
+          portfolioId,
+          walletAddress: owner,
+          chainKind: "solana",
+          chain: "solana",
+          protocol: "Meteora",
+          kind: "liquidity",
+          label: `${symX}/${symY}`,
+          tokens: [
+            { symbol: symX, amount: amtX, valueUsd: pxX != null ? amtX * pxX : null },
+            { symbol: symY, amount: amtY, valueUsd: pxY != null ? amtY * pxY : null },
+          ],
+          valueUsd: valueUsd || null,
+          range,
+          unclaimedUsd: unclaimedUsd > 0 ? unclaimedUsd : null,
+          meta: { pair: pairAddr, position: lbPos.publicKey.toString() },
+          source: "meteora",
+        });
+      } catch (e) {
+        console.error(`  Meteora pos ${pairAddr.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+      }
+    }
+  }
+  return out;
+}
+
 async function main() {
   const { data: wallets, error } = await sb
     .from("portfolio_wallets")
@@ -310,6 +410,7 @@ async function main() {
   // Agrupar por portfolio (una caché por portfolio y fuente).
   const kaminoByPortfolio = new Map();
   const orcaByPortfolio = new Map();
+  const meteoraByPortfolio = new Map();
   for (const w of wallets ?? []) {
     try {
       const positions = await kaminoPositions(w.portfolio_id, w.address);
@@ -327,6 +428,14 @@ async function main() {
     } catch (e) {
       console.error(`  Orca fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
     }
+    try {
+      const positions = await meteoraPositions(w.portfolio_id, w.address);
+      const cur = meteoraByPortfolio.get(w.portfolio_id) ?? [];
+      meteoraByPortfolio.set(w.portfolio_id, cur.concat(positions));
+      if (positions.length) console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Meteora`);
+    } catch (e) {
+      console.error(`  Meteora fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
+    }
   }
 
   for (const [portfolioId, positions] of kaminoByPortfolio) {
@@ -342,6 +451,17 @@ async function main() {
       .upsert({ portfolio_id: portfolioId, source: "orca_fees", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
     if (upErr) console.error(`  upsert orca_fees ${portfolioId.slice(0, 8)}: ${upErr.message}`);
     else console.log(`  ✅ orca_fees ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.unclaimedUsd ?? 0), 0).toFixed(2)} sin reclamar)`);
+  }
+  // Meteora: siempre se hace upsert (incluso 0 pos) para limpiar la caché al
+  // cerrar la última posición.
+  const meteoraPids = new Set([...meteoraByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
+  for (const portfolioId of meteoraPids) {
+    const positions = meteoraByPortfolio.get(portfolioId) ?? [];
+    const { error: upErr } = await sb
+      .from("onchain_cache")
+      .upsert({ portfolio_id: portfolioId, source: "meteora", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
+    if (upErr) console.error(`  upsert meteora ${portfolioId.slice(0, 8)}: ${upErr.message}`);
+    else if (positions.length) console.log(`  ✅ meteora ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
   }
   console.log("Done.");
 }
