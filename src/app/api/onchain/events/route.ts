@@ -40,8 +40,12 @@ const PROTOCOL_SLUGS: Record<string, string> = {
   bitcoin: "hold", // position_ref = address → `bitcoin:hold:${address}`
 };
 function eventOnchainId(ev: { chain: string; protocol: string; position_ref: string | null }): string | null {
+  if (!ev.position_ref) return null;
+  // El escáner de Solana emite ya el LivePosition.id completo como ref
+  // (p.ej. "solana:orca:MINT" o "solana:kamino:STRATEGY").
+  if (ev.position_ref.includes(":")) return ev.position_ref;
   const slug = PROTOCOL_SLUGS[ev.protocol.toLowerCase()];
-  if (!slug || !ev.position_ref) return null;
+  if (!slug) return null;
   return `${ev.chain}:${slug}:${ev.position_ref}`;
 }
 
@@ -140,6 +144,34 @@ async function performIngest(
   if (kind.startsWith("lending_") && positionType === "Liquidity Pool") positionType = "Lending";
   if (kind.startsWith("transfer_") && positionType === "Liquidity Pool") positionType = "Hold";
 
+  // ─── REINVERSIÓN DE HARVEST ────────────────────────────────────────────
+  // Un depósito poco después de un harvest de la MISMA posición y con valor
+  // similar es la reinversión del yield: se registra con la semántica manual
+  // auditada (metadata.source = "harvest_reinvest") para que el capital
+  // aportado NO se infle — el yield suma al valor, no al depositado.
+  let isReinvest = false;
+  if (kind === "deposit" && ev.block_time && ev.value_usd != null) {
+    try {
+      const windowStart = new Date(new Date(ev.block_time).getTime() - 45 * 60_000).toISOString();
+      const { data: recentHarvests } = await client
+        .from("onchain_events")
+        .select("id, value_usd")
+        .eq("portfolio_id", portfolioId)
+        .eq("kind", "harvest")
+        .eq("position_ref", ev.position_ref ?? "")
+        .in("status", ["ingested", "pending"])
+        .gte("block_time", windowStart)
+        .lte("block_time", ev.block_time);
+      const match = (recentHarvests ?? []).find((h) => {
+        const hv = Number(h.value_usd ?? 0);
+        return hv > 0 && Math.abs(Number(ev.value_usd) - hv) / hv <= 0.5;
+      });
+      if (match) isReinvest = true;
+    } catch {
+      /* sin detección: se registra como depósito normal */
+    }
+  }
+
   // Mismo grupo de operación → el botón "Deshacer" revierte la operación completa.
   const operationGroupId = crypto.randomUUID();
   const rows = usable.map((t) => ({
@@ -152,17 +184,21 @@ async function performIngest(
     token_out_amount: isOut ? t.amount : null,
     spot_price: t.priceUsd as number,
     fee_amount: 0,
-    notes: `${NOTE_LABEL[kind]} on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim(),
+    notes: `${isReinvest ? "Reinversión de harvest" : NOTE_LABEL[kind]} on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim(),
     transaction_date: timestamp,
     protocol,
     position_id: positionId,
     position_type: positionType,
     metadata: {
-      source: "onchain_ingest",
+      // harvest_reinvest: el motor contable lo excluye del capital aportado
+      // (isHarvestReinvestInternal) y consume el harvest pendiente.
+      source: isReinvest ? "harvest_reinvest" : "onchain_ingest",
+      onchainIngest: true,
       eventId: ev.id,
       txHash: ev.tx_hash,
       chain: ev.chain,
       nftId: ev.position_ref,
+      ...(isReinvest ? { sourcePositionId: positionId, sourceProtocol: protocol } : {}),
       ...(ADJUST_TYPE[kind] ? { adjustType: ADJUST_TYPE[kind] } : {}),
     },
   }));

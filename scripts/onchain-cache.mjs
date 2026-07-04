@@ -197,6 +197,27 @@ async function kaminoPositions(portfolioId, owner) {
     }
 
     const lab = labels[strategyAddr];
+
+    // SALDO por token: participación del usuario sobre las tenencias totales
+    // de la estrategia (invested + available) → cantidades de tokenA/tokenB.
+    let tokens = [];
+    try {
+      const state = await kamino.getStrategyByAddress(p.strategy);
+      const bal = await kamino.getStrategyBalances(state);
+      const issued = Number(state.sharesIssued) / 10 ** Number(state.sharesMintDecimals);
+      const frac = issued > 0 ? shares / issued : 0;
+      const totA = Number(bal.computedHoldings.invested.a) + Number(bal.computedHoldings.available.a);
+      const totB = Number(bal.computedHoldings.invested.b) + Number(bal.computedHoldings.available.b);
+      const aPrice = Number(bal.prices?.aPrice ?? 0);
+      const bPrice = Number(bal.prices?.bPrice ?? 0);
+      if (frac > 0 && lab) {
+        tokens = [
+          { symbol: lab.tokenA, amount: totA * frac, valueUsd: aPrice > 0 ? totA * frac * aPrice : null },
+          { symbol: lab.tokenB, amount: totB * frac, valueUsd: bPrice > 0 ? totB * frac * bPrice : null },
+        ];
+      }
+    } catch { /* mejor esfuerzo: sin saldo detallado */ }
+
     out.push({
       id: `solana:kamino:${strategyAddr}`,
       portfolioId,
@@ -206,7 +227,7 @@ async function kaminoPositions(portfolioId, owner) {
       protocol: `Kamino (${p.strategyDex ?? "—"})`,
       kind: "liquidity",
       label: lab ? `${lab.tokenA}/${lab.tokenB}` : "Kamino LP",
-      tokens: [],
+      tokens,
       valueUsd: shares * sharePrice || null,
       range,
       unclaimedUsd,

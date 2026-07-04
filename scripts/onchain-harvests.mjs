@@ -645,7 +645,12 @@ async function scanEvmTransfers(portfolioId, addr) {
   return found;
 }
 
-// Solana: transferencias parseadas vía Helius (gratis con la key existente).
+// ── Solana vía Helius: LP de Orca/Kamino + transferencias de holds ───────────
+// Un solo pase por el historial parseado, clasificando cada tx:
+//   COLLECT_FEES (Orca)                → harvest de la posición LP
+//   tx que toca Whirlpool / Kamino     → deposit/withdraw de LP (signo neto)
+//   TRANSFER / CCTP puro               → entrada/salida del hold
+//   SWAP y demás                       → se ignoran (movimiento interno)
 // Cursor = slot de la tx más reciente vista.
 const SOL_MINTS = {
   So11111111111111111111111111111111111111112: "SOL",
@@ -656,14 +661,49 @@ const SOL_MINTS = {
   JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN: "JUP",
   "4k3Dyjzvzp8eMZWUXbBCjEvwSkkk59S5iCNLY3QrkX6R": "RAY",
   orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE: "ORCA",
+  "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo": "PYUSD",
+  USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA: "USDS",
 };
+const WHIRLPOOL_PROGRAM = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+const KAMINO_LIQUIDITY_PROGRAM = "6LtLpnUFNByNXLyCoK9wA2MykKAmQNZKBdY8s47dehDc";
+
+// Posiciones LP de Solana conocidas del portfolio (de onchain_cache): para
+// casar cada evento LP con su posición viva → auto-asignación por enlaces.
+async function solanaLpPositions(portfolioId) {
+  const out = [];
+  try {
+    const { data } = await sb
+      .from("onchain_cache")
+      .select("source, positions")
+      .eq("portfolio_id", portfolioId)
+      .in("source", ["kamino", "snapshot"]);
+    for (const row of data ?? []) {
+      const list = row.source === "snapshot" ? row.positions?.positions ?? [] : row.positions ?? [];
+      for (const p of list) {
+        if (p.chain !== "solana" || p.kind !== "liquidity") continue;
+        const symbols = new Set(
+          String(p.label ?? "")
+            .split(/[/+·]/)
+            .map((s) => s.trim().toUpperCase())
+            .filter(Boolean),
+        );
+        if (symbols.size) out.push({ id: p.id, protocol: p.protocol ?? "Orca", label: p.label, symbols });
+      }
+    }
+  } catch { /* sin caché: eventos sin preasignar */ }
+  // De-dup por id (el snapshot puede repetir las kamino).
+  const seen = new Set();
+  return out.filter((p) => (seen.has(p.id) ? false : (seen.add(p.id), true)));
+}
+
 async function scanSolanaTransfers(portfolioId, addr) {
   const key = process.env.HELIUS_API_KEY;
   if (!key) return 0;
-  const res = await fetch(`https://api.helius.xyz/v0/addresses/${addr}/transactions?api-key=${key}&limit=100&type=TRANSFER`);
+  const res = await fetch(`https://api.helius.xyz/v0/addresses/${addr}/transactions?api-key=${key}&limit=100`);
   if (!res.ok) throw new Error(`Helius ${res.status}`);
   const txs = await res.json();
   const last = Number(await getScanCursor(portfolioId, "solana", "Wallet") ?? 0);
+  const lpPositions = await solanaLpPositions(portfolioId);
 
   let found = 0;
   let maxSlot = last;
@@ -673,6 +713,9 @@ async function scanSolanaTransfers(portfolioId, addr) {
     if (tx.transactionError) continue;
     if (maxSlot < slot) maxSlot = slot;
     const tsSec = Number(tx.timestamp ?? Math.floor(Date.now() / 1000));
+    const type = String(tx.type ?? "");
+    const source = String(tx.source ?? "");
+    const programs = new Set((tx.instructions ?? []).map((i) => i.programId));
 
     // Delta neto por token para la wallet en la tx.
     const net = new Map(); // mint|SOL → amount neto
@@ -687,7 +730,11 @@ async function scanSolanaTransfers(portfolioId, addr) {
       if (t.toUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) + amt);
       if (t.fromUserAccount === addr) net.set(t.mint, (net.get(t.mint) ?? 0) - amt);
     }
+    if (!net.size) continue;
 
+    // Tokens del delta con precio histórico.
+    const tokens = [];
+    let totalUsd = 0;
     for (const [mint, delta] of net) {
       const amount = Math.abs(delta);
       if (!(amount > 0)) continue;
@@ -696,19 +743,75 @@ async function scanSolanaTransfers(portfolioId, addr) {
       const price = isSol
         ? await llamaPrice("coingecko", "solana", tsSec)
         : await llamaPrice("solana", mint, tsSec);
-      if (price == null) continue; // sin precio conocido = casi seguro spam/airdrop
-      const kind = delta > 0 ? "transfer_in" : "transfer_out";
+      if (price == null) continue; // sin precio conocido = spam/airdrop/dust interno
+      const valueUsd = amount * price;
+      if (valueUsd < 0.5) continue; // polvo
+      tokens.push({ symbol, mint, delta, amount, priceUsd: price, valueUsd });
+      totalUsd += delta > 0 ? valueUsd : -valueUsd;
+    }
+    if (!tokens.length) continue;
+
+    const isOrcaCollect = type === "COLLECT_FEES";
+    const isLpTx =
+      isOrcaCollect ||
+      programs.has(WHIRLPOOL_PROGRAM) ||
+      programs.has(KAMINO_LIQUIDITY_PROGRAM) ||
+      source === "KAMINO_FARMS";
+
+    if (isLpTx) {
+      // ── Evento de LP: harvest / deposit / withdraw ─────────────────────
+      const kind = isOrcaCollect ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
+      const symbols = new Set(tokens.map((t) => t.symbol.toUpperCase()));
+      // Casar con la posición viva por conjunto de tokens (⊆).
+      const candidates = lpPositions.filter((p) => [...symbols].every((s) => p.symbols.has(s)));
+      const isOrca = isOrcaCollect || programs.has(WHIRLPOOL_PROGRAM);
+      const byProtocol = candidates.filter((p) =>
+        isOrca ? p.protocol.toLowerCase().includes("orca") && !p.protocol.toLowerCase().includes("kamino") : p.protocol.toLowerCase().includes("kamino"),
+      );
+      const match = byProtocol.length === 1 ? byProtocol[0] : candidates.length === 1 ? candidates[0] : null;
+
+      const evTokens = tokens.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd }));
+      const valueUsd = evTokens.reduce((s, t) => s + t.valueUsd, 0);
+      if (valueUsd < 0.5) continue;
+      const { error } = await sb.from("onchain_events").upsert({
+        portfolio_id: portfolioId,
+        event_key: `solana:${tx.signature}:${kind}`,
+        kind,
+        chain: "solana",
+        protocol: match?.protocol ?? (isOrca ? "Orca" : "Kamino"),
+        wallet_address: addr,
+        // ref = LivePosition.id completo → el endpoint lo usa tal cual para
+        // casar con position_links (auto-asignación y auto-ingesta).
+        position_ref: match?.id ?? null,
+        label: match?.label ?? [...symbols].join("/"),
+        tokens: evTokens,
+        value_usd: valueUsd,
+        block_time: new Date(tsSec * 1000).toISOString(),
+        tx_hash: tx.signature ?? null,
+        includes_principal: false,
+      }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+      if (error) console.error(`  insert lp solana: ${error.message}`);
+      else found++;
+      continue;
+    }
+
+    // ── Transferencias del hold (entrada/salida pura de la wallet) ────────
+    const isPlainTransfer = type === "TRANSFER" || source.startsWith("CIRCLE_CCTP") || type === "RECEIVE_MESSAGE";
+    if (!isPlainTransfer) continue; // SWAP y otros DeFi: movimiento interno
+
+    for (const t of tokens) {
+      const kind = t.delta > 0 ? "transfer_in" : "transfer_out";
       const ok = await insertTransferEvent({
         portfolioId,
-        eventKey: `solana:${tx.signature}:${mint}:${kind}`,
+        eventKey: `solana:${tx.signature}:${t.mint}:${kind}`,
         kind,
         chain: "solana",
         protocol: "Wallet",
         walletAddr: addr,
-        positionRef: isSol ? "SOL" : mint, // hold id = `solana:hold:${mint ?? symbol}`
-        symbol,
-        amount,
-        price,
+        positionRef: t.mint === "SOL" ? "SOL" : t.mint, // hold id = `solana:hold:${mint}`
+        symbol: t.symbol,
+        amount: t.amount,
+        price: t.priceUsd,
         tsSec,
         txHash: tx.signature ?? null,
       });

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { BadgeDollarSign, Layers, TrendingDown, TrendingUp } from "lucide-react";
 import type { LivePosition, ManualPositionRef } from "./OnchainLivePanel";
 
@@ -208,14 +209,79 @@ function MobilePositionCard({ p, m, showRange }: { p: LivePosition; m: RowMetric
   );
 }
 
+/**
+ * Adopción inline: cuando una posición no tiene base contable, el gestor
+ * escribe cuánto depositó ahí mismo (celda DEPOSITADO) y la posición queda
+ * sellada y en automático. Sustituye a la antigua sección de conciliación.
+ */
+function AdoptInline({ p, portfolioId }: { p: LivePosition; portfolioId: string }) {
+  const [usd, setUsd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+
+  async function adopt() {
+    const deposited = Number(usd.replace(",", "."));
+    if (!Number.isFinite(deposited) || deposited <= 0) return;
+    setBusy(true);
+    setError(false);
+    try {
+      const res = await fetch("/api/onchain/adopt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          portfolioId,
+          onchainId: p.id,
+          protocol: p.protocol ?? "Wallet",
+          label: p.label,
+          kind: p.kind,
+          tokens: (p.tokens ?? []).map((t) => ({ symbol: t.symbol, amount: Math.abs(t.amount), valueUsd: t.valueUsd })),
+          depositedUsd: deposited,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      window.location.reload();
+    } catch {
+      setError(true);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1" title="Indica cuánto depositaste al abrir esta posición: sella su base y calcula ganancia/pérdida desde ahí. Queda en automático.">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={usd}
+        onChange={(e) => setUsd(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") void adopt(); }}
+        placeholder="$ depositado"
+        className={`w-[92px] rounded-md border bg-transparent px-2 py-1 font-mono text-xs text-[var(--foreground)] placeholder:text-[var(--faint)] ${error ? "border-[var(--loss)]" : "border-[var(--line)]"}`}
+      />
+      <button
+        type="button"
+        onClick={adopt}
+        disabled={busy || !usd.trim()}
+        className="rounded-md border border-[var(--line)] px-1.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[rgba(111,174,143,0.45)] hover:text-[var(--accent-primary)] disabled:opacity-40"
+        aria-label="Adoptar posición con este depositado"
+      >
+        {busy ? "…" : "✓"}
+      </button>
+    </span>
+  );
+}
+
 export function OnchainSections({
   positions,
   links,
   manualPositions,
+  portfolioId = "",
+  canManage = false,
 }: {
   positions: LivePosition[];
   links: OnchainLinkRow[];
   manualPositions: ManualPositionRef[];
+  portfolioId?: string;
+  canManage?: boolean;
 }) {
   const total = positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0);
   const manualByKey = new Map(manualPositions.map((m) => [`${m.protocol}::${m.positionId}`, m]));
@@ -316,9 +382,15 @@ export function OnchainSections({
                           )}
                         </td>
 
-                        {/* DEPOSITADO */}
+                        {/* DEPOSITADO — sin base contable: adopción inline */}
                         <td className="px-4 py-4 value-emphasis text-sm">
-                          {deposited != null ? currency(deposited) : <span className="text-xs text-[var(--muted)]">—</span>}
+                          {deposited != null ? (
+                            currency(deposited)
+                          ) : canManage && portfolioId ? (
+                            <AdoptInline p={p} portfolioId={portfolioId} />
+                          ) : (
+                            <span className="text-xs text-[var(--muted)]">—</span>
+                          )}
                         </td>
 
                         {/* VALOR ACTUAL */}
