@@ -59,25 +59,81 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(depositedUsd) || depositedUsd <= 0) {
     return NextResponse.json({ error: "Indica el depositado en USD (> 0)." }, { status: 400 });
   }
+
+  const client = getClient();
+
+  // EDICIÓN: si la posición ya está enlazada, el gestor corrige la base.
+  const { data: linked } = await client
+    .from("position_links")
+    .select("id, position_id")
+    .eq("portfolio_id", portfolioId)
+    .eq("onchain_id", onchainId)
+    .maybeSingle();
+  if (linked) {
+    // ¿La base viene de una ADOPCIÓN manual (no de eventos reales)? Entonces
+    // el depositado corregido debe REEMPLAZAR esas filas para que fluya al
+    // Total Depositado del portfolio, al % y al P&L global — como pide el
+    // cliente. Si no hay filas de adopción (la base son eventos reales
+    // on-chain), no reescribimos el libro: guardamos solo el override de vista.
+    const { data: adoptRows } = await client
+      .from("transactions")
+      .select("id, token_in_symbol, token_in_amount, metadata")
+      .eq("portfolio_id", portfolioId)
+      .eq("position_id", linked.position_id as string)
+      .is("deleted_at", null)
+      .contains("metadata", { source: "onchain_adopt" });
+
+    if (adoptRows && adoptRows.length > 0) {
+      // Reparto proporcional a las cantidades ya registradas (los tokens no
+      // cambian; solo se re-sella el precio de entrada implícito).
+      const totalAmt = adoptRows.reduce((s, r) => s + Math.abs(Number(r.token_in_amount ?? 0)), 0);
+      const nowIso = new Date().toISOString();
+      const newGroup = crypto.randomUUID();
+      const rows = adoptRows.map((r) => {
+        const amt = Math.abs(Number(r.token_in_amount ?? 0));
+        const share = totalAmt > 0 ? amt / totalAmt : 1 / adoptRows.length;
+        const entryPrice = amt > 0 ? (depositedUsd * share) / amt : 0;
+        return {
+          portfolio_id: portfolioId,
+          type: (TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet).txType,
+          operation_group_id: newGroup,
+          token_in_symbol: r.token_in_symbol,
+          token_in_amount: amt,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: entryPrice,
+          fee_amount: 0,
+          notes: `Corrección de depositado (${depositedUsd.toFixed(2)}$) — base re-sellada por el gestor.`,
+          transaction_date: nowIso,
+          protocol: (body.protocol ?? "Wallet").trim() || "Wallet",
+          position_id: linked.position_id as string,
+          position_type: (TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet).positionType,
+          metadata: { source: "onchain_adopt", onchainId, depositedUsd },
+        };
+      });
+      // Soft-delete de las filas de adopción anteriores + alta de las nuevas.
+      await client.from("transactions").update({ deleted_at: nowIso }).in("id", adoptRows.map((r) => r.id));
+      const { error: insErr } = await client.from("transactions").insert(rows);
+      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+
+    // Override de vista (mejor esfuerzo; para posiciones de eventos reales es
+    // el único efecto). Si la columna no existe aún, no rompe la edición.
+    await client
+      .from("position_links")
+      .update({ deposited_override_usd: depositedUsd })
+      .eq("portfolio_id", portfolioId)
+      .eq("onchain_id", onchainId)
+      .then(() => undefined, () => undefined);
+    return NextResponse.json({ ok: true, updated: true, depositedUsd, rewroteBase: (adoptRows?.length ?? 0) > 0 });
+  }
+
   if (!tokens.length) return NextResponse.json({ error: "La posición no tiene tokens que adoptar." }, { status: 400 });
 
   const mapping = TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet;
   const protocol = (body.protocol ?? "Wallet").trim() || "Wallet";
   const label = (body.label ?? "posicion").toString();
   const positionId = `${label.replace(/[^\w/.-]+/g, "-")}-${onchainId.slice(-24).replace(/[^\w-]+/g, "-")}`;
-
-  const client = getClient();
-
-  // Evitar adopciones duplicadas: si ya existe enlace para este onchain_id, fuera.
-  const { data: existing } = await client
-    .from("position_links")
-    .select("id")
-    .eq("portfolio_id", portfolioId)
-    .eq("onchain_id", onchainId)
-    .maybeSingle();
-  if (existing) {
-    return NextResponse.json({ error: "Esta posición ya está enlazada a la contabilidad." }, { status: 409 });
-  }
 
   // Reparto del depositado entre tokens: proporcional a su valor actual
   // (o a partes iguales si no hay valores). El precio de entrada implícito
@@ -113,7 +169,10 @@ export async function POST(request: NextRequest) {
   const { error: txErr } = await client.from("transactions").insert(rows);
   if (txErr) return NextResponse.json({ error: `No se pudo crear la posición: ${txErr.message}` }, { status: 500 });
 
-  // Enlace con auto_ingest: desde ya, sus eventos se contabilizan solos.
+  // Enlace con auto_ingest: desde ya, sus eventos se contabilizan solos. No
+  // guardamos deposited_override_usd aquí: la base ya vive en las
+  // transacciones de adopción (fluye al Total Depositado del portfolio), y la
+  // columna override podría no existir todavía (migración phase27).
   const { error: linkErr } = await client.from("position_links").upsert(
     {
       portfolio_id: portfolioId,

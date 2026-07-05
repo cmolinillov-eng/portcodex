@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BadgeDollarSign, Layers, TrendingDown, TrendingUp } from "lucide-react";
+import { BadgeDollarSign, Layers, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 import type { LivePosition, ManualPositionRef } from "./OnchainLivePanel";
 
 /**
@@ -20,6 +20,8 @@ export type OnchainLinkRow = {
   position_id: string;
   position_type: string;
   auto_ingest?: boolean;
+  /** Depositado manual del gestor: manda sobre la base contable derivada. */
+  deposited_override_usd?: number | null;
 };
 
 const SECTION_META: Record<string, { label: string; color: string; glowClass: string; kinds: string[] }> = {
@@ -143,13 +145,21 @@ type RowMetrics = {
   hf: number | null;
 };
 
-/** Métricas derivadas de una posición (compartidas por tabla y tarjeta móvil). */
-function computeMetrics(p: LivePosition, manual: ManualPositionRef | null, total: number): RowMetrics {
+/** Métricas derivadas de una posición (compartidas por tabla y tarjeta móvil).
+ *  `override` es el depositado manual del gestor: si existe, manda sobre la
+ *  base contable derivada (columna DEPOSITADO / P&L). */
+function computeMetrics(
+  p: LivePosition,
+  manual: ManualPositionRef | null,
+  total: number,
+  override: number | null = null,
+): RowMetrics {
   const onchainAmount = p.tokens?.[0]?.amount ?? null;
-  const deposited =
+  const derived =
     p.kind === "wallet" && manual?.averageEntryPrice && onchainAmount != null && manual.averageEntryPrice > 0
       ? manual.averageEntryPrice * Math.abs(onchainAmount)
       : manual?.depositedValue ?? null;
+  const deposited = override != null && Number.isFinite(override) && override > 0 ? override : derived;
   const value = p.valueUsd ?? 0;
   const pnl = deposited != null && deposited > 0 ? value - deposited : null;
   const roi = pnl != null && deposited ? (pnl / deposited) * 100 : null;
@@ -159,7 +169,19 @@ function computeMetrics(p: LivePosition, manual: ManualPositionRef | null, total
 }
 
 /** Fila colapsada en tarjeta para móvil (≤ md), como la pantalla 390 del mockup. */
-function MobilePositionCard({ p, m, showRange }: { p: LivePosition; m: RowMetrics; showRange: boolean }) {
+function MobilePositionCard({
+  p,
+  m,
+  showRange,
+  portfolioId,
+  canManage,
+}: {
+  p: LivePosition;
+  m: RowMetrics;
+  showRange: boolean;
+  portfolioId: string;
+  canManage: boolean;
+}) {
   return (
     <div className="border-t border-[var(--line)] px-4 py-4 first:border-t-0">
       {/* Fila 1: activo + protocolo (izq) · valor + P&L (der) */}
@@ -182,9 +204,17 @@ function MobilePositionCard({ p, m, showRange }: { p: LivePosition; m: RowMetric
         </div>
       </div>
 
-      {/* Fila 2: depositado · asignación · yield, en mono tenue */}
+      {/* Depositado: editable (alta o corrección) también en móvil */}
+      {canManage && portfolioId ? (
+        <div className="mt-2 flex items-center gap-2 text-[11px] text-[var(--muted)]">
+          <span className="font-mono">dep</span>
+          <DepositedCell p={p} portfolioId={portfolioId} deposited={m.deposited} canManage={canManage} />
+        </div>
+      ) : null}
+
+      {/* Fila 2: asignación · yield, en mono tenue */}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 font-mono text-[11px] text-[var(--muted)] tabular-nums">
-        {m.deposited != null ? (
+        {!canManage && m.deposited != null ? (
           <span>dep <span className="text-[var(--ink-2)]">{currency(m.deposited)}</span></span>
         ) : null}
         <span>asig <span className="text-[var(--ink-2)]">{m.allocation.toFixed(2)}%</span></span>
@@ -214,8 +244,19 @@ function MobilePositionCard({ p, m, showRange }: { p: LivePosition; m: RowMetric
  * escribe cuánto depositó ahí mismo (celda DEPOSITADO) y la posición queda
  * sellada y en automático. Sustituye a la antigua sección de conciliación.
  */
-function AdoptInline({ p, portfolioId }: { p: LivePosition; portfolioId: string }) {
-  const [usd, setUsd] = useState("");
+function AdoptInline({
+  p,
+  portfolioId,
+  initial = null,
+  onCancel,
+}: {
+  p: LivePosition;
+  portfolioId: string;
+  /** Valor previo a corregir (edición); vacío = alta nueva. */
+  initial?: number | null;
+  onCancel?: () => void;
+}) {
+  const [usd, setUsd] = useState(initial != null && initial > 0 ? String(Math.round(initial * 100) / 100) : "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
 
@@ -247,13 +288,17 @@ function AdoptInline({ p, portfolioId }: { p: LivePosition; portfolioId: string 
   }
 
   return (
-    <span className="inline-flex items-center gap-1" title="Indica cuánto depositaste al abrir esta posición: sella su base y calcula ganancia/pérdida desde ahí. Queda en automático.">
+    <span className="inline-flex items-center gap-1" title="Indica cuánto depositaste al abrir esta posición: fija su base y calcula ganancia/pérdida desde ahí. Puedes corregirlo cuando quieras.">
       <input
         type="text"
         inputMode="decimal"
         value={usd}
+        autoFocus={initial != null}
         onChange={(e) => setUsd(e.target.value)}
-        onKeyDown={(e) => { if (e.key === "Enter") void adopt(); }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") void adopt();
+          if (e.key === "Escape") onCancel?.();
+        }}
         placeholder="$ depositado"
         className={`w-[92px] rounded-md border bg-transparent px-2 py-1 font-mono text-xs text-[var(--foreground)] placeholder:text-[var(--faint)] ${error ? "border-[var(--loss)]" : "border-[var(--line)]"}`}
       />
@@ -262,10 +307,70 @@ function AdoptInline({ p, portfolioId }: { p: LivePosition; portfolioId: string 
         onClick={adopt}
         disabled={busy || !usd.trim()}
         className="rounded-md border border-[var(--line)] px-1.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[rgba(111,174,143,0.45)] hover:text-[var(--accent-primary)] disabled:opacity-40"
-        aria-label="Adoptar posición con este depositado"
+        aria-label="Guardar depositado de esta posición"
       >
         {busy ? "…" : "✓"}
       </button>
+      {onCancel ? (
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-md border border-[var(--line)] px-1.5 py-1 text-xs text-[var(--muted)] transition-colors hover:text-[var(--foreground)] disabled:opacity-40"
+          aria-label="Cancelar edición del depositado"
+        >
+          ✕
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * Celda DEPOSITADO: muestra el valor con un lápiz para corregirlo, o el input
+ * de alta si aún no hay base. El gestor puede fijar/editar el depositado en
+ * CUALQUIER posición; sin permiso de gestión solo se ve el valor.
+ */
+function DepositedCell({
+  p,
+  portfolioId,
+  deposited,
+  canManage,
+}: {
+  p: LivePosition;
+  portfolioId: string;
+  deposited: number | null;
+  canManage: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const editable = canManage && !!portfolioId;
+
+  if (deposited == null) {
+    return editable ? (
+      <AdoptInline p={p} portfolioId={portfolioId} />
+    ) : (
+      <span className="text-xs text-[var(--muted)]">—</span>
+    );
+  }
+
+  if (editing) {
+    return <AdoptInline p={p} portfolioId={portfolioId} initial={deposited} onCancel={() => setEditing(false)} />;
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="tabular-nums">{currency(deposited)}</span>
+      {editable ? (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-[var(--muted)] transition-colors hover:text-[var(--accent-primary)]"
+          aria-label="Corregir depositado de esta posición"
+          title="Corregir el depositado"
+        >
+          <Pencil className="h-3 w-3" aria-hidden="true" />
+        </button>
+      ) : null}
     </span>
   );
 }
@@ -292,6 +397,12 @@ export function OnchainSections({
     const link = linkByOnchain.get(p.id);
     if (!link) return null;
     return manualByKey.get(`${link.protocol}::${link.position_id}`) ?? null;
+  }
+
+  /** Depositado manual del gestor (override): manda sobre la base derivada. */
+  function overrideOf(p: LivePosition): number | null {
+    const v = linkByOnchain.get(p.id)?.deposited_override_usd;
+    return v != null && Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : null;
   }
 
   const sections = Object.entries(SECTION_META)
@@ -330,7 +441,14 @@ export function OnchainSections({
             {/* Móvil: tarjetas apiladas (≤ md) */}
             <div className="rounded-[1rem] border border-[var(--glass-border)] md:hidden">
               {rows.map((p) => (
-                <MobilePositionCard key={p.id} p={p} m={computeMetrics(p, linkedManual(p), total)} showRange={isPools} />
+                <MobilePositionCard
+                  key={p.id}
+                  p={p}
+                  m={computeMetrics(p, linkedManual(p), total, overrideOf(p))}
+                  showRange={isPools}
+                  portfolioId={portfolioId}
+                  canManage={canManage}
+                />
               ))}
             </div>
 
@@ -353,7 +471,7 @@ export function OnchainSections({
                 </thead>
                 <tbody>
                   {rows.map((p) => {
-                    const { deposited, harvested, value, pnl, roi, allocation, hf } = computeMetrics(p, linkedManual(p), total);
+                    const { deposited, harvested, value, pnl, roi, allocation, hf } = computeMetrics(p, linkedManual(p), total, overrideOf(p));
 
                     return (
                       <tr key={p.id} className="border-t border-[var(--line)]">
@@ -382,15 +500,9 @@ export function OnchainSections({
                           )}
                         </td>
 
-                        {/* DEPOSITADO — sin base contable: adopción inline */}
+                        {/* DEPOSITADO — editable en toda posición (alta o corrección) */}
                         <td className="px-4 py-4 value-emphasis text-sm">
-                          {deposited != null ? (
-                            currency(deposited)
-                          ) : canManage && portfolioId ? (
-                            <AdoptInline p={p} portfolioId={portfolioId} />
-                          ) : (
-                            <span className="text-xs text-[var(--muted)]">—</span>
-                          )}
+                          <DepositedCell p={p} portfolioId={portfolioId} deposited={deposited} canManage={canManage} />
                         </td>
 
                         {/* VALOR ACTUAL */}

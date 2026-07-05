@@ -15,6 +15,7 @@ type LinkRow = {
   position_id: string;
   position_type: string;
   auto_ingest: boolean;
+  deposited_override_usd?: number | null;
 };
 
 function getClient() {
@@ -27,11 +28,26 @@ export async function GET(request: NextRequest) {
   const check = ensurePortfolioAccess(access, portfolioId, false);
   if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
 
-  const { data, error } = await getClient()
-    .from("position_links")
-    .select("id, onchain_id, protocol, position_id, position_type, auto_ingest")
-    .eq("portfolio_id", portfolioId);
-  if (error) {
+  const client = getClient();
+  const cols = "id, onchain_id, protocol, position_id, position_type, auto_ingest, deposited_override_usd";
+  let data: LinkRow[] | null = null;
+  let hadError = false;
+  {
+    const res = await client.from("position_links").select(cols).eq("portfolio_id", portfolioId);
+    if (res.error) {
+      // Columna deposited_override_usd sin crear (migración phase27 pendiente):
+      // reintenta sin ella para no perder los enlaces existentes.
+      const fallback = await client
+        .from("position_links")
+        .select("id, onchain_id, protocol, position_id, position_type, auto_ingest")
+        .eq("portfolio_id", portfolioId);
+      data = (fallback.data ?? null) as LinkRow[] | null;
+      hadError = !!fallback.error;
+    } else {
+      data = (res.data ?? null) as LinkRow[] | null;
+    }
+  }
+  if (hadError) {
     // Tabla sin crear (migración pendiente): sin enlaces, no error.
     return NextResponse.json({ links: [] });
   }
