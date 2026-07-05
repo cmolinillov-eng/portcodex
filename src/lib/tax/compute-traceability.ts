@@ -34,6 +34,10 @@ export interface TraceabilityResult {
   /** Origen del tipo de cambio: histórico por fecha (BCE), actual, o
    *  constante de emergencia (mostrar aviso en la UI si es "fallback"). */
   fxSource: "historical" | "current" | "fallback";
+  /** Operaciones con valor (venta/retirada/depósito/harvest con cantidad) que
+   *  NO se pudieron valorar por falta de precio → quedan fuera del cómputo
+   *  fiscal. Si > 0, la UI avisa para que no desaparezcan en silencio. */
+  unpricedCount: number;
 }
 
 function getClient(): SupabaseClient {
@@ -66,7 +70,7 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
   }
 
   if (!rows || rows.length === 0) {
-    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0, fxSource: "current" };
+    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0, fxSource: "current", unpricedCount: 0 };
   }
 
   // Catálogo fiscal de custodios desde BD (las clasificaciones hechas por el
@@ -147,5 +151,12 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
   }
   const walletSummary = Array.from(walletCounter.values()).sort((a, b) => b.count - a.count);
 
-  return { entries, walletSummary, eurRate, total: entries.length, fxSource };
+  // Operaciones con cantidad pero sin precio → no valorables (fuera del cómputo).
+  const VALUE_TYPES = new Set(["deposit", "withdrawal", "staking_deposit", "staking_withdrawal", "lending_supply", "lending_withdraw", "lp_deposit", "lp_withdraw", "harvest"]);
+  const unpricedCount = inputs.filter((t) => {
+    const amount = Math.abs(Number(t.tokenInAmount ?? t.tokenOutAmount ?? 0));
+    return VALUE_TYPES.has((t.type ?? "").trim().toLowerCase()) && amount > 0 && Number(t.spotPriceUsd ?? 0) <= 0;
+  }).length;
+
+  return { entries, walletSummary, eurRate, total: entries.length, fxSource, unpricedCount };
 }

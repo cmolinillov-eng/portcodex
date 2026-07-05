@@ -43,7 +43,7 @@ export default async function ResumenFiscalPage({
     );
   }
 
-  const { entries, fxSource } = await computeTraceability(portfolioId);
+  const { entries, fxSource, unpricedCount } = await computeTraceability(portfolioId);
 
   // El Modelo 100 es ANUAL: agregamos solo el ejercicio seleccionado.
   // El FIFO ya corrió sobre TODO el histórico (las bases vienen bien);
@@ -121,6 +121,12 @@ export default async function ResumenFiscalPage({
         {fxSource === "fallback" ? (
           <p className="rounded-lg border border-[rgba(201,164,94,0.4)] bg-[rgba(201,164,94,0.08)] px-4 py-2.5 text-xs text-amber-300">
             ⚠️ No se pudo obtener el tipo de cambio EUR/USD (ni histórico ni actual): los importes usan un tipo aproximado. Reintenta más tarde antes de exportar.
+          </p>
+        ) : null}
+
+        {unpricedCount > 0 ? (
+          <p className="rounded-lg border border-[rgba(201,164,94,0.4)] bg-[rgba(201,164,94,0.08)] px-4 py-2.5 text-xs text-amber-300">
+            ⚠️ {unpricedCount} operación{unpricedCount !== 1 ? "es" : ""} con cantidad pero sin precio no se {unpricedCount !== 1 ? "han podido" : "ha podido"} valorar y {unpricedCount !== 1 ? "quedan" : "queda"} fuera del cómputo fiscal. Revísalas en Operaciones antes de declarar.
           </p>
         ) : null}
 

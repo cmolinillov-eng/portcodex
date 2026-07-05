@@ -657,7 +657,11 @@ async function scanEvmTransfers(portfolioId, addr) {
       if (ok) found++;
     }
   }
-  if (maxTs > last) await setScanCursor(portfolioId, "evm", "Wallet", maxTs);
+  // Cursor 1s por debajo del máximo: el timestamp EVM (segundos) no es único,
+  // así que dos transferencias en el mismo segundo podrían perderse si el
+  // cursor las deja justo en el borde. Reprocesar ese segundo es seguro
+  // (event_key idempotente por hash+índice → no duplica).
+  if (maxTs > last) await setScanCursor(portfolioId, "evm", "Wallet", maxTs - 1);
   return found;
 }
 
