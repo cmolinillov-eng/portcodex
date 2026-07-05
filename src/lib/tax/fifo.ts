@@ -46,8 +46,14 @@ export function applyFifo(
   tokenSymbol: string,
   amountToConsume: number,
   allLots: TaxLot[],
+  // Fecha de la operación que consume los lotes. Se usa como exhaustedAt para
+  // que el cómputo sea DETERMINISTA entre ejecuciones (antes se usaba
+  // new Date() → informes/trazas no reproducibles). Fallback defensivo al
+  // reloj solo si el caller no la pasa.
+  consumedAt?: string,
 ): FifoResult {
   const upper = tokenSymbol.trim().toUpperCase();
+  const exhaustedStamp = consumedAt ?? new Date().toISOString();
 
   if (amountToConsume <= EPSILON) {
     return {
@@ -104,7 +110,7 @@ export function applyFifo(
         lotId: lot.id,
         newAmount: 0,
         newCostBasisEur: 0,
-        exhaustedAt: new Date().toISOString(),
+        exhaustedAt: exhaustedStamp,
       });
     } else {
       // Consumir parcialmente: pro-rata

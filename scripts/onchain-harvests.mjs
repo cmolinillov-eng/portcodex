@@ -800,18 +800,21 @@ async function scanSolanaTransfers(portfolioId, addr) {
 
     if (isLpTx) {
       // ── Evento de LP: harvest / deposit / withdraw ─────────────────────
-      // Helius NO parsea las tx de Meteora (type=UNKNOWN): un cobro de fees y
-      // una retirada de principal se ven igual (dinero entrante). Por eso los
-      // HARVESTS de Meteora los detecta el worker de caché comparando las
-      // fees cobradas acumuladas (fiable). Aquí, para Meteora, solo emitimos
-      // DEPÓSITOS (dinero saliente = añadir liquidez); el money-in se ignora
-      // para no confundir un claim con una retirada.
-      if (isMeteora && totalUsd >= 0) continue;
+      // Helius NO parsea las tx de Kamino ni Meteora (type=UNKNOWN): un cobro
+      // de fees/recompensas y una retirada de principal se ven IGUAL (dinero
+      // entrante). Clasificar money-in por signo confundiría un harvest con una
+      // retirada (y viceversa) → contabilidad corrupta. Por eso, para Kamino y
+      // Meteora, el escáner SOLO emite DEPÓSITOS (money-out = añadir liquidez);
+      // sus harvests y retiradas los detecta el worker de caché comparando
+      // estado de posición entre lecturas (delta de fees cobradas / caída de
+      // principal), que es la señal fiable. Orca SÍ separa COLLECT_FEES (harvest)
+      // de la retirada, así que su money-in es fiable y se clasifica por signo.
+      const isOrca = isOrcaCollect || programs.has(WHIRLPOOL_PROGRAM);
+      if (!isOrca && totalUsd >= 0) continue;
       const kind = isOrcaCollect ? "harvest" : totalUsd < 0 ? "deposit" : "withdraw";
       const symbols = new Set(tokens.map((t) => t.symbol.toUpperCase()));
       // Casar con la posición viva por conjunto de tokens (⊆).
       const candidates = lpPositions.filter((p) => [...symbols].every((s) => p.symbols.has(s)));
-      const isOrca = isOrcaCollect || programs.has(WHIRLPOOL_PROGRAM);
       const protoNeedle = isOrca ? "orca" : isMeteora ? "meteora" : "kamino";
       const byProtocol = candidates.filter((p) => p.protocol.toLowerCase().includes(protoNeedle));
       const match = byProtocol.length === 1 ? byProtocol[0] : candidates.length === 1 ? candidates[0] : null;

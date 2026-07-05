@@ -110,6 +110,7 @@ export async function capturePortfolioSnapshot({
 
   // 3. Acumular balances por (positionKey, symbol), totalDeposited, pendingHarvest, realizedPnl
   const balanceByPositionSymbol = new Map<string, { symbol: string; balance: number; positionType: string }>();
+  const debtByToken = new Map<string, number>(); // deuda de lending por token (resta al valor neto)
   let totalDepositedUsd = 0;
   let pendingHarvestUsd = 0;
   let realizedPnlUsd = 0;
@@ -226,6 +227,22 @@ export async function capturePortfolioSnapshot({
       }
       continue;
     }
+
+    // DEUDA (Aave y similares): pedir prestado (token_in) crea pasivo; repagar
+    // (token_out) lo reduce. El valor NETO del portfolio es colateral − deuda,
+    // igual que en el dashboard. Sin esto, la curva de evolución sobrevalora
+    // las posiciones con deuda por el importe del préstamo.
+    if (txType === "lending_borrow") {
+      if (inSymbol && inAmount > 0) {
+        const cur = debtByToken.get(inSymbol) ?? 0;
+        debtByToken.set(inSymbol, cur + inAmount);
+      }
+      if (outSymbol && outAmount > 0) {
+        const cur = debtByToken.get(outSymbol) ?? 0;
+        debtByToken.set(outSymbol, cur - outAmount);
+      }
+      continue;
+    }
   }
 
   // 4. Calcular total_value_usd sumando balances * precio actual + ajustar pendingHarvest neto
@@ -245,6 +262,15 @@ export async function capturePortfolioSnapshot({
           ? "Liquidity Pool"
           : "Hold";
     composition[bucket] = (composition[bucket] ?? 0) + value;
+  }
+  // Restar la deuda de lending: el valor neto es colateral − deuda (coherente
+  // con el dashboard). También ajusta el bucket Lending de la composición.
+  for (const [symbol, amount] of debtByToken.entries()) {
+    if (amount <= 0) continue;
+    const debtValue = amount * spotPriceFor(symbol);
+    if (debtValue <= 0) continue;
+    totalValueUsd -= debtValue;
+    composition["Lending"] = (composition["Lending"] ?? 0) - debtValue;
   }
   // Pending harvest neto (≥ 0): suma de pendientes por símbolo a precio actual
   let netPendingHarvest = 0;

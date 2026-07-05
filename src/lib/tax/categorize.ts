@@ -558,7 +558,7 @@ function handleWithdrawal(
 
   // ─── CASO A: Venta real (CEX, broker, payment app) ──────────────────────
   if (category === "sell") {
-    const fifo = applyFifo(symbol, amount, currentLots);
+    const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
     const realizedGainEur = calculateRealizedGain(valueEur, fifo.consumedCostEur);
 
     const notes = fifo.insufficientLots
@@ -912,7 +912,7 @@ function applyReinvestSwapLegs(
     let uncoveredNote = "";
     const soldParts: string[] = [];
     for (const leg of swapLegs) {
-      const fifo = applyFifo(leg.soldSymbol, leg.soldAmount, currentLots);
+      const fifo = applyFifo(leg.soldSymbol, leg.soldAmount, currentLots, tx.transactionDate);
       lotUpdates.push(...fifo.lotUpdates);
       const uncovered = Math.max(0, leg.soldAmount - fifo.consumedAmount);
       const uncoveredEur = roundEur(usdToEur(uncovered * leg.soldPriceUsd, rate));
@@ -1096,7 +1096,7 @@ function handleLpWithdraw(
   // base fantasma sistemática). La parte no cubierta por lotes (tokens
   // aparecidos por IL o cuya base entró vía rebalanceo con depositedDelta)
   // se valora a FMV y queda anotada para revisión.
-  const fifo = applyFifo(symbol, amount, currentLots);
+  const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
   const uncoveredAmount = Math.max(0, amount - fifo.consumedAmount);
   const uncoveredEur = roundEur(usdToEur(uncoveredAmount * spotUsd, rate));
   const carriedBasisEur = roundEur(fifo.consumedCostEur + uncoveredEur);
