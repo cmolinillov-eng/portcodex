@@ -3,6 +3,13 @@
 import { useState } from "react";
 import { BadgeDollarSign, Layers, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 import type { LivePosition, ManualPositionRef } from "./OnchainLivePanel";
+import { useMoneyFormatters } from "../utils/currency-context";
+
+/** currency() ligada a la moneda activa (€/$). Null-safe como la de módulo. */
+function useCurrencyFmt() {
+  const { fmtMoney } = useMoneyFormatters();
+  return (n: number | null | undefined) => (n == null ? "—" : fmtMoney(n));
+}
 
 /**
  * Secciones on-chain con la MISMA presentación que las tarjetas manuales
@@ -32,8 +39,6 @@ const SECTION_META: Record<string, { label: string; color: string; glowClass: st
   other: { label: "Otros", color: "#6FAE8F", glowClass: "text-[#6FAE8F]", kinds: ["perp", "other"] },
 };
 
-const currency = (n: number | null | undefined) =>
-  n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
 function formatTokenAmount(amount: number): string {
   if (amount >= 1000) return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
@@ -189,6 +194,7 @@ function MobilePositionCard({
   portfolioId: string;
   canManage: boolean;
 }) {
+  const currency = useCurrencyFmt();
   return (
     <div className="border-t border-[var(--line)] px-4 py-4 first:border-t-0">
       {/* Fila 1: activo + protocolo (izq) · valor + P&L (der) */}
@@ -352,6 +358,7 @@ function DepositedCell({
   deposited: number | null;
   canManage: boolean;
 }) {
+  const currency = useCurrencyFmt();
   const [editing, setEditing] = useState(false);
   const editable = canManage && !!portfolioId;
 
@@ -398,6 +405,7 @@ export function OnchainSections({
   portfolioId?: string;
   canManage?: boolean;
 }) {
+  const currency = useCurrencyFmt();
   const total = positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0);
   const manualByKey = new Map(manualPositions.map((m) => [`${m.protocol}::${m.positionId}`, m]));
   const linkByOnchain = new Map(links.map((l) => [l.onchain_id, l]));

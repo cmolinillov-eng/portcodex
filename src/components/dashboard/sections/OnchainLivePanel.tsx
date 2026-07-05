@@ -9,6 +9,13 @@ import {
   kindMatchesType,
   type OnchainLinkRow,
 } from "./OnchainSections";
+import { useMoneyFormatters } from "../utils/currency-context";
+
+/** usd() ligada a la moneda activa (€/$), null-safe. */
+function useUsdFmt() {
+  const { fmtMoney } = useMoneyFormatters();
+  return (n: number | null) => (n == null ? "—" : fmtMoney(n));
+}
 
 export type LiveRange = { lower: number; upper: number; current: number; inRange: boolean };
 export type LiveTokenAmount = { symbol: string; amount: number; valueUsd?: number | null };
@@ -28,8 +35,6 @@ export type LivePosition = {
 };
 type LiveResult = { positions: LivePosition[]; warnings: string[]; syncedAt: string; cached?: boolean };
 
-const usd = (n: number | null) =>
-  n == null ? "—" : n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 function shortAddr(a?: string) {
   return a && a.length > 12 ? `${a.slice(0, 6)}…${a.slice(-4)}` : a ?? "";
 }
@@ -234,6 +239,7 @@ function HarvestInbox({
   portfolioId: string;
   manualPositions: ManualPositionRef[];
 }) {
+  const usd = useUsdFmt();
   const [events, setEvents] = useState<HarvestEvent[]>([]);
   const [selection, setSelection] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState("");
@@ -386,6 +392,7 @@ export function OnchainLivePanel({
   canManage?: boolean;
   manualPositions?: ManualPositionRef[];
 }) {
+  const usd = useUsdFmt();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LiveResult | null>(null);
   const [error, setError] = useState("");
