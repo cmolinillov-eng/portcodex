@@ -491,11 +491,13 @@ async function main() {
       if (dY > 0) tokens.push({ symbol: p.meta.symY, amount: dY, priceUsd: pxY, valueUsd: pxY != null ? dY * pxY : null });
       const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
       if (valueUsd < 0.5) continue;
-      // event_key con la marca temporal de esta lectura → idempotente por run.
-      const stamp = Math.floor(Date.now() / 1000);
+      // event_key DETERMINISTA por el acumulado cobrado (no por timestamp): un
+      // mismo nivel de fees cobradas nunca se duplica aunque un run reprocese
+      // el mismo delta (p.ej. si falló el upsert del cache tras emitir).
+      const claimStamp = `${Math.round((p.meta.claimedX ?? 0) * 1e6)}-${Math.round((p.meta.claimedY ?? 0) * 1e6)}`;
       await sb.from("onchain_events").upsert({
         portfolio_id: portfolioId,
-        event_key: `solana:meteora-claim:${p.id}:${stamp}`,
+        event_key: `solana:meteora-claim:${p.id}:${claimStamp}`,
         kind: "harvest",
         chain: "solana",
         protocol: "Meteora",

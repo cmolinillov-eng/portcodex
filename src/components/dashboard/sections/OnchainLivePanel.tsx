@@ -434,9 +434,12 @@ export function OnchainLivePanel({
         });
         const pKey = tokenSetKey(p.label);
         const byTokens = candidates.filter((m) => tokenSetKey(m.tokenSymbol ?? m.label) === pKey);
-        // Único match por tokens → enlace directo; si no, único candidato del
-        // mismo protocolo+tipo (holds requieren siempre el match por símbolo).
-        const match = byTokens.length === 1 ? byTokens[0] : p.kind !== "wallet" && candidates.length === 1 ? candidates[0] : null;
+        // Solo auto-enlazamos si hay UN único candidato por tokens. NO caemos al
+        // fallback de "único candidato del protocolo": dos pools distintos con
+        // el mismo par (p.ej. USDC/WETH a 0.05% y 0.3% en Uniswap) tienen la
+        // misma clave de tokens y se fusionarían en una sola posición contable.
+        // Ante ambigüedad, se deja sin enlazar para que el gestor lo resuelva.
+        const match = byTokens.length === 1 ? byTokens[0] : null;
         if (!match) continue;
         try {
           const res = await fetch("/api/onchain/links", {

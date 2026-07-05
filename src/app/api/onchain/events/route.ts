@@ -176,24 +176,44 @@ async function performIngest(
   // aportado NO se infle — el yield suma al valor, no al depositado.
   let isReinvest = false;
   let reinvestSplit: ReinvestSplit | null = null;
+  let reinvestHarvestId: string | null = null;
   if (kind === "deposit" && ev.block_time && ev.value_usd != null) {
     try {
       const windowStart = new Date(new Date(ev.block_time).getTime() - 45 * 60_000).toISOString();
       const { data: recentHarvests } = await client
         .from("onchain_events")
-        .select("id, value_usd, tokens")
+        .select("id, value_usd, tokens, block_time")
         .eq("portfolio_id", portfolioId)
         .eq("kind", "harvest")
         .eq("position_ref", ev.position_ref ?? "")
         .in("status", ["ingested", "pending"])
         .gte("block_time", windowStart)
-        .lte("block_time", ev.block_time);
+        .lte("block_time", ev.block_time)
+        .order("block_time", { ascending: false });
+      // Harvests de esa posición ya consumidos por otra reinversión (para no
+      // emparejar dos veces el mismo pending).
+      const { data: usedHarvests } = await client
+        .from("transactions")
+        .select("metadata")
+        .eq("portfolio_id", portfolioId)
+        .contains("metadata", { source: "harvest_reinvest" })
+        .is("deleted_at", null);
+      const consumedIds = new Set(
+        (usedHarvests ?? [])
+          .map((r) => (r.metadata as Record<string, unknown> | null)?.reinvestHarvestId)
+          .filter((x): x is string => typeof x === "string"),
+      );
+      // De los candidatos por valor (±50%) y no consumidos, el MÁS CERCANO en
+      // el tiempo (recentHarvests viene ordenado desc, así que el primero que
+      // cumple es el más reciente antes del depósito).
       const match = (recentHarvests ?? []).find((h) => {
+        if (consumedIds.has(h.id as string)) return false;
         const hv = Number(h.value_usd ?? 0);
         return hv > 0 && Math.abs(Number(ev.value_usd) - hv) / hv <= 0.5;
       });
       if (match) {
         isReinvest = true;
+        reinvestHarvestId = match.id as string;
         // La cesta redepositada puede diferir de la cobrada: detectar la
         // permuta implícita (swapLegs) y el exceso aportado como capital.
         reinvestSplit = computeReinvestSplit(
@@ -231,6 +251,9 @@ async function performIngest(
       // (isHarvestReinvestInternal) y consume el harvest pendiente.
       source: reinvest ? "harvest_reinvest" : "onchain_ingest",
       onchainIngest: true,
+      // ID del harvest emparejado → evita re-consumir el mismo pending en
+      // otra reinversión (detección de "ya consumido").
+      ...(reinvest && reinvestHarvestId ? { reinvestHarvestId } : {}),
       eventId: ev.id,
       txHash: ev.tx_hash,
       chain: ev.chain,
@@ -266,6 +289,22 @@ async function performIngest(
   }
   if (!rows.length) {
     return { ok: false, error: "La reinversión no generó filas contables; regístralo a mano.", status: 400 };
+  }
+
+  // Idempotencia dura: si ya existen transacciones vivas para este eventId (un
+  // run anterior insertó pero falló al marcar el evento como ingerido, y este
+  // se re-procesó), no volver a insertar → cero duplicados. Solo se re-marca
+  // el evento como ingerido más abajo.
+  const { data: already } = await client
+    .from("transactions")
+    .select("id")
+    .eq("portfolio_id", portfolioId)
+    .is("deleted_at", null)
+    .contains("metadata", { eventId: ev.id })
+    .limit(1);
+  if (already && already.length > 0) {
+    await client.from("onchain_events").update({ status: "ingested", ingested_at: new Date().toISOString() }).eq("id", ev.id);
+    return { ok: true, inserted: 0 };
   }
 
   const { error: txErr } = await client.from("transactions").insert(rows);
