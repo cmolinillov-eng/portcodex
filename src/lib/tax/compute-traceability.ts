@@ -63,7 +63,8 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
     )
     .eq("portfolio_id", portfolioId)
     .is("deleted_at", null)
-    .order("transaction_date", { ascending: true });
+    .order("transaction_date", { ascending: true })
+    .order("id", { ascending: true });
 
   if (error) {
     throw new Error(error.message);

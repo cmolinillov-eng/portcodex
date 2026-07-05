@@ -795,12 +795,18 @@ async function scanSolanaTransfers(portfolioId, addr) {
 
     const isOrcaCollect = type === "COLLECT_FEES";
     const isMeteora = programs.has(METEORA_DLMM_PROGRAM);
+    // Un SWAP directo (UI de Orca, o Jupiter enrutando por estos pools) toca
+    // los mismos programas que un depósito/retirada de LP y su delta neto
+    // (vendido ≈ comprado) haría que el signo — y por tanto la clasificación
+    // deposit/withdraw — dependiera de la deriva del precio horario: moneda
+    // al aire contabilizada. Los swaps son movimiento interno: fuera.
     const isLpTx =
-      isOrcaCollect ||
-      programs.has(WHIRLPOOL_PROGRAM) ||
-      programs.has(KAMINO_LIQUIDITY_PROGRAM) ||
-      isMeteora ||
-      source === "KAMINO_FARMS";
+      type !== "SWAP" &&
+      (isOrcaCollect ||
+        programs.has(WHIRLPOOL_PROGRAM) ||
+        programs.has(KAMINO_LIQUIDITY_PROGRAM) ||
+        isMeteora ||
+        source === "KAMINO_FARMS");
 
     if (isLpTx) {
       // ── Evento de LP: harvest / deposit / withdraw ─────────────────────

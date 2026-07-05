@@ -402,8 +402,10 @@ export function OnchainLivePanel({
         const res = await fetch(`/api/onchain/links?portfolioId=${encodeURIComponent(portfolioId)}`);
         const body = (await res.json()) as { links?: LinkRow[] };
         if (!cancelled && res.ok) setLinks(body.links ?? []);
+        // res no-ok → links se queda en null (desconocido): el auto-enlace no
+        // corre y no puede pisar enlaces existentes con información a medias.
       } catch {
-        if (!cancelled) setLinks([]);
+        /* red caída: links permanece null — auto-enlace bloqueado */
       }
     })();
     return () => { cancelled = true; };

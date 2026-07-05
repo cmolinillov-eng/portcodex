@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   const client = getClient();
   const cols = "id, onchain_id, protocol, position_id, position_type, auto_ingest, deposited_override_usd";
   let data: LinkRow[] | null = null;
-  let hadError = false;
+  let lastError: string | null = null;
   {
     const res = await client.from("position_links").select(cols).eq("portfolio_id", portfolioId);
     if (res.error) {
@@ -42,14 +42,20 @@ export async function GET(request: NextRequest) {
         .select("id, onchain_id, protocol, position_id, position_type, auto_ingest")
         .eq("portfolio_id", portfolioId);
       data = (fallback.data ?? null) as LinkRow[] | null;
-      hadError = !!fallback.error;
+      lastError = fallback.error?.message ?? null;
     } else {
       data = (res.data ?? null) as LinkRow[] | null;
     }
   }
-  if (hadError) {
+  if (lastError) {
     // Tabla sin crear (migración pendiente): sin enlaces, no error.
-    return NextResponse.json({ links: [] });
+    if (/relation .*position_links.* does not exist/i.test(lastError)) {
+      return NextResponse.json({ links: [] });
+    }
+    // Cualquier otro fallo (Supabase caído, timeout…) debe ser un ERROR: si
+    // devolviéramos links vacíos, el cliente creería que no hay nada enlazado
+    // y el auto-enlace heurístico podría pisar enlaces correctos del gestor.
+    return NextResponse.json({ error: lastError }, { status: 500 });
   }
   return NextResponse.json({ links: (data ?? []) as LinkRow[] });
 }

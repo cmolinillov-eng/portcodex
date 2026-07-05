@@ -159,7 +159,9 @@ async function performIngest(
       .select("metadata")
       .eq("portfolio_id", portfolioId)
       .eq("position_id", positionId)
+      .eq("protocol", protocol)
       .eq("type", "lp_deposit")
+      .is("deleted_at", null)
       .order("transaction_date", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -311,13 +313,16 @@ async function performIngest(
   if (txErr) return { ok: false, error: `No se pudo crear la transacción: ${txErr.message}`, status: 500 };
 
   // Aprender el enlace (con auto_ingest: a partir de aquí, todo automático).
+  // ignoreDuplicates: si el enlace YA existe, no se toca — un gestor que puso
+  // auto_ingest=false en rodaje (o fijó otra posición a mano) no debe ver su
+  // decisión machacada por cada ingesta.
   const oid = eventOnchainId(ev as { chain: string; protocol: string; position_ref: string | null });
   if (oid) {
     await client
       .from("position_links")
       .upsert(
         { portfolio_id: portfolioId, onchain_id: oid, protocol, position_id: positionId, position_type: positionType, auto_ingest: true },
-        { onConflict: "portfolio_id,onchain_id" },
+        { onConflict: "portfolio_id,onchain_id", ignoreDuplicates: true },
       )
       .then(() => undefined, () => undefined); // mejor esfuerzo (tabla puede no existir aún)
   }
@@ -386,6 +391,40 @@ export async function GET(request: NextRequest) {
       await client.from("onchain_events").update({ status: "pending", ingested_at: null }).eq("id", raw.id);
     }
     events.push({ ...raw, link });
+  }
+
+  // AUTOCURACIÓN: si la función murió tras reclamar un evento (status pasó a
+  // 'ingested') pero antes de insertar sus transacciones, el evento quedaba
+  // "contabilizado" en el aire para siempre. Se revisan los reclamos de las
+  // últimas 48h sin transacción asociada — ni viva ni borrada: si el gestor
+  // borró la operación a mano, NO se resucita — y se re-ingieren (la ingesta
+  // es idempotente por eventId).
+  if (canWrite) {
+    try {
+      const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+      const { data: recent } = await client
+        .from("onchain_events")
+        .select("id, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, includes_principal, position_ref, status")
+        .eq("portfolio_id", portfolioId)
+        .eq("status", "ingested")
+        .gte("ingested_at", since);
+      for (const raw of (recent ?? []) as Array<EventRow & { kind?: string | null }>) {
+        const { data: anyTx } = await client
+          .from("transactions")
+          .select("id")
+          .eq("portfolio_id", portfolioId)
+          .contains("metadata", { eventId: raw.id })
+          .limit(1);
+        if (anyTx && anyTx.length > 0) continue; // contabilizado (o retirado a propósito)
+        const oid = eventOnchainId(raw as { chain: string; protocol: string; position_ref: string | null });
+        const link = oid ? links.get(oid) ?? null : null;
+        if (!link) continue;
+        const res = await performIngest(raw as PendingEvent, portfolioId, link.position_id, link.protocol, link.position_type);
+        if (res.ok) autoIngested++;
+      }
+    } catch {
+      /* mejor esfuerzo */
+    }
   }
 
   // La evolución del portfolio recoge las operaciones automáticas del día
@@ -478,7 +517,24 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Registrar requiere positionId y protocol (o un enlace en position_links)." }, { status: 400 });
   }
 
+  // Reclamo atómico (mismo contrato que la auto-ingesta del GET): dos clics
+  // simultáneos, o un clic en paralelo con la auto-ingesta, no pueden
+  // contabilizar el evento dos veces.
+  const { data: claimed } = await client
+    .from("onchain_events")
+    .update({ status: "ingested", ingested_at: new Date().toISOString() })
+    .eq("id", eventId)
+    .eq("status", "pending")
+    .select("id");
+  if (!claimed || claimed.length === 0) {
+    return NextResponse.json({ error: "El evento ya fue procesado." }, { status: 409 });
+  }
+
   const result = await performIngest(ev as PendingEvent, portfolioId, positionId, protocol, positionType);
-  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  if (!result.ok) {
+    // Devolver a pendiente para que no desaparezca de la bandeja.
+    await client.from("onchain_events").update({ status: "pending", ingested_at: null }).eq("id", eventId);
+    return NextResponse.json({ error: result.error }, { status: result.status });
+  }
   return NextResponse.json({ ok: true, inserted: result.inserted });
 }

@@ -14,6 +14,50 @@ import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabas
  */
 
 type AdoptToken = { symbol: string; amount: number; valueUsd?: number | null };
+type AdoptRange = { lower?: number | null; upper?: number | null; current?: number | null } | null;
+
+/**
+ * metadata.lp para las filas lp_deposit de la adopción. El trigger
+ * validate_transaction_integrity la exige (tokenA/B, rango > 0, ratio > 0):
+ * sin ella el INSERT falla y la adopción de pools era imposible. Se usa el
+ * rango real leído on-chain; si la posición no expone rango (correlacionada,
+ * full-range), se sintetiza uno amplio alrededor del ratio y se marca
+ * isCorrelated para que la UI no pinte una barra de rango falsa.
+ */
+function buildAdoptLpMetadata(tokens: AdoptToken[], label: string, range: AdoptRange): Record<string, unknown> {
+  // Par del label ("WETH/cbBTC 0.01%" → WETH, CBBTC) como respaldo: la
+  // posición puede estar 100% en un solo token (fuera de rango) y el trigger
+  // exige ambos símbolos.
+  const pair = label
+    .split(/[/+·]/)
+    .map((s) => s.trim().split(/\s+/)[0]?.toUpperCase())
+    .filter((s): s is string => Boolean(s));
+  const tokenA = tokens[0]?.symbol.replace(/^-/, "").toUpperCase() || pair[0] || "TOKENA";
+  const tokenB =
+    tokens[1]?.symbol.replace(/^-/, "").toUpperCase() ||
+    pair.find((s) => s !== tokenA) ||
+    tokenA;
+
+  const amountA = Number(tokens[0]?.amount ?? 0);
+  const amountB = Number(tokens[1]?.amount ?? 0);
+  const current = Number(range?.current ?? 0);
+  const entryPriceRatio =
+    amountA > 0 && amountB > 0 ? amountB / amountA : current > 0 ? current : 1;
+
+  const lower = Number(range?.lower ?? 0);
+  const upper = Number(range?.upper ?? 0);
+  const hasRange = lower > 0 && upper > lower;
+  return {
+    lp: {
+      tokenA,
+      tokenB,
+      rangeLower: hasRange ? lower : entryPriceRatio / 1e6,
+      rangeUpper: hasRange ? upper : entryPriceRatio * 1e6,
+      entryPriceRatio,
+      isCorrelated: !hasRange,
+    },
+  };
+}
 
 function getClient() {
   return getSupabaseServiceClient() ?? getSupabaseServerClient();
@@ -36,6 +80,8 @@ export async function POST(request: NextRequest) {
     label?: string | null;
     kind?: string;
     tokens?: AdoptToken[];
+    /** Rango on-chain de la posición (pools concentrados) para metadata.lp. */
+    range?: AdoptRange;
     /** Total depositado en USD que indica el gestor (la base de la posición). */
     depositedUsd?: number;
   };
@@ -77,21 +123,24 @@ export async function POST(request: NextRequest) {
     // on-chain), no reescribimos el libro: guardamos solo el override de vista.
     const { data: adoptRows } = await client
       .from("transactions")
-      .select("id, token_in_symbol, token_in_amount, metadata")
+      .select("id, token_in_symbol, token_in_amount, spot_price, transaction_date, metadata")
       .eq("portfolio_id", portfolioId)
       .eq("position_id", linked.position_id as string)
       .is("deleted_at", null)
       .contains("metadata", { source: "onchain_adopt" });
 
     if (adoptRows && adoptRows.length > 0) {
-      // Reparto proporcional a las cantidades ya registradas (los tokens no
-      // cambian; solo se re-sella el precio de entrada implícito).
-      const totalAmt = adoptRows.reduce((s, r) => s + Math.abs(Number(r.token_in_amount ?? 0)), 0);
+      // Reparto proporcional al VALOR original de cada fila (amount × precio
+      // sellado), no a la cantidad: repartir por cantidad mezclaría unidades
+      // de tokens distintos (0.2 WETH vs 1.000 USDC) y corrompería la base.
+      const rowValue = (r: { token_in_amount: unknown; spot_price: unknown }) =>
+        Math.abs(Number(r.token_in_amount ?? 0)) * Math.max(0, Number(r.spot_price ?? 0));
+      const totalValue = adoptRows.reduce((s, r) => s + rowValue(r), 0);
       const nowIso = new Date().toISOString();
       const newGroup = crypto.randomUUID();
       const rows = adoptRows.map((r) => {
         const amt = Math.abs(Number(r.token_in_amount ?? 0));
-        const share = totalAmt > 0 ? amt / totalAmt : 1 / adoptRows.length;
+        const share = totalValue > 0 ? rowValue(r) / totalValue : 1 / adoptRows.length;
         const entryPrice = amt > 0 ? (depositedUsd * share) / amt : 0;
         return {
           portfolio_id: portfolioId,
@@ -104,17 +153,24 @@ export async function POST(request: NextRequest) {
           spot_price: entryPrice,
           fee_amount: 0,
           notes: `Corrección de depositado (${depositedUsd.toFixed(2)}$) — base re-sellada por el gestor.`,
-          transaction_date: nowIso,
+          // La fecha de adquisición FIFO original se conserva: re-sellar la
+          // base no convierte los lotes en "recién comprados".
+          transaction_date: (r.transaction_date as string) ?? nowIso,
           protocol: (body.protocol ?? "Wallet").trim() || "Wallet",
           position_id: linked.position_id as string,
           position_type: (TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet).positionType,
-          metadata: { source: "onchain_adopt", onchainId, depositedUsd },
+          // Conserva metadata.lp (obligatoria en lp_deposit) y demás claves.
+          metadata: { ...((r.metadata as Record<string, unknown>) ?? {}), source: "onchain_adopt", onchainId, depositedUsd },
         };
       });
       // Soft-delete de las filas de adopción anteriores + alta de las nuevas.
       await client.from("transactions").update({ deleted_at: nowIso }).in("id", adoptRows.map((r) => r.id));
       const { error: insErr } = await client.from("transactions").insert(rows);
-      if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+      if (insErr) {
+        // Restaurar las filas anteriores: la base no puede quedar en cero.
+        await client.from("transactions").update({ deleted_at: null }).in("id", adoptRows.map((r) => r.id));
+        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      }
     }
 
     // Override de vista (mejor esfuerzo; para posiciones de eventos reales es
@@ -142,6 +198,10 @@ export async function POST(request: NextRequest) {
   const operationGroupId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
 
+  // Las filas lp_deposit necesitan metadata.lp (el trigger de integridad la
+  // exige); sin ella la adopción de pools fallaba con 500 siempre.
+  const lpMeta = mapping.txType === "lp_deposit" ? buildAdoptLpMetadata(tokens, label, body.range ?? null) : {};
+
   const rows = tokens.map((t) => {
     const share = totalValue > 0 ? Math.max(0, Number(t.valueUsd ?? 0)) / totalValue : 1 / tokens.length;
     const tokenDeposited = depositedUsd * share;
@@ -162,7 +222,7 @@ export async function POST(request: NextRequest) {
       protocol,
       position_id: positionId,
       position_type: mapping.positionType,
-      metadata: { source: "onchain_adopt", onchainId, depositedUsd },
+      metadata: { ...lpMeta, source: "onchain_adopt", onchainId, depositedUsd },
     };
   });
 

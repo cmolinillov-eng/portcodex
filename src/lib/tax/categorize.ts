@@ -419,6 +419,40 @@ function handleDeposit(
     });
   }
 
+  // ─── CASO ESPECIAL: reinversión de harvest SIN permuta (mismo token) ────
+  // El lote FIFO de este token ya lo creó el harvest al cobrarlo. Sin este
+  // corte, la reinversión hacia un Hold en CEX/protocolo sin catalogar caía
+  // en la rama "buy" y creaba un SEGUNDO lote a FMV: base y balance FIFO
+  // duplicados (ganancias futuras infravaloradas). Movimiento interno.
+  if (rebalanceSource === "harvest_reinvest") {
+    const reinvestDescription = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur,
+    });
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `Reinversión de harvest: entran ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). El lote FIFO lo creó el harvest al cobrarlo; no se crea otro.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: reinvestDescription,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   // ─── CASO A: Compra real (CEX, broker, payment app) ─────────────────────
   if (category === "buy") {
     const description = buildHumanDescription({
@@ -598,7 +632,7 @@ function handleWithdrawal(
           proceedsEur: valueEur,
           costBasisEur: fifo.consumedCostEur,
           realizedGainEur,
-          incomeType: "ganancia_patrimonial",
+          incomeType: realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
           tokenSymbol: symbol,
           tokenAmount: amount,
           lotsConsumed: fifo.lotsConsumed,
@@ -1267,11 +1301,29 @@ export function categorizeTransactionsSequence(
   results: Array<CategorizationResult & { txIndex: number }>;
   finalLots: TaxLot[];
 } {
-  const sorted = [...txs].sort((a, b) => {
-    const ta = Date.parse(a.transactionDate);
-    const tb = Date.parse(b.transactionDate);
-    return ta - tb;
+  // Orden DETERMINISTA: por fecha; a igual fecha, los harvests primero (crean
+  // el lote que las reinversiones escritas en el mismo instante consumen vía
+  // swapLegs) y desempate final por id. Sin esto, el resultado fiscal dependía
+  // del orden físico de las filas en la BD (harvest y reinversión comparten
+  // timestamp en el flujo manual): si el depósito llegaba antes que el
+  // harvest, la base se duplicaba.
+  const typeRank = (t: CategorizeInput) =>
+    (t.type ?? "").trim().toLowerCase() === "harvest" ? 0 : 1;
+  // txIndex debe seguir apuntando a la posición en el array de ENTRADA (los
+  // consumidores hacen inputs[res.txIndex]), así que el orden de proceso se
+  // resuelve sobre pares {tx, índice original}.
+  const indexed = txs.map((tx, originalIndex) => ({ tx, originalIndex }));
+  indexed.sort((a, b) => {
+    const ta = Date.parse(a.tx.transactionDate);
+    const tb = Date.parse(b.tx.transactionDate);
+    const va = Number.isFinite(ta) ? ta : Number.MAX_SAFE_INTEGER;
+    const vb = Number.isFinite(tb) ? tb : Number.MAX_SAFE_INTEGER;
+    if (va !== vb) return va - vb;
+    if (typeRank(a.tx) !== typeRank(b.tx)) return typeRank(a.tx) - typeRank(b.tx);
+    return (a.tx.id ?? "").localeCompare(b.tx.id ?? "");
   });
+  const sorted = indexed.map((e) => e.tx);
+  const originalIndexes = indexed.map((e) => e.originalIndex);
 
   let lots: TaxLot[] = [...options.initialLots];
   const results: Array<CategorizationResult & { txIndex: number }> = [];
@@ -1286,7 +1338,7 @@ export function categorizeTransactionsSequence(
         ? options.walletProtocolResolver(tx.protocol)
         : null,
     });
-    results.push({ ...result, txIndex: i });
+    results.push({ ...result, txIndex: originalIndexes[i] });
 
     // Aplicar lotUpdates
     lots = lots.map((lot) => {

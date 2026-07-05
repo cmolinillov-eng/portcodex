@@ -5,7 +5,7 @@ import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access
 import { validateCsrf } from "@/lib/security/csrf";
 import { categorizeTransactionsSequence } from "@/lib/tax/categorize";
 import { getWalletProtocolMetaSync } from "@/lib/tax/wallet-classification";
-import { fetchCurrentEurRate, getTaxYear } from "@/lib/tax/eur-conversion";
+import { fetchCurrentEurRate, fetchEurRatesByDate, getTaxYear } from "@/lib/tax/eur-conversion";
 import type { CategorizeInput, TaxLot } from "@/lib/tax/types";
 
 /**
@@ -73,7 +73,8 @@ export async function POST(request: NextRequest) {
       )
       .eq("portfolio_id", portfolioId)
       .is("deleted_at", null)
-      .order("transaction_date", { ascending: true });
+      .order("transaction_date", { ascending: true })
+      .order("id", { ascending: true });
 
     if (readError) {
       return NextResponse.json({ error: `read transactions: ${readError.message}` }, { status: 500 });
@@ -87,8 +88,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 2. Tipo de cambio actual
+    // 2. Tipo de cambio: HISTÓRICO por fecha de operación (BCE), igual que la
+    // vista fiscal y el CSV — sin esto, tax_events se persistía con el FX de
+    // HOY y no cuadraba con lo que muestra la pestaña fiscal. El tipo actual
+    // queda como aproximación para fechas sin cotización.
     const eurRate = (await fetchCurrentEurRate()) ?? 0.92;
+    const rateByDate = await fetchEurRatesByDate(rows.map((r) => r.transaction_date as string));
 
     // 3. Limpiar estado fiscal anterior (idempotencia)
     const cleanupErrors: string[] = [];
@@ -143,6 +148,7 @@ export async function POST(request: NextRequest) {
       fxRateUsdToEur: eurRate,
       initialLots: [],
       walletProtocolResolver: (protocol) => getWalletProtocolMetaSync(protocol),
+      fxRateByDate: rateByDate,
     });
 
     // 6. Insertar tax_lots

@@ -283,6 +283,9 @@ function AdoptInline({
           label: p.label,
           kind: p.kind,
           tokens: (p.tokens ?? []).map((t) => ({ symbol: t.symbol, amount: Math.abs(t.amount), valueUsd: t.valueUsd })),
+          // Rango real on-chain → metadata.lp de las filas de adopción (el
+          // trigger de integridad lo exige en pools).
+          range: p.range ? { lower: p.range.lower, upper: p.range.upper, current: p.range.current } : null,
           depositedUsd: deposited,
         }),
       });
