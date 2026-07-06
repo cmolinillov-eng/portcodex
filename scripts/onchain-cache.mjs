@@ -15,7 +15,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createSolanaRpc, address } from "@solana/kit";
 import Decimal from "decimal.js";
 import { Kamino, MeteoraService, getMeteoraPriceLowerUpper } from "@kamino-finance/kliquidity-sdk";
-import { Farms } from "@kamino-finance/farms-sdk";
+import { Farms, fetchFarmState } from "@kamino-finance/farms-sdk";
 
 // El SDK de Meteora (DLMM) es CJS con imports de directorio → se carga con
 // require. El módulo exporta la clase DLMM como default.
@@ -162,12 +162,41 @@ async function kaminoPositions(portfolioId, owner) {
   // Índices por estrategia: shares staked y recompensas pendientes.
   const stakedByStrategy = new Map();
   const pendingByStrategy = new Map();
+  // Recompensas COBRADAS acumuladas por estrategia y mint (monotónico):
+  // claimed[i] = rewardsIssuedCumulative[i] − rewardsIssuedUnclaimed[i].
+  // El delta entre dos lecturas de caché = harvest cobrado (misma señal
+  // fiable que usa Meteora; Helius da UNKNOWN a los claims de Kamino Farms).
+  const claimedByStrategy = new Map();
+  const farmStateCache = new Map();
   for (const uf of userFarms.values()) {
     const stratId = String(uf.strategyId);
     let staked = new Decimal(0);
     for (const v of uf.activeStakeByDelegatee.values()) staked = staked.plus(v);
     stakedByStrategy.set(stratId, staked);
     if (uf.pendingRewards?.length) pendingByStrategy.set(stratId, uf.pendingRewards);
+
+    try {
+      const farmAddr = String(uf.farm);
+      if (!farmStateCache.has(farmAddr)) {
+        farmStateCache.set(farmAddr, (await fetchFarmState(rpc, uf.farm)).data);
+      }
+      const farmState = farmStateCache.get(farmAddr);
+      const cum = uf.userState?.rewardsIssuedCumulative ?? [];
+      const unc = uf.userState?.rewardsIssuedUnclaimed ?? [];
+      const claimed = {};
+      for (let i = 0; i < (farmState?.rewardInfos?.length ?? 0); i++) {
+        const ri = farmState.rewardInfos[i];
+        const mint = String(ri?.token?.mint ?? "");
+        if (!mint || mint === "11111111111111111111111111111111") continue;
+        const dec = Number(ri?.token?.decimals ?? 0);
+        const raw = (cum[i] ?? 0n) - (unc[i] ?? 0n);
+        if (raw <= 0n) continue;
+        claimed[mint] = (claimed[mint] ?? 0) + Number(raw) / 10 ** dec;
+      }
+      if (Object.keys(claimed).length) claimedByStrategy.set(stratId, claimed);
+    } catch (e) {
+      console.error(`  farm claimed de ${stratId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+    }
   }
 
   // Precios de recompensas (mints) vía Jupiter.
@@ -238,7 +267,14 @@ async function kaminoPositions(portfolioId, owner) {
       valueUsd: shares * sharePrice || null,
       range,
       unclaimedUsd,
-      meta: { strategy: strategyAddr, shareMint: String(p.shareMint), shares, sharePrice },
+      meta: {
+        strategy: strategyAddr,
+        shareMint: String(p.shareMint),
+        shares,
+        sharePrice,
+        // Acumulado cobrado por mint → el delta entre runs es un harvest.
+        claimedRewards: claimedByStrategy.get(strategyAddr) ?? {},
+      },
       source: "kamino",
     });
   }
@@ -448,7 +484,75 @@ async function main() {
     }
   }
 
+  // Símbolo de un mint (Jupiter token search), cacheado; fallback al mint corto.
+  const symbolCache = new Map();
+  async function symbolOf(mint) {
+    if (symbolCache.has(mint)) return symbolCache.get(mint);
+    let sym = `${mint.slice(0, 4)}…`;
+    try {
+      const res = await fetch(`https://lite-api.jup.ag/tokens/v2/search?query=${mint}`);
+      if (res.ok) {
+        const arr = await res.json();
+        const hit = Array.isArray(arr) ? arr.find((t) => t.id === mint) : null;
+        if (hit?.symbol) sym = String(hit.symbol).toUpperCase();
+      }
+    } catch { /* fallback */ }
+    symbolCache.set(mint, sym);
+    return sym;
+  }
+
   for (const [portfolioId, positions] of kaminoByPortfolio) {
+    // Harvests de Kamino por DELTA del acumulado cobrado (misma señal que
+    // Meteora): antes de sobrescribir la caché, se compara claimedRewards con
+    // la lectura anterior; cada incremento es un claim de recompensas → se
+    // emite como onchain_event pendiente/auto-ingesta.
+    try {
+      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino").maybeSingle();
+      const prev = new Map();
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p.meta?.claimedRewards ?? null);
+
+      for (const p of positions) {
+        const before = prev.get(p.id);
+        if (!before) continue; // primera lectura con contadores: solo baseline
+        const nowClaims = p.meta?.claimedRewards ?? {};
+        const tokens = [];
+        for (const [mint, amt] of Object.entries(nowClaims)) {
+          const d = amt - (before[mint] ?? 0);
+          if (d <= 0) continue;
+          const px = await jupPrices([mint]);
+          const price = px.get(mint)?.usdPrice ?? null;
+          tokens.push({ symbol: await symbolOf(mint), amount: d, priceUsd: price, valueUsd: price != null ? d * price : null });
+        }
+        if (!tokens.length) continue;
+        const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
+        if (valueUsd < 0.5) continue;
+        // event_key determinista por el acumulado (no por timestamp): el mismo
+        // nivel cobrado nunca se duplica aunque un run reprocese el delta.
+        const claimStamp = Object.entries(nowClaims)
+          .map(([m, v]) => `${m.slice(0, 6)}-${Math.round(v * 1e6)}`)
+          .sort()
+          .join(":");
+        await sb.from("onchain_events").upsert({
+          portfolio_id: portfolioId,
+          event_key: `solana:kamino-claim:${p.id}:${claimStamp}`,
+          kind: "harvest",
+          chain: "solana",
+          protocol: p.protocol ?? "Kamino",
+          wallet_address: p.walletAddress,
+          position_ref: p.id, // LivePosition.id → auto-enlace/auto-ingesta
+          label: p.label,
+          tokens,
+          value_usd: valueUsd,
+          block_time: new Date().toISOString(),
+          tx_hash: null,
+          includes_principal: false,
+        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+        console.log(`  🌾 kamino harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+      }
+    } catch (e) {
+      console.error(`  kamino delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
+    }
+
     const { error: upErr } = await sb
       .from("onchain_cache")
       .upsert({ portfolio_id: portfolioId, source: "kamino", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });

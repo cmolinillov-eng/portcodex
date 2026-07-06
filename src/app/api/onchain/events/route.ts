@@ -182,6 +182,11 @@ async function performIngest(
   if (kind === "deposit" && ev.block_time && ev.value_usd != null) {
     try {
       const windowStart = new Date(new Date(ev.block_time).getTime() - 45 * 60_000).toISOString();
+      // La ventana también mira HACIA DELANTE: los harvests de Kamino/Meteora
+      // se detectan por delta de caché y su block_time es la hora de la
+      // LECTURA (hasta un ciclo del worker DESPUÉS del claim/depósito real).
+      // Solo hacia atrás, esos harvests jamás emparejarían con su reinversión.
+      const windowEnd = new Date(new Date(ev.block_time).getTime() + 45 * 60_000).toISOString();
       const { data: recentHarvests } = await client
         .from("onchain_events")
         .select("id, value_usd, tokens, block_time")
@@ -190,7 +195,7 @@ async function performIngest(
         .eq("position_ref", ev.position_ref ?? "")
         .in("status", ["ingested", "pending"])
         .gte("block_time", windowStart)
-        .lte("block_time", ev.block_time)
+        .lte("block_time", windowEnd)
         .order("block_time", { ascending: false });
       // Harvests de esa posición ya consumidos por otra reinversión (para no
       // emparejar dos veces el mismo pending).

@@ -8,11 +8,13 @@ import { mainnet, arbitrum, base, polygon, bsc } from "viem/chains";
  */
 
 // HyperEVM no viene en viem; lo definimos.
+// drpc en vez del RPC oficial (rpc.hyperliquid.xyz): el oficial tarda minutos
+// bajo carga y rechaza getLogs de rangos normales — tumbaba el worker.
 const hyperevm = defineChain({
   id: 999,
   name: "HyperEVM",
   nativeCurrency: { name: "Hype", symbol: "HYPE", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.hyperliquid.xyz/evm"] } },
+  rpcUrls: { default: { http: ["https://hyperliquid.drpc.org"] } },
 });
 
 type ChainCfg = { chain: Parameters<typeof createPublicClient>[0]["chain"]; envKey: string; fallback: string };
@@ -24,7 +26,7 @@ const CHAINS: Record<string, ChainCfg> = {
   base: { chain: base, envKey: "RPC_BASE", fallback: "https://mainnet.base.org" },
   polygon: { chain: polygon, envKey: "RPC_POLYGON", fallback: "https://polygon-rpc.com" },
   bsc: { chain: bsc, envKey: "RPC_BSC", fallback: "https://bsc-dataseed.binance.org" },
-  hyperevm: { chain: hyperevm, envKey: "RPC_HYPEREVM", fallback: "https://rpc.hyperliquid.xyz/evm" },
+  hyperevm: { chain: hyperevm, envKey: "RPC_HYPEREVM", fallback: "https://hyperliquid.drpc.org" },
 };
 
 // Alias de nombres de cadena que llegan de fuentes externas (p.ej. Zerion).

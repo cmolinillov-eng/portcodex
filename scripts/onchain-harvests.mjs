@@ -12,6 +12,10 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient, http, parseAbiItem, defineChain } from "viem";
 import { mainnet, arbitrum, base, polygon, bsc } from "viem/chains";
+import { HDKey } from "@scure/bip32";
+import { base58check, bech32 } from "@scure/base";
+import { sha256 } from "@noble/hashes/sha256";
+import { ripemd160 } from "@noble/hashes/ripemd160";
 
 const envPath = path.join(process.cwd(), ".env.local");
 if (fs.existsSync(envPath)) {
@@ -38,18 +42,37 @@ const hyperevm = defineChain({
   id: 999,
   name: "HyperEVM",
   nativeCurrency: { name: "Hype", symbol: "HYPE", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.hyperliquid.xyz/evm"] } },
+  rpcUrls: { default: { http: ["https://hyperliquid.drpc.org"] } },
 });
 // Fallbacks de drpc.org: es de los pocos RPC gratuitos que aceptan eth_getLogs
 // con filtros (bsc-dataseed, mainnet.base.org y publicnode lo limitan/bloquean).
+// HyperEVM TAMBIÉN va por drpc: el RPC oficial (rpc.hyperliquid.xyz) rechaza
+// rangos >~50 bloques ("invalid block range") y tarda minutos por petición —
+// era la causa de los timeouts de 30 min del workflow. drpc sirve 9000 bloques
+// en <1s (verificado 2026-07-06).
 const CHAINS = {
   ethereum: { chain: mainnet, rpc: process.env.RPC_ETHEREUM || "https://eth.drpc.org", llama: "ethereum" },
   arbitrum: { chain: arbitrum, rpc: process.env.RPC_ARBITRUM || "https://arbitrum.drpc.org", llama: "arbitrum" },
   base: { chain: base, rpc: process.env.RPC_BASE || "https://base.drpc.org", llama: "base" },
   polygon: { chain: polygon, rpc: process.env.RPC_POLYGON || "https://polygon.drpc.org", llama: "polygon" },
   bsc: { chain: bsc, rpc: process.env.RPC_BSC || "https://bsc.drpc.org", llama: "bsc" },
-  hyperevm: { chain: hyperevm, rpc: process.env.RPC_HYPEREVM || "https://rpc.hyperliquid.xyz/evm", llama: "hyperliquid" },
+  hyperevm: { chain: hyperevm, rpc: process.env.RPC_HYPEREVM || "https://hyperliquid.drpc.org", llama: "hyperliquid" },
 };
+
+// Presupuesto de tiempo global del worker: el workflow mata el job a los 25
+// min; salir limpio ANTES (con los cursores checkpointeados por tramo)
+// garantiza que cada run avanza aunque una cadena esté lenta, en vez de morir
+// cancelado y repetirlo todo. Override con WORKER_DEADLINE_MIN.
+const DEADLINE_AT = Date.now() + Number(process.env.WORKER_DEADLINE_MIN || 20) * 60_000;
+let deadlineLogged = false;
+function pastDeadline() {
+  if (Date.now() < DEADLINE_AT) return false;
+  if (!deadlineLogged) {
+    deadlineLogged = true;
+    console.error("  ⏱ presupuesto de tiempo agotado: cierre limpio (los cursores continúan en el próximo run).");
+  }
+  return true;
+}
 
 // ── Protocolos V3 a escanear (NPM por cadena) ────────────────────────────────
 // `zerionMatch` enlaza con attributes.protocol de Zerion para descubrir los
@@ -205,11 +228,9 @@ async function getLogsRetry(client, params) {
   }
 }
 
-const CHUNK = 9000n; // rango máximo de getLogs en RPCs públicos
-// Chunk inicial por cadena: HyperEVM tiene bloques de ~1s (mucha más densidad)
-// y su RPC público no soporta rangos grandes → arranca ya con 500 para no
-// gastar los primeros 20 minutos partiendo tramos.
-const CHUNK_BY_CHAIN = { hyperevm: 500n };
+const CHUNK = 9000n; // rango máximo de getLogs (límite free-tier de drpc: 10000)
+// Chunk inicial por cadena (override puntual si algún RPC exige rangos menores).
+const CHUNK_BY_CHAIN = {};
 // Tope duro de tramos fallidos consecutivos por (cadena, protocolo): si el RPC
 // está caído, no gastamos los 25 min del workflow golpeando en balde. Antes:
 // un run con hyperevm roto cancelaba TODO (incluida Solana, Bitcoin y demás).
@@ -327,6 +348,9 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
   let firstFailed = null; // primer bloque de un tramo fallido: el cursor no lo salta
   let consecutiveFails = 0;
   while (start <= latest) {
+    // Presupuesto agotado: salir SIN tocar el cursor final (los checkpoints
+    // por tramo ya persisten el progreso; el próximo run continúa desde ahí).
+    if (pastDeadline()) return found;
     const end = start + chunk > latest ? latest : start + chunk;
     let collects = [];
     let decreases = [];
@@ -481,6 +505,7 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
   let firstFailed = null;
   let consecutiveFails = 0;
   while (start <= latest) {
+    if (pastDeadline()) return found; // checkpoints por tramo ya persistidos
     const end = start + chunk > latest ? latest : start + chunk;
     let supplies = [];
     let withdraws = [];
@@ -583,24 +608,115 @@ async function insertTransferEvent({ portfolioId, eventKey, kind, chain, protoco
   return true;
 }
 
-// Bitcoin (Ledger en hold): transacciones confirmadas vía mempool.space (gratis).
-async function scanBitcoin(portfolioId, addr) {
-  const res = await fetch(`https://mempool.space/api/address/${addr}/txs`);
-  if (!res.ok) throw new Error(`mempool.space ${res.status}`);
-  const txs = await res.json();
-  const last = Number(await getScanCursor(portfolioId, "bitcoin", "Bitcoin") ?? 0);
+// ── Bitcoin (Ledger en hold): transacciones confirmadas vía indexador público ──
+// Acepta dirección individual O clave extendida (xpub/ypub/zpub) de monedero
+// HD: se derivan las direcciones con actividad y el delta se netea POR TX a
+// través de TODAS ellas — sin esto, cada gasto con cambio interno emitiría
+// una transferencia fantasma de salida + otra de entrada.
+const BTC_API_HOSTS = ["https://blockstream.info/api", "https://mempool.space/api"];
+async function btcApi(pathname) {
+  let lastErr = null;
+  for (const host of BTC_API_HOSTS) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`${host}${pathname}`);
+        if (res.status === 429 || res.status >= 500) {
+          await sleep(500 * (attempt + 1));
+          lastErr = new Error(`${host} ${res.status}`);
+          continue;
+        }
+        if (!res.ok) throw new Error(`${host} ${res.status}`);
+        return await res.json();
+      } catch (e) {
+        lastErr = e;
+        await sleep(400 * (attempt + 1));
+      }
+    }
+  }
+  throw lastErr ?? new Error("btc api failed");
+}
 
+const b58btc = base58check(sha256);
+function btcHash160(pk) { return ripemd160(sha256(pk)); }
+function btcAddressFor(kind, pk) {
+  if (kind === "zpub") return bech32.encode("bc", [0, ...bech32.toWords(btcHash160(pk))]);
+  if (kind === "ypub") {
+    const redeem = new Uint8Array(22); redeem[0] = 0x00; redeem[1] = 0x14; redeem.set(btcHash160(pk), 2);
+    const sh = btcHash160(redeem);
+    const payload = new Uint8Array(21); payload[0] = 0x05; payload.set(sh, 1);
+    return b58btc.encode(payload);
+  }
+  const h = btcHash160(pk);
+  const payload = new Uint8Array(21); payload[0] = 0x00; payload.set(h, 1);
+  return b58btc.encode(payload);
+}
+function btcToXpubVersion(extKey) {
+  const raw = b58btc.decode(extKey);
+  const out = new Uint8Array(raw);
+  new DataView(out.buffer).setUint32(0, 0x0488b21e, false);
+  return b58btc.encode(out);
+}
+/** Direcciones CON ACTIVIDAD de una clave extendida (mismo criterio que la app:
+ *  el prefijo miente — Ledger exporta Native SegWit como xpub — así que se
+ *  sondea el esquema real y se escanean ambas ramas con gap-limit 20). */
+async function btcDeriveUsedAddresses(extKey) {
+  const hd = HDKey.fromExtendedKey(btcToXpubVersion(extKey));
+  const statsOf = async (a) => {
+    const j = await btcApi(`/address/${a}`);
+    const cs = j.chain_stats ?? {}; const ms = j.mempool_stats ?? {};
+    return (cs.tx_count ?? 0) + (ms.tx_count ?? 0);
+  };
+  // Sondeo del esquema real (10 primeras de recepción por esquema).
+  let scheme = "zpub";
+  const probeBranch = hd.deriveChild(0);
+  outer: for (const kind of ["zpub", "ypub", "xpub"]) {
+    for (let i = 0; i < 10; i++) {
+      if ((await statsOf(btcAddressFor(kind, probeBranch.deriveChild(i).publicKey))) > 0) {
+        scheme = kind;
+        break outer;
+      }
+    }
+  }
+  const used = [];
+  for (const branchIndex of [0, 1]) {
+    const branch = hd.deriveChild(branchIndex);
+    let empty = 0;
+    for (let i = 0; i < 200 && empty < 20; i++) {
+      const a = btcAddressFor(scheme, branch.deriveChild(i).publicKey);
+      if ((await statsOf(a)) > 0) { used.push(a); empty = 0; } else empty++;
+      await sleep(60);
+    }
+  }
+  return used;
+}
+
+async function scanBitcoin(portfolioId, walletAddr) {
+  const isExtended = /^(x|y|z)pub[1-9A-HJ-NP-Za-km-z]{100,115}$/.test(walletAddr);
+  const addresses = isExtended ? await btcDeriveUsedAddresses(walletAddr) : [walletAddr];
+  if (!addresses.length) return 0;
+  const ours = new Set(addresses);
+
+  // Todas las txs de todas nuestras direcciones, únicas por txid.
+  const byTxid = new Map();
+  for (const a of addresses) {
+    const txs = await btcApi(`/address/${a}/txs`);
+    for (const tx of txs) if (!byTxid.has(tx.txid)) byTxid.set(tx.txid, tx);
+    await sleep(80);
+  }
+
+  const last = Number(await getScanCursor(portfolioId, "bitcoin", "Bitcoin") ?? 0);
   let found = 0;
   let maxHeight = last;
-  for (const tx of txs) {
+  for (const tx of byTxid.values()) {
     if (!tx.status?.confirmed) continue;
     const height = tx.status.block_height ?? 0;
     if (height <= last) continue;
     if (height > maxHeight) maxHeight = height;
 
-    // Delta neto de la wallet en la tx (sats): entradas − salidas.
-    const inSats = tx.vout.filter((v) => v.scriptpubkey_address === addr).reduce((s, v) => s + v.value, 0);
-    const outSats = tx.vin.filter((v) => v.prevout?.scriptpubkey_address === addr).reduce((s, v) => s + (v.prevout?.value ?? 0), 0);
+    // Delta neto del MONEDERO en la tx (sats): entradas − salidas de todas
+    // nuestras direcciones. El cambio interno se anula solo.
+    const inSats = tx.vout.filter((v) => ours.has(v.scriptpubkey_address)).reduce((s, v) => s + v.value, 0);
+    const outSats = tx.vin.filter((v) => ours.has(v.prevout?.scriptpubkey_address)).reduce((s, v) => s + (v.prevout?.value ?? 0), 0);
     const net = (inSats - outSats) / 1e8;
     if (net === 0) continue;
 
@@ -609,12 +725,12 @@ async function scanBitcoin(portfolioId, addr) {
     const kind = net > 0 ? "transfer_in" : "transfer_out";
     const ok = await insertTransferEvent({
       portfolioId,
-      eventKey: `bitcoin:${tx.txid}:${addr}:${kind}`,
+      eventKey: `bitcoin:${tx.txid}:${walletAddr.slice(0, 24)}:${kind}`,
       kind,
       chain: "bitcoin",
       protocol: "Bitcoin",
-      walletAddr: addr,
-      positionRef: addr, // hold id = `bitcoin:hold:${address}`
+      walletAddr,
+      positionRef: walletAddr, // hold id = `bitcoin:hold:${address|xpub}`
       symbol: "BTC",
       amount: Math.abs(net),
       price,
@@ -918,6 +1034,7 @@ async function main() {
 
   // Bitcoin y Solana: transferencias de holds (Fase C3).
   for (const w of wallets ?? []) {
+    if (pastDeadline()) break;
     try {
       if (w.chain_kind === "bitcoin") {
         const n = await scanBitcoin(w.portfolio_id, w.address);
@@ -935,10 +1052,12 @@ async function main() {
   }
 
   for (const w of (wallets ?? []).filter((x) => x.chain_kind === "evm")) {
+    if (pastDeadline()) break;
     // tokenIds en farming (staked): el NFT no está en la wallet; los da Zerion.
     const farmingIds = await zerionNftIds(w.address);
     for (const protocol of PROTOCOLS) {
       for (const [chainName, npm] of Object.entries(protocol.npm)) {
+        if (pastDeadline()) break;
         if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
         const cfg = CHAINS[chainName];
         if (!cfg) continue;
@@ -955,6 +1074,7 @@ async function main() {
 
     // Aave V3 (Fase C2): supply/withdraw/borrow/repay por cadena.
     for (const chainName of Object.keys(AAVE_POOLS)) {
+      if (pastDeadline()) break;
       if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
       const cfg = CHAINS[chainName];
       if (!cfg) continue;
