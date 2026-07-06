@@ -418,6 +418,28 @@ export function OnchainLivePanel({
     return () => { cancelled = true; };
   }, [portfolioId]);
 
+  // AUTO-INGESTA: el GET de eventos procesa los pendientes de posiciones
+  // enlazadas (harvests, depósitos, reinversiones) y escribe la contabilidad.
+  // Al retirarse la bandeja (HarvestInbox) nadie llamaba ya a este endpoint y
+  // los eventos quedaban pendientes para siempre — el harvest no sumaba nunca.
+  // Si ingiere algo, recarga para que header/lista reflejen los números nuevos.
+  useEffect(() => {
+    if (!portfolioId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/onchain/events?portfolioId=${encodeURIComponent(portfolioId)}`);
+        const body = (await res.json()) as { autoIngested?: number };
+        if (!cancelled && res.ok && (body.autoIngested ?? 0) > 0) {
+          window.location.reload();
+        }
+      } catch {
+        /* sin red: se reintenta en la próxima visita */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [portfolioId]);
+
   // AUTO-ENLACE silencioso: casa cada posición on-chain con su contable por
   // protocolo + tipo + tokens (WETH≈ETH…). Sin intervención del usuario: el
   // enlace se guarda con auto_ingest y a partir de ahí todo fluye solo.

@@ -270,13 +270,13 @@ function AdoptInline({
 }) {
   const [usd, setUsd] = useState(initial != null && initial > 0 ? String(Math.round(initial * 100) / 100) : "");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function adopt() {
     const deposited = Number(usd.replace(",", "."));
     if (!Number.isFinite(deposited) || deposited <= 0) return;
     setBusy(true);
-    setError(false);
+    setError(null);
     try {
       const res = await fetch("/api/onchain/adopt", {
         method: "POST",
@@ -294,16 +294,19 @@ function AdoptInline({
           depositedUsd: deposited,
         }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? `Error ${res.status}`);
+      }
       window.location.reload();
-    } catch {
-      setError(true);
+    } catch (e) {
+      setError(e instanceof Error && e.message ? e.message : "No se pudo guardar.");
       setBusy(false);
     }
   }
 
   return (
-    <span className="inline-flex items-center gap-1" title="Indica cuánto depositaste al abrir esta posición: fija su base y calcula ganancia/pérdida desde ahí. Puedes corregirlo cuando quieras.">
+    <span className="inline-flex flex-wrap items-center gap-1" title={error ?? "Indica cuánto depositaste al abrir esta posición: fija su base y calcula ganancia/pérdida desde ahí. Puedes corregirlo cuando quieras."}>
       <input
         type="text"
         inputMode="decimal"
@@ -336,6 +339,9 @@ function AdoptInline({
         >
           ✕
         </button>
+      ) : null}
+      {error ? (
+        <span className="basis-full text-[10px] leading-tight text-[var(--loss)]">{error}</span>
       ) : null}
     </span>
   );
