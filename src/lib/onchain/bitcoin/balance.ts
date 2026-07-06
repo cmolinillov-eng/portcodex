@@ -21,10 +21,12 @@ type MempoolAddress = {
 };
 
 // Indexadores con la MISMA API (/api/address/{addr}). Al derivar un monedero
-// HD se consultan decenas de direcciones y mempool.space aplica rate-limit
+// HD se consultan decenas de direcciones y los indexadores aplican rate-limit
 // (429): reintentamos con backoff y, si insiste, caemos al espejo. Sin esto un
 // solo 429 dejaría el saldo BTC completo en blanco.
-const BTC_API_HOSTS = ["https://mempool.space/api", "https://blockstream.info/api"];
+// blockstream.info va primero: aguanta mejor las ráfagas de derivación que
+// mempool.space (que tumbaba el escaneo del xpub dentro del timeout serverless).
+const BTC_API_HOSTS = ["https://blockstream.info/api", "https://mempool.space/api"];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

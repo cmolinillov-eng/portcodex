@@ -4,6 +4,11 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 import { syncPortfolioLive } from "@/lib/onchain/sync";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 
+// La lectura en vivo con refresh puede derivar decenas de direcciones de un
+// monedero HD Bitcoin (xpub) y llamar a los adaptadores DeFi: necesita más que
+// el timeout por defecto (~10-15s) para no abortar la lectura de BTC.
+export const maxDuration = 60;
+
 /**
  * Lectura on-chain "En vivo" de un portfolio (solo lectura). Devuelve las
  * posiciones reales leídas de blockchain (balances + DeFi con rango/fees).
