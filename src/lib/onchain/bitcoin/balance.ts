@@ -1,5 +1,5 @@
 import type { LivePosition, WalletRef } from "../types";
-import { detectExtendedKey, sumExtendedKeyBalance, type AddressStats } from "./xpub";
+import { detectExtendedKey, resolveExtendedKeyScheme, sumExtendedKeyBalance, type AddressStats } from "./xpub";
 
 /**
  * Adaptador Bitcoin (hold en cold wallet, p.ej. Ledger).
@@ -86,9 +86,18 @@ export async function syncBitcoinWallet(
   let sats = 0;
   try {
     if (extKind) {
-      // Monedero HD: derivar y sumar todas las direcciones con actividad.
-      const { totalSats } = await sumExtendedKeyBalance(w.address, extKind, fetchAddressStats);
+      // Monedero HD: el prefijo no determina el tipo de dirección (Ledger
+      // exporta Native SegWit como `xpub`), así que primero se resuelve el
+      // esquema real sondeando la blockchain y luego se suma todo.
+      const scheme = await resolveExtendedKeyScheme(w.address, extKind, fetchAddressStats);
+      const { totalSats, usedAddresses } = await sumExtendedKeyBalance(w.address, scheme, fetchAddressStats);
       sats = totalSats;
+      if (totalSats <= 0 && usedAddresses.length === 0) {
+        // Nada de actividad en ningún esquema: casi siempre es una clave
+        // equivocada, no un monedero vacío. Sin este aviso el saldo
+        // desaparecía en silencio.
+        warnings.push(`Bitcoin (${w.address.slice(0, 12)}…): la clave extendida no tiene actividad en ninguna dirección derivada.`);
+      }
     } else {
       const { sats: single } = await fetchAddressStats(w.address);
       sats = single;

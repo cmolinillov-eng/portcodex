@@ -77,8 +77,41 @@ function addressFor(kind: ExtendedKeyKind, pubkey: Uint8Array): string {
 
 const GAP_LIMIT = 20; // BIP44: parar tras 20 direcciones consecutivas sin uso
 const MAX_INDEX = 500; // tope de seguridad por rama
+const PROBE_COUNT = 10; // direcciones de recepción sondeadas por esquema
 
 export type AddressStats = { sats: number; txCount: number };
+
+/**
+ * Resuelve el esquema de dirección REAL de una clave extendida sondeando la
+ * blockchain. El prefijo no es fiable: Ledger Live exporta la clave de una
+ * cuenta Native SegWit con prefijo `xpub` (bytes de versión estándar), así que
+ * derivar P2PKH legacy por el prefijo encuentra direcciones válidas pero
+ * VACÍAS y el saldo sale 0 sin ningún error. Se prueban las primeras
+ * direcciones de recepción de cada esquema (bech32 → nested → legacy, por
+ * probabilidad hoy) y gana el primero con actividad. Sin actividad en ninguno,
+ * se respeta el prefijo.
+ */
+export async function resolveExtendedKeyScheme(
+  extKey: string,
+  declaredKind: ExtendedKeyKind,
+  fetchStats: (address: string) => Promise<AddressStats>,
+): Promise<ExtendedKeyKind> {
+  // ypub/zpub son intención explícita del formato moderno: se respetan.
+  if (declaredKind !== "xpub") return declaredKind;
+  const hd = HDKey.fromExtendedKey(toXpubVersion(extKey));
+  const branch = hd.deriveChild(0);
+  const pubkeys: Uint8Array[] = [];
+  for (let i = 0; i < PROBE_COUNT; i++) {
+    const child = branch.deriveChild(i);
+    if (!child.publicKey) throw new Error("No se pudo derivar la clave pública.");
+    pubkeys.push(child.publicKey);
+  }
+  for (const kind of ["zpub", "ypub", "xpub"] as ExtendedKeyKind[]) {
+    const stats = await mapLimited(pubkeys.map((pk) => addressFor(kind, pk)), 2, fetchStats);
+    if (stats.some((s) => s.txCount > 0)) return kind;
+  }
+  return declaredKind;
+}
 
 /**
  * Deriva y suma el saldo de todas las direcciones activas de la clave
