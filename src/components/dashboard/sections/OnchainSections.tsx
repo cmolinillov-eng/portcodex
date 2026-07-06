@@ -230,11 +230,11 @@ function MobilePositionCard({
           <span>dep <span className="text-[var(--ink-2)]">{currency(m.deposited)}</span></span>
         ) : null}
         <span>asig <span className="text-[var(--ink-2)]">{m.allocation.toFixed(2)}%</span></span>
-        {m.harvested > 0 ? (
-          <span>yield <span className="text-[#6FAE8F]">+{currency(m.harvested)}</span></span>
-        ) : null}
         {p.unclaimedUsd && p.unclaimedUsd > 0.01 ? (
           <span className="text-emerald-300">+{currency(p.unclaimedUsd)} s/reclamar</span>
+        ) : null}
+        {m.harvested > 0 ? (
+          <span title="Harvest total cosechado en esta posición">yield <span className="text-[#6FAE8F]">+{currency(m.harvested)}</span></span>
         ) : null}
         {m.hf != null ? (
           <span>HF <span className={m.hf < 1.2 ? "text-red-400" : m.hf < 2 ? "text-amber-300" : "text-emerald-400"}>{m.hf.toFixed(2)}</span></span>
@@ -544,20 +544,23 @@ export function OnchainSections({
                           </span>
                         </td>
 
-                        {/* YIELD: cosechado (contable) + sin reclamar (on-chain) */}
+                        {/* YIELD: sin reclamar (on-chain) arriba + total cosechado (contable) debajo */}
                         {showYield ? (
                           <td className="px-4 py-4">
                             <div className="space-y-1">
-                              {harvested > 0 ? (
-                                <span className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#6FAE8F]">
-                                  <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
-                                  {currency(harvested)}
-                                </span>
-                              ) : null}
                               {p.unclaimedUsd && p.unclaimedUsd > 0.01 ? (
                                 <p className="text-[11px] text-emerald-300 tabular-nums">
                                   +{currency(p.unclaimedUsd)} sin reclamar
                                 </p>
+                              ) : null}
+                              {harvested > 0 ? (
+                                <span
+                                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#6FAE8F]"
+                                  title="Harvest total cosechado en esta posición (histórico contable)"
+                                >
+                                  <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />
+                                  {currency(harvested)}
+                                </span>
                               ) : null}
                               {harvested <= 0 && !(p.unclaimedUsd && p.unclaimedUsd > 0.01) ? (
                                 <span className="text-xs text-[var(--muted)]">—</span>
