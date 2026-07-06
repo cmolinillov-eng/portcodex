@@ -506,23 +506,48 @@ export function OnchainSections({
                         {/* ACTIVO */}
                         <td className="px-4 py-4">
                           <p className="token-emphasis text-sm">{p.label}</p>
+                          {typeof p.meta?.collateralUsd === "number" && typeof p.meta?.debtUsd === "number" && (p.meta.debtUsd as number) > 0 ? (
+                            <p className="text-[11px] tabular-nums">
+                              <span className="text-[var(--muted)]">colateral {currency(p.meta.collateralUsd as number)}</span>
+                              <span className="text-rose-300"> · deuda {currency(p.meta.debtUsd as number)}</span>
+                            </p>
+                          ) : null}
                           <p className="text-[11px] text-[var(--muted)]">
                             {p.walletLabel ?? ""} {p.chain ? `· ${p.chain}` : ""}
                           </p>
                         </td>
 
-                        {/* SALDO */}
+                        {/* SALDO — con deuda (lending): dos bloques rotulados
+                            COLATERAL / DEUDA para que nada se mezcle. */}
                         <td className="px-4 py-4 font-mono text-sm text-[var(--foreground)]">
                           {p.tokens && p.tokens.length > 0 ? (
-                            <div className="space-y-0.5">
-                              {p.tokens.slice(0, 4).map((t, i) => (
-                                <p key={i} className="tabular-nums">
-                                  {formatTokenAmount(Math.abs(t.amount))}{" "}
-                                  <span className="token-emphasis">{t.symbol.replace(/^-/, "")}</span>
-                                  {t.amount < 0 ? <span className="text-rose-300 text-[10px]"> (deuda)</span> : null}
-                                </p>
-                              ))}
-                            </div>
+                            p.tokens.some((t) => t.amount < 0) ? (
+                              <div className="space-y-1">
+                                <p className="text-[9px] uppercase tracking-[0.14em] text-[var(--muted)]">Colateral</p>
+                                {p.tokens.filter((t) => t.amount > 0).slice(0, 4).map((t, i) => (
+                                  <p key={`c${i}`} className="tabular-nums">
+                                    {formatTokenAmount(t.amount)}{" "}
+                                    <span className="token-emphasis">{t.symbol.replace(/^-/, "")}</span>
+                                  </p>
+                                ))}
+                                <p className="pt-1 text-[9px] uppercase tracking-[0.14em] text-rose-300/80">Deuda</p>
+                                {p.tokens.filter((t) => t.amount < 0).slice(0, 3).map((t, i) => (
+                                  <p key={`d${i}`} className="tabular-nums text-rose-300">
+                                    {formatTokenAmount(Math.abs(t.amount))}{" "}
+                                    <span className="token-emphasis text-rose-300">{t.symbol.replace(/^-/, "")}</span>
+                                  </p>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="space-y-0.5">
+                                {p.tokens.slice(0, 4).map((t, i) => (
+                                  <p key={i} className="tabular-nums">
+                                    {formatTokenAmount(Math.abs(t.amount))}{" "}
+                                    <span className="token-emphasis">{t.symbol.replace(/^-/, "")}</span>
+                                  </p>
+                                ))}
+                              </div>
+                            )
                           ) : (
                             "—"
                           )}

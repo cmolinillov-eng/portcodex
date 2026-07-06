@@ -76,7 +76,10 @@ export async function enrichAave(
         chain,
         protocol: "Aave V3",
         kind: "lending_supply",
-        label: `Aave · colateral ${collateralUsd.toFixed(0)}$ / deuda ${debtUsd.toFixed(0)}$`,
+        // Etiqueta ESTABLE (antes llevaba los importes: cambiaban en cada
+        // lectura y ensuciaban los ids de adopción). El desglose
+        // colateral/deuda lo pinta la UI desde meta.collateralUsd/debtUsd.
+        label: "Aave V3",
         tokens,
         valueUsd: collateralUsd - debtUsd,
         range: null,

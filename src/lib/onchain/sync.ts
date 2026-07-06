@@ -23,6 +23,59 @@ const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichOrca, enrichMeteor
  * Diseñado para que cualquier portfolio/address nueva entre sin tocar nada.
  */
 
+// Protocolos con adaptador específico (rango, fees, salud…): sus posiciones
+// de Zerion NO deben duplicarse en el genérico.
+const HANDLED_PROTOCOLS = ["pancakeswap v3", "uniswap v3", "aave"];
+
+/**
+ * Adaptador GENÉRICO: cualquier posición DeFi que Zerion descubre y ningún
+ * adaptador específico cubre (ether.fi, Morpho, Pendle…) se muestra con su
+ * valor, agrupada por protocolo y cadena. Sin esto, esas posiciones
+ * desaparecían del panel (solo pasaban los holds) — p.ej. el liquidUSD de
+ * ether.fi de un cliente. No da rango/fees; sí valor, tokens y deuda.
+ */
+function genericDefiPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[] {
+  const groups = new Map<string, ZerionPosition[]>();
+  for (const z of zerion) {
+    if (z.positionType === "wallet") continue;
+    const proto = (z.protocol ?? "").toLowerCase();
+    if (!proto) continue;
+    if (HANDLED_PROTOCOLS.some((h) => proto.includes(h))) continue;
+    if (!(Math.abs(z.valueUsd ?? 0) > 0.5)) continue;
+    const key = `${z.chain}:${z.protocol}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(z);
+  }
+  return [...groups.entries()].map(([, rows]) => {
+    const first = rows[0]!;
+    const hasLoan = rows.some((r) => r.positionType === "loan");
+    const tokens = rows.map((r) => ({
+      symbol: r.symbol ?? "?",
+      address: r.tokenAddress,
+      amount: r.positionType === "loan" ? -r.amount : r.amount,
+      valueUsd: r.positionType === "loan" ? -(r.valueUsd ?? 0) : r.valueUsd,
+    }));
+    const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
+    const protoSlug = (first.protocol ?? "defi").toLowerCase().replace(/[^\w]+/g, "-");
+    return {
+      id: `${first.chain}:generic:${protoSlug}`,
+      portfolioId: w.portfolioId,
+      walletAddress: w.address,
+      chainKind: w.chainKind,
+      chain: first.chain,
+      protocol: first.protocol,
+      kind: hasLoan ? ("lending_supply" as const) : ("staking" as const),
+      label: rows.length === 1 && first.symbol ? `${first.protocol} · ${first.symbol}` : `${first.protocol}`,
+      tokens,
+      valueUsd,
+      range: null,
+      unclaimedUsd: null,
+      meta: { generic: true },
+      source: "zerion-generic",
+    };
+  });
+}
+
 /** Tokens sueltos (hold) → LivePosition kind "wallet". Sirve para EVM y Solana. */
 function holdsToPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[] {
   return zerion
@@ -91,6 +144,9 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
 
   // Hold (tokens sueltos)
   positions.push(...holdsToPositions(zerion, w));
+
+  // DeFi sin adaptador específico (ether.fi, Morpho…): visible con su valor.
+  positions.push(...genericDefiPositions(zerion, w));
 
   // Adaptadores por protocolo (cada uno filtra lo suyo del descubrimiento):
   const ctx = { portfolioId: w.portfolioId, address: w.address };
