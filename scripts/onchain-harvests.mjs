@@ -179,8 +179,14 @@ const aavePoolAbi = [{
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ¿El error es por tamaño del rango (→ reducir tramo) o por rate-limit (→ esperar)?
-const isSizeError = (msg) => /exceed|block range|ranges? over|not supported|too many results|response size|more than|query returned/i.test(msg);
-const isRateError = (msg) => /too many request|429|rate ?limit|http request failed|internal|500|503/i.test(msg);
+// "unknown RPC error" + "Cannot read properties of undefined (reading 'error')"
+// es la firma con la que el RPC público de HyperEVM rechaza rangos que no le
+// caben — hay que tratarlo como error de tamaño para que el tramo se parta.
+const isSizeError = (msg) =>
+  /exceed|block range|ranges? over|not supported|too many results|response size|more than|query returned|unknown rpc error|cannot read properties of undefined/i.test(
+    msg,
+  );
+const isRateError = (msg) => /too many request|429|rate ?limit|http request failed|internal|500|503|took too long/i.test(msg);
 
 // getLogs con reintentos y backoff ante rate-limit del RPC gratuito. Los
 // errores de tamaño se propagan para que el llamador reduzca el tramo.
@@ -200,6 +206,14 @@ async function getLogsRetry(client, params) {
 }
 
 const CHUNK = 9000n; // rango máximo de getLogs en RPCs públicos
+// Chunk inicial por cadena: HyperEVM tiene bloques de ~1s (mucha más densidad)
+// y su RPC público no soporta rangos grandes → arranca ya con 500 para no
+// gastar los primeros 20 minutos partiendo tramos.
+const CHUNK_BY_CHAIN = { hyperevm: 500n };
+// Tope duro de tramos fallidos consecutivos por (cadena, protocolo): si el RPC
+// está caído, no gastamos los 25 min del workflow golpeando en balde. Antes:
+// un run con hyperevm roto cancelaba TODO (incluida Solana, Bitcoin y demás).
+const MAX_CONSECUTIVE_FAILS = 5;
 // Primer escaneo: ventana hacia atrás (override con LOOKBACK_BLOCKS). Los runs
 // siguientes son incrementales desde last_block, así que da igual que sea grande.
 const DEFAULT_LOOKBACK = BigInt(process.env.LOOKBACK_BLOCKS || "150000");
@@ -308,9 +322,10 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
     else found++;
   }
 
-  let chunk = CHUNK; // adaptativo: los RPCs públicos limitan el rango de getLogs
+  let chunk = CHUNK_BY_CHAIN[chainName] ?? CHUNK; // adaptativo por cadena
   let start = from;
   let firstFailed = null; // primer bloque de un tramo fallido: el cursor no lo salta
+  let consecutiveFails = 0;
   while (start <= latest) {
     const end = start + chunk > latest ? latest : start + chunk;
     let collects = [];
@@ -322,6 +337,7 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
         getLogsRetry(client, { address: npm, event: decreaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
         getLogsRetry(client, { address: npm, event: increaseEvent, args: { tokenId: tokenIds }, fromBlock: start, toBlock: end }),
       ]);
+      consecutiveFails = 0;
       await sleep(150); // pacing: no agotar la cuota del RPC gratuito
     } catch (e) {
       const msg = String(e.message);
@@ -332,6 +348,11 @@ async function scanWallet(client, cfg, protocol, npm, portfolioId, walletAddr, c
       }
       console.error(`  getLogs ${chainName} ${protocol.name} [${start}-${end}]: ${msg.slice(0, 100)}`);
       if (firstFailed == null) firstFailed = start; // se reintentará en el siguiente run
+      consecutiveFails++;
+      if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+        console.error(`  ${chainName}/${protocol.name}: ${consecutiveFails} fallos seguidos → abandono este par (se reintenta en el próximo run).`);
+        return found;
+      }
       start = end + 1n;
       continue;
     }
@@ -455,9 +476,10 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
     else found++;
   }
 
-  let chunk = CHUNK;
+  let chunk = CHUNK_BY_CHAIN[chainName] ?? CHUNK;
   let start = from;
   let firstFailed = null;
+  let consecutiveFails = 0;
   while (start <= latest) {
     const end = start + chunk > latest ? latest : start + chunk;
     let supplies = [];
@@ -473,6 +495,7 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
         getLogsRetry(client, { address: pool, event: aaveBorrowEvent, args: { onBehalfOf: walletAddr }, fromBlock: start, toBlock: end }),
         getLogsRetry(client, { address: pool, event: aaveRepayEvent, args: { user: walletAddr }, fromBlock: start, toBlock: end }),
       ]);
+      consecutiveFails = 0;
       await sleep(150);
     } catch (e) {
       const msg = String(e.message);
@@ -482,6 +505,11 @@ async function scanAave(client, cfg, portfolioId, walletAddr, chainName) {
       }
       console.error(`  getLogs ${chainName} Aave [${start}-${end}]: ${msg.slice(0, 100)}`);
       if (firstFailed == null) firstFailed = start;
+      consecutiveFails++;
+      if (consecutiveFails >= MAX_CONSECUTIVE_FAILS) {
+        console.error(`  ${chainName}/Aave: ${consecutiveFails} fallos seguidos → abandono este par (se reintenta en el próximo run).`);
+        return found;
+      }
       start = end + 1n;
       continue;
     }
@@ -914,7 +942,7 @@ async function main() {
         if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
         const cfg = CHAINS[chainName];
         if (!cfg) continue;
-        const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 } }) });
+        const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 }, timeout: 12_000, retryCount: 0 }) });
         try {
           const extra = farmingIds.get(`${protocol.name}:${chainName}`);
           const n = await scanWallet(client, cfg, protocol, npm, w.portfolio_id, w.address, chainName, extra);
@@ -930,7 +958,7 @@ async function main() {
       if (ONLY_CHAINS.length && !ONLY_CHAINS.includes(chainName)) continue;
       const cfg = CHAINS[chainName];
       if (!cfg) continue;
-      const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 } }) });
+      const client = createPublicClient({ chain: cfg.chain, transport: http(cfg.rpc, { batch: { batchSize: 3 }, timeout: 12_000, retryCount: 0 }) });
       try {
         const n = await scanAave(client, cfg, w.portfolio_id, w.address, chainName);
         if (n > 0) console.log(`  ${chainName} Aave V3 ${w.address.slice(0, 8)} → ${n} eventos detectados`);
