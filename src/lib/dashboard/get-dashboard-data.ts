@@ -787,6 +787,38 @@ async function fetchPositionTags(allowedPortfolioIds: string[]): Promise<Positio
   return (query.data ?? []) as PositionTagRow[];
 }
 
+type DepositOverrideRow = {
+  portfolio_id: string;
+  protocol: string | null;
+  position_id: string | null;
+  deposited_override_usd: number | null;
+};
+
+/**
+ * Overrides manuales del depositado (position_links.deposited_override_usd):
+ * el gestor corrige la base de una posición cuya base derivada de
+ * transacciones sabe incorrecta (p.ej. posición pre-app enlazada a eventos
+ * reales). Si la columna no existe aún (migración phase27 pendiente),
+ * devuelve [] silenciosamente.
+ */
+async function fetchDepositOverrides(allowedPortfolioIds: string[]): Promise<DepositOverrideRow[]> {
+  if (allowedPortfolioIds.length === 0) return [];
+  const serviceClient = getSupabaseServiceClient();
+  const client = serviceClient ?? getSupabaseServerClient();
+  const query = await client
+    .from("position_links")
+    .select("portfolio_id, protocol, position_id, deposited_override_usd")
+    .in("portfolio_id", allowedPortfolioIds)
+    .not("deposited_override_usd", "is", null);
+  if (query.error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("fetchDepositOverrides warning:", query.error);
+    }
+    return [];
+  }
+  return (query.data ?? []) as DepositOverrideRow[];
+}
+
 export async function getDashboardData(options?: {
   targetUserId?: string;
   targetPortfolioId?: string;
@@ -820,7 +852,7 @@ export async function getDashboardData(options?: {
       ? await fetchPortfolioIdsForTargetUser(targetUserId)
       : access.allowedPortfolioIds;
 
-  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, usdToEurRate] = await Promise.all([
+  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, usdToEurRate, depositOverrideRows] = await Promise.all([
     fetchLivePositions(allowedPortfolioIds),
     fetchCachedPrices(),
     fetchLendingTransactions(allowedPortfolioIds),
@@ -829,6 +861,7 @@ export async function getDashboardData(options?: {
     fetchPortfolioContexts(allowedPortfolioIds),
     fetchPositionTags(allowedPortfolioIds),
     getUsdToEurRate(),
+    fetchDepositOverrides(allowedPortfolioIds),
   ]);
 
   // Map (portfolio_id, protocol, position_id) → strategy_tag para lookup rápido.
@@ -1714,6 +1747,29 @@ export async function getDashboardData(options?: {
       // Nota: ya no usamos las withdrawals con reason=harvest_reinvest para descontar
       // el pending (el descuento se hace al registrar el depósito de reinversión).
       // Las filas legacy con ese reason serán eliminadas por migración SQL.
+    }
+  }
+
+  // Overrides manuales del depositado: sustituyen la base derivada de la
+  // posición y ajustan el Total Depositado global por la diferencia. Solo
+  // aplican a posiciones vivas en el dashboard (un link huérfano no debe
+  // inyectar base sin valor actual que la respalde). No tocan el patrimonio
+  // (suma de valores actuales) ni el motor fiscal (FIFO sigue usando las
+  // transacciones reales).
+  {
+    const livePositionKeys = new Set(
+      positions.map((p) => positionCompositeKey(p.portfolioId, p.protocol, p.positionId)),
+    );
+    for (const row of depositOverrideRows) {
+      const override = Number(row.deposited_override_usd);
+      if (!Number.isFinite(override) || override <= 0) continue;
+      const key = positionCompositeKey(row.portfolio_id, row.protocol ?? "Wallet", row.position_id ?? "");
+      if (!livePositionKeys.has(key)) continue;
+      const fallbackKey = positionCompositeKey("", row.protocol ?? "Wallet", row.position_id ?? "");
+      const derived = depositedByPosition.get(key) ?? depositedByPosition.get(fallbackKey) ?? 0;
+      totalDepositedUsd += override - derived;
+      depositedByPosition.set(key, override);
+      depositedByPosition.set(fallbackKey, override);
     }
   }
 

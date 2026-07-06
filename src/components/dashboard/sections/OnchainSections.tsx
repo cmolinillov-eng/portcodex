@@ -164,14 +164,13 @@ function computeMetrics(
     p.kind === "wallet" && manual?.averageEntryPrice && onchainAmount != null && manual.averageEntryPrice > 0
       ? manual.averageEntryPrice * Math.abs(onchainAmount)
       : manual?.depositedValue ?? null;
-  // La base contable (transacciones) MANDA: es la que alimenta el Total
-  // Depositado de la cabecera, el % y el P&L global. El override de vista solo
-  // se usa como respaldo cuando la posición no tiene base contable (eventos
-  // reales sin adopción). Así la columna DEPOSITADO nunca diverge de la
-  // cabecera tras un evento automático posterior a una corrección.
-  const deposited = derived != null && derived > 0
-    ? derived
-    : override != null && Number.isFinite(override) && override > 0 ? override : derived;
+  // El depositado corregido por el gestor (override) MANDA sobre la base
+  // derivada de transacciones: es la corrección explícita de una base que el
+  // gestor sabe incorrecta. El header aplica el mismo override en
+  // get-dashboard-data, así que columna y Total Depositado no divergen.
+  const deposited = override != null && Number.isFinite(override) && override > 0
+    ? override
+    : derived;
   const value = p.valueUsd ?? 0;
   const pnl = deposited != null && deposited > 0 ? value - deposited : null;
   const roi = pnl != null && deposited ? (pnl / deposited) * 100 : null;
