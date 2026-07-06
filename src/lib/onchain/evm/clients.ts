@@ -20,12 +20,15 @@ const hyperevm = defineChain({
 type ChainCfg = { chain: Parameters<typeof createPublicClient>[0]["chain"]; envKey: string; fallback: string };
 
 // Claves = el `chain` string normalizado que usamos en LivePosition.
+// Todos por drpc.org: los RPC "oficiales" gratuitos (mainnet.base.org,
+// bsc-dataseed, polygon-rpc…) fallan/rate-limitan bajo carga — el panel
+// mostraba "No se pudo leer PancakeSwap V3/Aave en base: RPC Request failed".
 const CHAINS: Record<string, ChainCfg> = {
-  ethereum: { chain: mainnet, envKey: "RPC_ETHEREUM", fallback: "https://eth.llamarpc.com" },
-  arbitrum: { chain: arbitrum, envKey: "RPC_ARBITRUM", fallback: "https://arb1.arbitrum.io/rpc" },
-  base: { chain: base, envKey: "RPC_BASE", fallback: "https://mainnet.base.org" },
-  polygon: { chain: polygon, envKey: "RPC_POLYGON", fallback: "https://polygon-rpc.com" },
-  bsc: { chain: bsc, envKey: "RPC_BSC", fallback: "https://bsc-dataseed.binance.org" },
+  ethereum: { chain: mainnet, envKey: "RPC_ETHEREUM", fallback: "https://eth.drpc.org" },
+  arbitrum: { chain: arbitrum, envKey: "RPC_ARBITRUM", fallback: "https://arbitrum.drpc.org" },
+  base: { chain: base, envKey: "RPC_BASE", fallback: "https://base.drpc.org" },
+  polygon: { chain: polygon, envKey: "RPC_POLYGON", fallback: "https://polygon.drpc.org" },
+  bsc: { chain: bsc, envKey: "RPC_BSC", fallback: "https://bsc.drpc.org" },
   hyperevm: { chain: hyperevm, envKey: "RPC_HYPEREVM", fallback: "https://hyperliquid.drpc.org" },
 };
 

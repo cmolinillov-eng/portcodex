@@ -287,7 +287,12 @@ function AdoptInline({
           protocol: p.protocol ?? "Wallet",
           label: p.label,
           kind: p.kind,
-          tokens: (p.tokens ?? []).map((t) => ({ symbol: t.symbol, amount: Math.abs(t.amount), valueUsd: t.valueUsd })),
+          // Solo las patas de ACTIVO: la deuda (amount/valueUsd negativos en
+          // lending) no forma parte de la base depositada — con Math.abs se
+          // colaba como pata a precio 0 y el check de la BD tumbaba el alta.
+          tokens: (p.tokens ?? [])
+            .filter((t) => t.amount > 0 && (t.valueUsd == null || t.valueUsd > 0))
+            .map((t) => ({ symbol: t.symbol, amount: t.amount, valueUsd: t.valueUsd })),
           // Rango real on-chain → metadata.lp de las filas de adopción (el
           // trigger de integridad lo exige en pools).
           range: p.range ? { lower: p.range.lower, upper: p.range.upper, current: p.range.current } : null,

@@ -95,7 +95,12 @@ export async function POST(request: NextRequest) {
   const onchainId = (body.onchainId ?? "").trim();
   const kind = (body.kind ?? "").trim();
   const depositedUsd = Number(body.depositedUsd);
-  const tokens = (body.tokens ?? []).filter((t) => t.symbol && Number(t.amount) > 0);
+  // Solo patas de ACTIVO: la deuda de lending llega con valueUsd negativo y
+  // NO forma parte de la base depositada (su pata saldría a precio 0 y el
+  // check spot_price_positive de la BD rechazaría el alta entera).
+  const tokens = (body.tokens ?? []).filter(
+    (t) => t.symbol && Number(t.amount) > 0 && !(t.valueUsd != null && Number(t.valueUsd) <= 0),
+  );
 
   const access = await getViewerAccess();
   const check = ensurePortfolioAccess(access, portfolioId, true);
@@ -202,11 +207,14 @@ export async function POST(request: NextRequest) {
   // exige); sin ella la adopción de pools fallaba con 500 siempre.
   const lpMeta = mapping.txType === "lp_deposit" ? buildAdoptLpMetadata(tokens, label, body.range ?? null) : {};
 
-  const rows = tokens.map((t) => {
+  const rows = tokens.flatMap((t) => {
     const share = totalValue > 0 ? Math.max(0, Number(t.valueUsd ?? 0)) / totalValue : 1 / tokens.length;
     const tokenDeposited = depositedUsd * share;
     const amount = Number(t.amount);
     const entryPrice = tokenDeposited / amount;
+    // Pata sin valor dentro de una cesta con valores (share 0): fuera — una
+    // fila a precio 0 viola el check de integridad y tumbaría el alta entera.
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0) return [];
     return {
       portfolio_id: portfolioId,
       type: mapping.txType,
@@ -226,6 +234,12 @@ export async function POST(request: NextRequest) {
     };
   });
 
+  if (!rows.length) {
+    return NextResponse.json(
+      { error: "La lectura on-chain no trae valor de los tokens todavía — pulsa Actualizar y reinténtalo." },
+      { status: 400 },
+    );
+  }
   const { error: txErr } = await client.from("transactions").insert(rows);
   if (txErr) return NextResponse.json({ error: `No se pudo crear la posición: ${txErr.message}` }, { status: 500 });
 
