@@ -12,8 +12,10 @@ import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabas
 const ADDRESS_PATTERNS: Record<string, RegExp> = {
   evm: /^0x[0-9a-fA-F]{40}$/,
   solana: /^[1-9A-HJ-NP-Za-km-z]{32,44}$/,
-  // Bitcoin: legacy (1…), P2SH (3…) o bech32 (bc1…).
-  bitcoin: /^(bc1[02-9ac-hj-np-z]{11,87}|[13][1-9A-HJ-NP-Za-km-z]{25,34})$/,
+  // Bitcoin: dirección individual — legacy (1…), P2SH (3…) o bech32 (bc1…) —
+  // o clave pública extendida de un monedero HD (xpub/ypub/zpub), que la app
+  // deriva y suma automáticamente. Nunca claves privadas.
+  bitcoin: /^(bc1[02-9ac-hj-np-z]{11,87}|[13][1-9A-HJ-NP-Za-km-z]{25,34}|(x|y|z)pub[1-9A-HJ-NP-Za-km-z]{100,115})$/,
 };
 
 function getClient() {
