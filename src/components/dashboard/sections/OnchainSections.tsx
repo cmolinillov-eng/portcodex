@@ -505,7 +505,17 @@ export function OnchainSections({
                       <tr key={p.id} className="border-t border-[var(--line)]">
                         {/* ACTIVO */}
                         <td className="px-4 py-4">
-                          <p className="token-emphasis text-sm">{p.label}</p>
+                          <p className="token-emphasis text-sm inline-flex items-center gap-1.5">
+                            {p.label}
+                            {linkByOnchain.get(p.id)?.auto_ingest ? (
+                              <span
+                                className="inline-flex items-center rounded-full border border-[rgba(111,174,143,0.4)] bg-[rgba(111,174,143,0.08)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--accent-primary)]"
+                                title="Ya contabilizada en el patrimonio (cabecera). No se suma dos veces."
+                              >
+                                ✓ contabilizada
+                              </span>
+                            ) : null}
+                          </p>
                           {typeof p.meta?.collateralUsd === "number" && typeof p.meta?.debtUsd === "number" && (p.meta.debtUsd as number) > 0 ? (
                             <p className="text-[11px] tabular-nums">
                               <span className="text-[var(--muted)]">colateral {currency(p.meta.collateralUsd as number)}</span>
