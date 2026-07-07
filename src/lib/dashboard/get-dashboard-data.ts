@@ -9,6 +9,7 @@ import {
   calculateMaxLtv,
 } from "@/lib/lending/thresholds";
 import { getUsdToEurRate } from "@/lib/fx/usd-eur";
+import { computePortfolioValuation, type ValuationTx } from "@/lib/portfolio/valuation";
 
 export type ViewerPermissions = {
   role: ViewerRole;
@@ -1881,6 +1882,30 @@ export async function getDashboardData(options?: {
 
   const adjustedPnlUsd = adjustedTotalValueUsd - totalDepositedUsd + totalRealizedPnl;
   const adjustedPnlPercent = totalDepositedUsd > 0 ? (adjustedPnlUsd / totalDepositedUsd) * 100 : 0;
+
+  // ─── CANDADO DE COHERENCIA (FASE 1) ─────────────────────────────────────
+  // El MOTOR CANÓNICO (lib/portfolio/valuation) es la fuente única de verdad
+  // que también alimenta la curva de evolución (capture.ts). El header de aquí
+  // debe coincidir con él: si divergen, la curva y el header mostrarían números
+  // distintos para lo mismo (el bug que FASE 1 elimina). En desarrollo se avisa
+  // con detalle; el número mostrado sigue siendo el de las secciones visibles
+  // (garantiza header == lista) para no exponer nunca una cifra contradictoria.
+  try {
+    const canonical = computePortfolioValuation(
+      portfolioTransactions as unknown as ValuationTx[],
+      (symbol: string) => cachedPrices.pricesBySymbol.get(symbol.toUpperCase()) ?? 0,
+    );
+    const tol = Math.max(1, adjustedTotalValueUsd * 0.005);
+    const valueDiff = Math.abs(canonical.totalValueUsd - adjustedTotalValueUsd);
+    const depDiff = Math.abs(canonical.totalDepositedUsd - totalDepositedUsd);
+    if (process.env.NODE_ENV !== "production" && (valueDiff > tol || depDiff > tol)) {
+      console.warn(
+        `[coherencia] header vs canónico divergen — valor: ${adjustedTotalValueUsd.toFixed(2)} vs ${canonical.totalValueUsd.toFixed(2)} (Δ${valueDiff.toFixed(2)}); depositado: ${totalDepositedUsd.toFixed(2)} vs ${canonical.totalDepositedUsd.toFixed(2)} (Δ${depDiff.toFixed(2)}). Revisa posiciones de la vista sin transacciones.`,
+      );
+    }
+  } catch {
+    /* el candado nunca debe tumbar el dashboard */
+  }
 
   const summary: PortfolioSummary = {
     totalValueUsd: adjustedTotalValueUsd,

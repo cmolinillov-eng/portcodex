@@ -14,7 +14,8 @@
     "test:e2e:exports": "node scripts/run-e2e-export-matrix.mjs",
     "test:e2e:exports:ui": "node scripts/run-e2e-export-ui-smoke.mjs",
     "check:env:release": "node scripts/check-release-env.mjs",
-    "qa:prepush": "npm run -s lint && npm run -s test:e2e:roles && npm run -s test:e2e:financial && npm run -s test:e2e:exports && npm run -s test:e2e:exports:ui"
+    "qa:prepush": "npm run -s lint && npm run -s test:valuation && npm run -s test:e2e:roles && npm run -s test:e2e:financial && npm run -s test:e2e:exports && npm run -s test:e2e:exports:ui",
+    "test:valuation": "node --test tests/portfolio/*.test.ts"
   },
   "dependencies": {
     "@kamino-finance/farms-sdk": "^3.2.26",

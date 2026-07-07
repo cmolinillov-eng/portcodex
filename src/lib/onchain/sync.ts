@@ -27,6 +27,17 @@ const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichOrca, enrichMeteor
 // de Zerion NO deben duplicarse en el genérico.
 const HANDLED_PROTOCOLS = ["pancakeswap v3", "uniswap v3", "aave"];
 
+// Tokens-recibo de protocolos de lending: aTokens de Aave (aBasUSDC, aEthWETH…),
+// deuda (variableDebt…, stableDebt…), cTokens de Compound. Representan el MISMO
+// colateral/deuda que ya cuenta el adaptador de lending → si además se listan
+// como hold, el colateral se cuenta DOS VECES (bug real en clientes con Aave).
+// Se excluyen tanto de la lista en vivo como de la adopción.
+const RECEIPT_TOKEN_RE = /^(a|c|variableDebt|stableDebt|aArb|aOpt|aBas|aEth|aPol|aAva)[A-Z]/;
+function isReceiptToken(symbol: string | null | undefined): boolean {
+  const s = (symbol ?? "").trim();
+  return RECEIPT_TOKEN_RE.test(s);
+}
+
 /**
  * Adaptador GENÉRICO: cualquier posición DeFi que Zerion descubre y ningún
  * adaptador específico cubre (ether.fi, Morpho, Pendle…) se muestra con su
@@ -79,7 +90,9 @@ function genericDefiPositions(zerion: ZerionPosition[], w: WalletRef): LivePosit
 /** Tokens sueltos (hold) → LivePosition kind "wallet". Sirve para EVM y Solana. */
 function holdsToPositions(zerion: ZerionPosition[], w: WalletRef): LivePosition[] {
   return zerion
-    .filter((z) => z.positionType === "wallet" && (z.valueUsd ?? 0) > 0)
+    // Excluye tokens-recibo de lending (aTokens/deuda): ya los cuenta el
+    // adaptador Aave; como hold duplicarían el colateral.
+    .filter((z) => z.positionType === "wallet" && (z.valueUsd ?? 0) > 0 && !isReceiptToken(z.symbol))
     .map((z) => ({
       id: `${z.chain}:hold:${z.tokenAddress ?? z.symbol}`,
       portfolioId: w.portfolioId,

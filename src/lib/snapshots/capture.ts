@@ -1,14 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { computePortfolioValuation, type ValuationTx } from "@/lib/portfolio/valuation";
 
 /**
  * Captura un snapshot del estado actual del portfolio.
  *
- * Lee transactions activas + precios cached y calcula:
- *   - total_value_usd:        valor actual de mercado
- *   - total_deposited_usd:    cost basis acumulado (excluye movimientos internos)
- *   - pending_harvest_usd:    harvest cobrado pero no reinvertido
- *   - realized_pnl_usd:       suma de closure.realizedPnl de filas position_closed
- *   - composition:            descomposición por tipo de posición (Hold/Staking/Lending/LP)
+ * Valor/depositado/pendiente/composición salen del MOTOR CANÓNICO
+ * (lib/portfolio/valuation) — el mismo que alimenta la cabecera del dashboard,
+ * para que la curva de evolución y el total del header nunca divergan. Aquí
+ * solo se añade realized_pnl (de las filas position_closed) y se persiste.
  *
  * Si la tabla portfolio_snapshots aún no existe (fase no aplicada),
  * devuelve { ok: false, reason: "table_missing" } sin romper.
@@ -31,8 +30,6 @@ type CaptureResult = {
   realizedPnlUsd?: number;
 };
 
-const CAPITAL_IN = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
-const CAPITAL_OUT = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
 
 function toNumber(value: string | number | null | undefined): number {
   if (typeof value === "number") return value;
@@ -58,14 +55,6 @@ function parseObj(value: unknown): Record<string, unknown> | null {
   if (typeof value === "object" && !Array.isArray(value)) {
     return value as Record<string, unknown>;
   }
-  return null;
-}
-
-function readFlag(meta: unknown, notes: string | null, key: string): string | null {
-  const m = parseObj(meta);
-  if (m && typeof m[key] === "string") return String(m[key]);
-  const n = parseObj(notes);
-  if (n && typeof n[key] === "string") return String(n[key]);
   return null;
 }
 
@@ -108,182 +97,28 @@ export async function capturePortfolioSnapshot({
 
   const spotPriceFor = (symbol: string): number => priceMap.get(symbol.toUpperCase()) ?? 0;
 
-  // 3. Acumular balances por (positionKey, symbol), totalDeposited, pendingHarvest, realizedPnl
-  const balanceByPositionSymbol = new Map<string, { symbol: string; balance: number; positionType: string }>();
-  const debtByToken = new Map<string, number>(); // deuda de lending por token (resta al valor neto)
-  let totalDepositedUsd = 0;
-  let pendingHarvestUsd = 0;
+  // 3. Valor/depositado/pendiente/composición del MOTOR CANÓNICO (misma
+  //    fuente que la cabecera del dashboard → la curva nunca diverge).
+  const valuation = computePortfolioValuation((txs ?? []) as ValuationTx[], spotPriceFor);
+  const totalValueUsd = valuation.totalValueUsd;
+  const totalDepositedUsd = valuation.totalDepositedUsd;
+  const netPendingHarvest = valuation.pendingHarvestUsd;
+  const composition = valuation.composition;
+
+  // 4. Realized P&L: suma de closure.realizedPnl de las filas position_closed
+  //    (histórico, no estado actual → fuera del motor de valoración).
   let realizedPnlUsd = 0;
-  const harvestPendingByKey = new Map<string, number>();
-
-  for (const tx of (txs ?? []) as Array<{
-    type: string | null;
-    token_in_symbol: string | null;
-    token_in_amount: string | number | null;
-    token_out_symbol: string | null;
-    token_out_amount: string | number | null;
-    spot_price: string | number | null;
-    metadata: unknown;
-    notes: string | null;
-    position_id: string | null;
-    position_type: string | null;
-    protocol: string | null;
-  }>) {
-    const txType = (tx.type ?? "").trim();
-    if (!txType) continue;
-
-    const positionId = tx.position_id ?? "";
-    const positionType = (tx.position_type ?? "Hold").trim();
-    const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
-    const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
-    const inAmount = toNumber(tx.token_in_amount);
-    const outAmount = toNumber(tx.token_out_amount);
-    const spotPrice = toNumber(tx.spot_price);
-
-    const reason = readFlag(tx.metadata, tx.notes, "reason");
-    const source = readFlag(tx.metadata, tx.notes, "source");
-    const isInternal =
-      reason === "harvest_reinvest" || source === "harvest_reinvest" ||
-      reason === "rebalance_transfer" || source === "rebalance_transfer" ||
-      // La salida del harvest arrastrado en un rebalance entró como rendimiento,
-      // nunca como capital depositado: no debe restar al total depositado.
-      reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
-
-    // Capital in/out → ajustan balance y totalDeposited (si no es internal)
-    if (CAPITAL_IN.has(txType)) {
-      if (positionId && inSymbol) {
-        const key = `${positionId}::${inSymbol}`;
-        const cur = balanceByPositionSymbol.get(key) ?? { symbol: inSymbol, balance: 0, positionType };
-        cur.balance += inAmount;
-        cur.positionType = positionType;
-        balanceByPositionSymbol.set(key, cur);
-      }
-      if (!isInternal) totalDepositedUsd += inAmount * spotPrice;
-      // Si es harvest_reinvest, descuenta del pending acumulado
-      if (source === "harvest_reinvest" && inSymbol && inAmount > 0) {
-        const srcPositionId = readFlag(tx.metadata, tx.notes, "sourcePositionId") ?? positionId;
-        const srcKey = `${srcPositionId}::${inSymbol}`;
-        harvestPendingByKey.set(srcKey, (harvestPendingByKey.get(srcKey) ?? 0) - inAmount);
-        // Permuta implícita dentro de la reinversión (metadata.swapLegs):
-        // lo vendido sale del pending y lo comprado entra — misma semántica
-        // que en get-dashboard-data.ts.
-        const legsRaw = parseObj(tx.metadata)?.swapLegs;
-        if (Array.isArray(legsRaw)) {
-          for (const item of legsRaw) {
-            const leg = (item ?? {}) as Record<string, unknown>;
-            const soldSymbol = typeof leg.soldSymbol === "string" ? leg.soldSymbol.trim().toUpperCase() : "";
-            const boughtSymbol = typeof leg.boughtSymbol === "string" ? leg.boughtSymbol.trim().toUpperCase() : "";
-            const soldAmount = typeof leg.soldAmount === "number" && Number.isFinite(leg.soldAmount) ? leg.soldAmount : 0;
-            const boughtAmount = typeof leg.boughtAmount === "number" && Number.isFinite(leg.boughtAmount) ? leg.boughtAmount : 0;
-            if (!soldSymbol || !boughtSymbol || soldAmount <= 0 || boughtAmount <= 0) continue;
-            const soldKey = `${srcPositionId}::${soldSymbol}`;
-            const boughtKey = `${srcPositionId}::${boughtSymbol}`;
-            harvestPendingByKey.set(soldKey, (harvestPendingByKey.get(soldKey) ?? 0) - soldAmount);
-            harvestPendingByKey.set(boughtKey, (harvestPendingByKey.get(boughtKey) ?? 0) + boughtAmount);
-          }
-        }
-      }
-      // Rebalance deposited delta no afecta a snapshots globales (es cost basis)
-      continue;
-    }
-
-    if (CAPITAL_OUT.has(txType)) {
-      if (positionId && outSymbol) {
-        const key = `${positionId}::${outSymbol}`;
-        const cur = balanceByPositionSymbol.get(key) ?? { symbol: outSymbol, balance: 0, positionType };
-        cur.balance -= outAmount;
-        cur.positionType = positionType;
-        balanceByPositionSymbol.set(key, cur);
-      }
-      if (!isInternal) totalDepositedUsd -= outAmount * spotPrice;
-      // Harvest arrastrado al destino de un rebalance: sale del pending del
-      // origen (su valor pasa a la posición destino) — misma semántica que
-      // en get-dashboard-data.ts; sin esto se contaría doble.
-      if ((reason === "rebalance_harvest_out" || source === "rebalance_harvest_out") && positionId && outSymbol && outAmount > 0) {
-        const key = `${positionId}::${outSymbol}`;
-        harvestPendingByKey.set(key, (harvestPendingByKey.get(key) ?? 0) - outAmount);
-      }
-      continue;
-    }
-
-    if (txType === "harvest") {
-      pendingHarvestUsd += inAmount * spotPrice;
-      if (positionId && inSymbol) {
-        const key = `${positionId}::${inSymbol}`;
-        harvestPendingByKey.set(key, (harvestPendingByKey.get(key) ?? 0) + inAmount);
-      }
-      continue;
-    }
-
-    if (txType === "position_closed") {
-      const closureMeta = parseObj(tx.metadata)?.closure;
-      if (closureMeta && typeof closureMeta === "object" && !Array.isArray(closureMeta)) {
-        const pnl = (closureMeta as Record<string, unknown>).realizedPnl;
-        if (typeof pnl === "number" && Number.isFinite(pnl)) realizedPnlUsd += pnl;
-      } else {
-        // Fallback al campo directo
-        const pnl = readNumber(tx.metadata, tx.notes, "realizedPnl");
-        if (pnl !== null) realizedPnlUsd += pnl;
-      }
-      continue;
-    }
-
-    // DEUDA (Aave y similares): pedir prestado (token_in) crea pasivo; repagar
-    // (token_out) lo reduce. El valor NETO del portfolio es colateral − deuda,
-    // igual que en el dashboard. Sin esto, la curva de evolución sobrevalora
-    // las posiciones con deuda por el importe del préstamo.
-    if (txType === "lending_borrow") {
-      if (inSymbol && inAmount > 0) {
-        const cur = debtByToken.get(inSymbol) ?? 0;
-        debtByToken.set(inSymbol, cur + inAmount);
-      }
-      if (outSymbol && outAmount > 0) {
-        const cur = debtByToken.get(outSymbol) ?? 0;
-        debtByToken.set(outSymbol, cur - outAmount);
-      }
-      continue;
+  for (const tx of (txs ?? []) as Array<{ type: string | null; metadata: unknown; notes: string | null }>) {
+    if ((tx.type ?? "").trim() !== "position_closed") continue;
+    const closureMeta = parseObj(tx.metadata)?.closure;
+    if (closureMeta && typeof closureMeta === "object" && !Array.isArray(closureMeta)) {
+      const pnl = (closureMeta as Record<string, unknown>).realizedPnl;
+      if (typeof pnl === "number" && Number.isFinite(pnl)) realizedPnlUsd += pnl;
+    } else {
+      const pnl = readNumber(tx.metadata, tx.notes, "realizedPnl");
+      if (pnl !== null) realizedPnlUsd += pnl;
     }
   }
-
-  // 4. Calcular total_value_usd sumando balances * precio actual + ajustar pendingHarvest neto
-  let totalValueUsd = 0;
-  const composition: Record<string, number> = {};
-  for (const entry of balanceByPositionSymbol.values()) {
-    if (entry.balance <= 0) continue;
-    const price = spotPriceFor(entry.symbol);
-    const value = entry.balance * price;
-    if (value <= 0) continue;
-    totalValueUsd += value;
-    const bucket = entry.positionType.includes("Lending")
-      ? "Lending"
-      : entry.positionType.includes("Staking")
-        ? "Staking"
-        : entry.positionType.includes("Liquidity") || entry.positionType.includes("Pool") || entry.positionType.includes("LP")
-          ? "Liquidity Pool"
-          : "Hold";
-    composition[bucket] = (composition[bucket] ?? 0) + value;
-  }
-  // Restar la deuda de lending: el valor neto es colateral − deuda (coherente
-  // con el dashboard). También ajusta el bucket Lending de la composición.
-  for (const [symbol, amount] of debtByToken.entries()) {
-    if (amount <= 0) continue;
-    const debtValue = amount * spotPriceFor(symbol);
-    if (debtValue <= 0) continue;
-    totalValueUsd -= debtValue;
-    composition["Lending"] = (composition["Lending"] ?? 0) - debtValue;
-  }
-  // Pending harvest neto (≥ 0): suma de pendientes por símbolo a precio actual
-  let netPendingHarvest = 0;
-  const aggregatePendingByToken = new Map<string, number>();
-  for (const [key, amount] of harvestPendingByKey.entries()) {
-    const symbol = key.split("::")[1] ?? "";
-    aggregatePendingByToken.set(symbol, (aggregatePendingByToken.get(symbol) ?? 0) + amount);
-  }
-  for (const [symbol, amount] of aggregatePendingByToken.entries()) {
-    if (amount <= 0) continue;
-    netPendingHarvest += amount * spotPriceFor(symbol);
-  }
-
   // 5. Insertar snapshot
   const insert = await client.from("portfolio_snapshots").insert({
     portfolio_id: portfolioId,
