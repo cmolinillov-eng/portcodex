@@ -586,7 +586,7 @@ async function setScanCursor(portfolioId, chain, protocol, cursor) {
   );
 }
 
-async function insertTransferEvent({ portfolioId, eventKey, kind, chain, protocol, walletAddr, positionRef, symbol, amount, price, tsSec, txHash }) {
+async function insertTransferEvent({ portfolioId, eventKey, kind, chain, protocol, walletAddr, positionRef, symbol, amount, price, tsSec, txHash, feeUsd }) {
   const valueUsd = price != null ? amount * price : null;
   if (valueUsd != null && valueUsd < 1) return false; // polvo/spam (< $1)
   const { error } = await sb.from("onchain_events").upsert({
@@ -598,7 +598,9 @@ async function insertTransferEvent({ portfolioId, eventKey, kind, chain, protoco
     wallet_address: walletAddr,
     position_ref: positionRef,
     label: symbol,
-    tokens: [{ symbol, amount, priceUsd: price, valueUsd }],
+    // feeUsd viaja en tokens[0] (jsonb): la tabla no tiene columna de fee y
+    // la ingesta lo vuelca a transactions.fee_amount (Art. 35 LIRPF).
+    tokens: [{ symbol, amount, priceUsd: price, valueUsd, ...(feeUsd > 0 ? { feeUsd } : {}) }],
     value_usd: valueUsd,
     block_time: new Date(tsSec * 1000).toISOString(),
     tx_hash: txHash,
@@ -723,6 +725,8 @@ async function scanBitcoin(portfolioId, walletAddr) {
     const tsSec = tx.status.block_time ?? Math.floor(Date.now() / 1000);
     const price = await llamaPrice("coingecko", "bitcoin", tsSec);
     const kind = net > 0 ? "transfer_in" : "transfer_out";
+    // Fee de red: solo cuando gastamos nosotros (salida). Art. 35: gasto de transmisión.
+    const feeUsd = net < 0 && price != null ? (Number(tx.fee ?? 0) / 1e8) * price : 0;
     const ok = await insertTransferEvent({
       portfolioId,
       eventKey: `bitcoin:${tx.txid}:${walletAddr.slice(0, 24)}:${kind}`,
@@ -736,6 +740,7 @@ async function scanBitcoin(portfolioId, walletAddr) {
       price,
       tsSec,
       txHash: tx.txid,
+      feeUsd,
     });
     if (ok) found++;
   }
@@ -772,6 +777,14 @@ async function scanEvmTransfers(portfolioId, addr) {
 
     // ── PERMUTA (trade de Zerion): swap dentro de la wallet → un solo evento
     // kind=swap con las dos patas; la ingesta lo convierte en permuta fiscal.
+    // Gas de la tx según Zerion (USD): en trades va a la primera pata vendida;
+    // en sends, al primer transfer_out.
+    const evmFeeUsd = Number(a.fee?.value ?? 0) > 0
+      ? Number(a.fee.value)
+      : (Number(a.fee?.quantity?.float ?? 0) > 0 && Number(a.fee?.price ?? 0) > 0
+        ? Number(a.fee.quantity.float) * Number(a.fee.price)
+        : 0);
+
     if (a.operation_type === "trade") {
       const legs = [];
       for (const tr of a.transfers ?? []) {
@@ -785,6 +798,11 @@ async function scanEvmTransfers(portfolioId, addr) {
         if (price == null || price <= 0) continue;
         const impl = (tr.fungible_info?.implementations ?? []).find((m) => (CHAIN_ALIASES[m.chain_id] ?? m.chain_id) === chain);
         legs.push({ symbol, amount, priceUsd: price, valueUsd: amount * price, side: dir === "out" ? "sold" : "bought", holdRef: impl?.address ?? symbol });
+      }
+      // fee del gas en la primera pata vendida
+      {
+        const firstSold = legs.find((l) => l.side === "sold");
+        if (firstSold && evmFeeUsd > 0) firstSold.feeUsd = evmFeeUsd;
       }
       const soldLegs = legs.filter((l) => l.side === "sold");
       const boughtLegs = legs.filter((l) => l.side === "bought");
@@ -831,11 +849,14 @@ async function scanEvmTransfers(portfolioId, addr) {
       const impl = (tr.fungible_info?.implementations ?? []).find((m) => (CHAIN_ALIASES[m.chain_id] ?? m.chain_id) === chain);
       const positionRef = impl?.address ?? symbol;
       const kind = dir === "in" ? "transfer_in" : "transfer_out";
+      const evFee = kind === "transfer_out" && evmFeeUsd > 0 && !tx.__feeAttached ? evmFeeUsd : 0;
+      if (evFee > 0) tx.__feeAttached = true;
       const ok = await insertTransferEvent({
         portfolioId,
         eventKey: `${chain}:${a.hash}:${i}:${kind}`,
         kind,
         chain,
+        feeUsd: evFee,
         protocol: "Wallet",
         walletAddr: addr,
         positionRef,
@@ -984,6 +1005,14 @@ async function scanSolanaTransfers(portfolioId, addr) {
     }
     if (!tokens.length) continue;
 
+    // Gas de la tx (solo si lo pagó esta wallet): viaja en tokens[0].feeUsd
+    // del evento y acaba en transactions.fee_amount (Art. 35 LIRPF).
+    let txFeeUsd = 0;
+    if (tx.feePayer === addr && Number(tx.fee ?? 0) > 0) {
+      const solPx = await llamaPrice("coingecko", "solana", tsSec);
+      if (solPx != null) txFeeUsd = (Number(tx.fee) / 1e9) * solPx;
+    }
+
     // ── PERMUTA (swap de wallet): antes se ignoraba y la permuta fiscal se
     // perdía. Un SWAP con pata vendida y comprada de valor comparable es un
     // intercambio del hold: se emite kind=swap con las dos patas (side +
@@ -1000,7 +1029,7 @@ async function scanSolanaTransfers(portfolioId, addr) {
         if (maxUsd >= 0.5 && Math.abs(soldUsd - boughtUsd) / maxUsd <= 0.3) {
           const holdRefOf = (t) => (t.mint === "SOL" ? "SOL" : t.mint);
           const evTokens = [
-            ...soldLegs.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, side: "sold", holdRef: holdRefOf(t) })),
+            ...soldLegs.map((t, i) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, side: "sold", holdRef: holdRefOf(t), ...(i === 0 && txFeeUsd > 0 ? { feeUsd: txFeeUsd } : {}) })),
             ...boughtLegs.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, side: "bought", holdRef: holdRefOf(t) })),
           ];
           const { error } = await sb.from("onchain_events").upsert({
@@ -1061,7 +1090,7 @@ async function scanSolanaTransfers(portfolioId, addr) {
       const byProtocol = candidates.filter((p) => p.protocol.toLowerCase().includes(protoNeedle));
       const match = byProtocol.length === 1 ? byProtocol[0] : candidates.length === 1 ? candidates[0] : null;
 
-      const evTokens = tokens.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd }));
+      const evTokens = tokens.map((t, i) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, ...(i === 0 && txFeeUsd > 0 ? { feeUsd: txFeeUsd } : {}) }));
       const valueUsd = evTokens.reduce((s, t) => s + t.valueUsd, 0);
       if (valueUsd < 0.5) continue;
       const { error } = await sb.from("onchain_events").upsert({
@@ -1090,13 +1119,17 @@ async function scanSolanaTransfers(portfolioId, addr) {
     const isPlainTransfer = type === "TRANSFER" || source.startsWith("CIRCLE_CCTP") || type === "RECEIVE_MESSAGE";
     if (!isPlainTransfer) continue; // SWAP y otros DeFi: movimiento interno
 
+    let feeAttached = false;
     for (const t of tokens) {
       const kind = t.delta > 0 ? "transfer_in" : "transfer_out";
+      const evFee = !feeAttached && txFeeUsd > 0 ? txFeeUsd : 0;
+      if (evFee > 0) feeAttached = true;
       const ok = await insertTransferEvent({
         portfolioId,
         eventKey: `solana:${tx.signature}:${t.mint}:${kind}`,
         kind,
         chain: "solana",
+        feeUsd: evFee,
         protocol: "Wallet",
         walletAddr: addr,
         positionRef: t.mint === "SOL" ? "SOL" : t.mint, // hold id = `solana:hold:${mint}`

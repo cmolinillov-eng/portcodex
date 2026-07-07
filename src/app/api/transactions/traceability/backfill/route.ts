@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     const { data: rows, error: readError } = await client
       .from("transactions")
       .select(
-        "id, type, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, transaction_date, metadata",
+        "id, type, protocol, position_id, position_type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, fee_amount, transaction_date, metadata",
       )
       .eq("portfolio_id", portfolioId)
       .is("deleted_at", null)
@@ -126,6 +126,7 @@ export async function POST(request: NextRequest) {
       token_out_symbol: string | null;
       token_out_amount: number | string | null;
       spot_price: number | string | null;
+      fee_amount: number | string | null;
       transaction_date: string;
       metadata: Record<string, unknown> | null;
     }>).map((row) => ({
@@ -139,6 +140,7 @@ export async function POST(request: NextRequest) {
       tokenOutSymbol: row.token_out_symbol,
       tokenOutAmount: row.token_out_amount !== null ? Number(row.token_out_amount) : null,
       spotPriceUsd: row.spot_price !== null ? Number(row.spot_price) : 0,
+    feeUsd: row.fee_amount !== null && row.fee_amount !== undefined ? Number(row.fee_amount) : 0,
       transactionDate: row.transaction_date,
       metadata: row.metadata,
     }));

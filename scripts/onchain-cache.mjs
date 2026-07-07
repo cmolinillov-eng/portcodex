@@ -518,10 +518,55 @@ async function main() {
     try {
       const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino").maybeSingle();
       const prev = new Map();
-      for (const p of prevRow?.positions ?? []) prev.set(p.id, p.meta?.claimedRewards ?? null);
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p);
 
       for (const p of positions) {
-        const before = prev.get(p.id);
+        const prevPos = prev.get(p.id);
+
+        // ── RETIRADA de principal por delta de SHARES (FASE 4.2) ──────────
+        // Las shares solo bajan al retirar (los harvests no las tocan; los
+        // depósitos las suben y ya los detecta Helius). Solo con la posición
+        // presente y válida en AMBAS lecturas — nunca por desaparición, que
+        // puede ser un fallo de lectura (retirada fantasma).
+        try {
+          const prevShares = Number(prevPos?.meta?.shares ?? 0);
+          const nowShares = Number(p.meta?.shares ?? 0);
+          const sharePrice = Number(p.meta?.sharePrice ?? prevPos?.meta?.sharePrice ?? 0);
+          if (prevShares > 0 && nowShares > 0 && sharePrice > 0 && prevShares - nowShares > prevShares * 0.01) {
+            const frac = (prevShares - nowShares) / prevShares;
+            const wdUsd = (prevShares - nowShares) * sharePrice;
+            const legs = (prevPos?.tokens ?? [])
+              .filter((t) => Number(t.amount) > 0 && Number(t.valueUsd) > 0)
+              .map((t) => ({
+                symbol: t.symbol,
+                amount: Number(t.amount) * frac,
+                priceUsd: Number(t.valueUsd) / Number(t.amount),
+                valueUsd: Number(t.valueUsd) * frac,
+              }));
+            if (wdUsd >= 1 && legs.length) {
+              await sb.from("onchain_events").upsert({
+                portfolio_id: portfolioId,
+                event_key: `solana:kamino-withdraw:${p.id}:${Math.round(nowShares * 1e6)}`,
+                kind: "withdraw",
+                chain: "solana",
+                protocol: p.protocol ?? "Kamino",
+                wallet_address: p.walletAddress,
+                position_ref: p.id,
+                label: p.label,
+                tokens: legs,
+                value_usd: legs.reduce((s2, l) => s2 + l.valueUsd, 0),
+                block_time: new Date().toISOString(),
+                tx_hash: null,
+                includes_principal: true,
+              }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+              console.log(`  📤 kamino withdraw ${p.label}: $${wdUsd.toFixed(2)}`);
+            }
+          }
+        } catch (e) {
+          console.error(`  kamino withdraw delta: ${String(e.message).slice(0, 80)}`);
+        }
+
+        const before = prevPos?.meta?.claimedRewards ?? null;
         if (!before) continue; // primera lectura con contadores: solo baseline
         const nowClaims = p.meta?.claimedRewards ?? {};
         const tokens = [];
@@ -583,15 +628,61 @@ async function main() {
   for (const portfolioId of meteoraPids) {
     const positions = meteoraByPortfolio.get(portfolioId) ?? [];
 
-    // Lectura anterior: mapa posición → {claimedX, claimedY}.
+    // Lectura anterior: posición completa (meta para harvests por delta de
+    // claimed; tokens/valor para retiradas por caída de principal).
     let prev = new Map();
     try {
       const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "meteora").maybeSingle();
-      for (const p of prevRow?.positions ?? []) prev.set(p.id, p.meta ?? {});
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p);
     } catch { /* sin previo */ }
 
     for (const p of positions) {
-      const before = prev.get(p.id);
+      const prevPos = prev.get(p.id);
+
+      // ── RETIRADA de principal (FASE 4.2, heurística conservadora) ────────
+      // El precio moviéndose entre bins convierte X↔Y (uno SUBE); una
+      // retirada reduce AMBOS proporcionalmente. Solo se emite si el valor
+      // cae >20% con ninguna cantidad al alza y la posición sigue presente
+      // en ambas lecturas (nunca por desaparición = posible fallo de lectura).
+      try {
+        const pT = (p.tokens ?? []);
+        const bT = (prevPos?.tokens ?? []);
+        const prevVal = Number(prevPos?.valueUsd ?? 0);
+        const nowVal = Number(p.valueUsd ?? 0);
+        if (bT.length === 2 && pT.length === 2 && prevVal > 0 && nowVal > 0 && nowVal < prevVal * 0.8) {
+          const noneUp = pT.every((t, i) => Number(t.amount) <= Number(bT[i]?.amount ?? 0) * 1.001);
+          if (noneUp) {
+            const legs = pT.map((t, i) => {
+              const d = Math.max(0, Number(bT[i]?.amount ?? 0) - Number(t.amount));
+              const priceUsd = Number(t.amount) > 0 && Number(t.valueUsd) > 0 ? Number(t.valueUsd) / Number(t.amount) : null;
+              return d > 0 && priceUsd != null ? { symbol: t.symbol, amount: d, priceUsd, valueUsd: d * priceUsd } : null;
+            }).filter(Boolean);
+            const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
+            if (wdUsd >= 1 && legs.length) {
+              await sb.from("onchain_events").upsert({
+                portfolio_id: portfolioId,
+                event_key: `solana:meteora-withdraw:${p.id}:${Math.round(nowVal * 100)}`,
+                kind: "withdraw",
+                chain: "solana",
+                protocol: p.protocol ?? "Meteora",
+                wallet_address: p.walletAddress,
+                position_ref: p.id,
+                label: p.label,
+                tokens: legs,
+                value_usd: wdUsd,
+                block_time: new Date().toISOString(),
+                tx_hash: null,
+                includes_principal: true,
+              }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+              console.log(`  📤 meteora withdraw ${p.label}: $${wdUsd.toFixed(2)}`);
+            }
+          }
+        }
+      } catch (e) {
+        console.error(`  meteora withdraw delta: ${String(e.message).slice(0, 80)}`);
+      }
+
+      const before = prevPos?.meta ?? null;
       if (!before) continue; // primera vez que vemos la posición: sin base de comparación
       const dX = Math.max(0, (p.meta.claimedX ?? 0) - (before.claimedX ?? 0));
       const dY = Math.max(0, (p.meta.claimedY ?? 0) - (before.claimedY ?? 0));

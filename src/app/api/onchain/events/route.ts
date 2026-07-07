@@ -19,6 +19,8 @@ type EventToken = {
   /** Solo eventos kind=swap: lado de la permuta y ref del hold de esa pata. */
   side?: "sold" | "bought";
   holdRef?: string;
+  /** Gas/comisión de la tx en USD (solo en el primer token del evento). */
+  feeUsd?: number;
 };
 type EventRow = {
   id: string;
@@ -155,7 +157,8 @@ async function performIngest(
         token_out_symbol: t.symbol.toUpperCase(),
         token_out_amount: t.amount,
         spot_price: t.priceUsd,
-        fee_amount: 0,
+        // Gas de la tx (USD): Art. 35 — resta del valor de transmisión.
+        fee_amount: t.feeUsd && t.feeUsd > 0 ? t.feeUsd : 0,
         notes: `Permuta (entrega) ${noteTail}`,
         transaction_date: timestamp,
         protocol: link.protocol,
@@ -333,7 +336,7 @@ async function performIngest(
     token_out_symbol: isOut ? t.symbol.toUpperCase() : null,
     token_out_amount: isOut ? amount : null,
     spot_price: t.priceUsd as number,
-    fee_amount: 0,
+    fee_amount: t.feeUsd && t.feeUsd > 0 ? t.feeUsd : 0,
     notes: `${noteLabel ?? (reinvest ? "Reinversión de harvest" : NOTE_LABEL[kind])} ${noteTail}`.trim(),
     transaction_date: timestamp,
     protocol,

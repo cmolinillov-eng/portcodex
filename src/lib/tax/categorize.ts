@@ -139,6 +139,13 @@ function emptyResult(
   };
 }
 
+/** Comisión de la operación en EUR (fee_amount USD → EUR con el FX de la tx).
+ *  Art. 35 LIRPF: SUMA al coste de adquisición, RESTA del valor de transmisión. */
+function feeEurOf(tx: CategorizeInput, rate: number): number {
+  const feeUsd = Number(tx.feeUsd ?? 0);
+  return feeUsd > 0 ? roundEur(usdToEur(feeUsd, rate)) : 0;
+}
+
 function buildTaxEvent(input: {
   tx: CategorizeInput;
   eventType: FiscalCategory;
@@ -485,7 +492,7 @@ function handleDeposit(
         {
           tokenSymbol: symbol,
           amount,
-          costBasisEur: valueEur,
+          costBasisEur: roundEur(valueEur + feeEurOf(tx, rate)),
           acquiredAt: tx.transactionDate,
           acquiredViaEvent: "swap_in",
           acquiredViaTransactionId: tx.id ?? null,
@@ -524,7 +531,8 @@ function handleDeposit(
         {
           tokenSymbol: symbol,
           amount,
-          costBasisEur: valueEur,
+          // Art. 35: la comisión de compra forma parte del coste de adquisición.
+          costBasisEur: roundEur(valueEur + feeEurOf(tx, rate)),
           acquiredAt: tx.transactionDate,
           acquiredViaEvent: "buy",
           acquiredViaTransactionId: tx.id ?? null,
@@ -633,7 +641,8 @@ function handleWithdrawal(
   // proceeds = FMV de lo entregado en el momento del swap. El lado recibido
   // crea su lote en handleDeposit (swap_in, no imponible).
   if ((wMeta.source as string | undefined) === "onchain_swap") {
-    const permutaValueEur = roundEur(usdToEur(amount * spotUsd, rate));
+    const permutaFeeEur = feeEurOf(tx, rate);
+    const permutaValueEur = roundEur(usdToEur(amount * spotUsd, rate) - permutaFeeEur);
     const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
     const realizedGainEur = calculateRealizedGain(permutaValueEur, fifo.consumedCostEur);
     const boughtLabel = typeof wMeta.swapBought === "string" ? wMeta.swapBought : "otro token";
@@ -692,7 +701,9 @@ function handleWithdrawal(
   // ─── CASO A: Venta real (CEX, broker, payment app) ──────────────────────
   if (category === "sell") {
     const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
-    const realizedGainEur = calculateRealizedGain(valueEur, fifo.consumedCostEur);
+    const sellFeeEur = feeEurOf(tx, rate);
+    const netProceedsEur = roundEur(valueEur - sellFeeEur);
+    const realizedGainEur = calculateRealizedGain(netProceedsEur, fifo.consumedCostEur);
 
     const notes = fifo.insufficientLots
       ? `Venta ${amount} ${symbol} → fiat en ${walletName}. ⚠️ Lotes FIFO insuficientes (${fifo.consumedAmount.toFixed(8)} de ${amount}). Posiblemente faltan transacciones históricas.`
@@ -728,7 +739,7 @@ function handleWithdrawal(
         buildTaxEvent({
           tx,
           eventType: "sell",
-          proceedsEur: valueEur,
+          proceedsEur: netProceedsEur,
           costBasisEur: fifo.consumedCostEur,
           realizedGainEur,
           incomeType: realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",

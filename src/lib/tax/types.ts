@@ -254,6 +254,10 @@ export interface CategorizeInput {
   spotPriceUsd: number;          // precio USD del token al momento de la tx
   transactionDate: string;       // ISO timestamp
   metadata: Record<string, unknown> | null;
+  /** Comisión de la operación en USD (gas/fee, transactions.fee_amount).
+   *  Art. 35 LIRPF: suma al coste de adquisición y resta del valor de
+   *  transmisión. 0 o ausente = sin comisión registrada. */
+  feeUsd?: number | null;
 }
 
 // =============================================================================
