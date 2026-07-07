@@ -453,6 +453,49 @@ function handleDeposit(
     };
   }
 
+  // ─── CASO ESPECIAL: lado RECIBIDO de una permuta on-chain (swap_in) ─────
+  // El swap detectado on-chain tributa en el lado entregado (swap_out, en
+  // handleWithdrawal); aquí solo nace el lote del token recibido con base =
+  // FMV en el momento del swap. No imponible.
+  if ((tx.metadata?.source as string | undefined) === "onchain_swap") {
+    const soldLabel = typeof tx.metadata?.swapSold === "string" ? tx.metadata.swapSold : "otro token";
+    const swapInDescription = buildHumanDescription({
+      category: "swap_in",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur,
+    });
+    return {
+      annotation: {
+        category: "swap_in",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `Permuta: recibes ${amount} ${symbol} a cambio de ${soldLabel} (FMV ${valueEur} €). Nace lote FIFO con esa base; la ganancia tributó en el lado entregado.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("swap_in"),
+        humanDescription: swapInDescription,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [
+        {
+          tokenSymbol: symbol,
+          amount,
+          costBasisEur: valueEur,
+          acquiredAt: tx.transactionDate,
+          acquiredViaEvent: "swap_in",
+          acquiredViaTransactionId: tx.id ?? null,
+        },
+      ],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   // ─── CASO A: Compra real (CEX, broker, payment app) ─────────────────────
   if (category === "buy") {
     const description = buildHumanDescription({
@@ -581,6 +624,62 @@ function handleWithdrawal(
       newLots: [],
       taxEvents: [],
       consumedLotUpdates: [],
+    };
+  }
+
+  // ─── CASO ESPECIAL: permuta cripto-cripto (swap de wallet, on-chain) ────
+  // El lado ENTREGADO de un swap detectado on-chain consume lotes FIFO y
+  // TRIBUTA como ganancia/pérdida patrimonial (permuta, art. 37.1.h LIRPF):
+  // proceeds = FMV de lo entregado en el momento del swap. El lado recibido
+  // crea su lote en handleDeposit (swap_in, no imponible).
+  if ((wMeta.source as string | undefined) === "onchain_swap") {
+    const permutaValueEur = roundEur(usdToEur(amount * spotUsd, rate));
+    const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
+    const realizedGainEur = calculateRealizedGain(permutaValueEur, fifo.consumedCostEur);
+    const boughtLabel = typeof wMeta.swapBought === "string" ? wMeta.swapBought : "otro token";
+    const notes = fifo.insufficientLots
+      ? `Permuta: ${amount} ${symbol} → ${boughtLabel} en ${walletName}. ⚠️ Lotes FIFO insuficientes (${fifo.consumedAmount.toFixed(8)} de ${amount}).`
+      : `Permuta: ${amount} ${symbol} → ${boughtLabel} en ${walletName} (FMV ${permutaValueEur} €). Cost basis FIFO: ${fifo.consumedCostEur} €. Ganancia: ${realizedGainEur} €.`;
+    const permutaDescription = buildHumanDescription({
+      category: "swap_out",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur: permutaValueEur,
+      costBasisEur: fifo.consumedCostEur,
+      realizedGainEur,
+    });
+    return {
+      annotation: {
+        category: "swap_out",
+        incomeType: realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
+        valueEur: permutaValueEur,
+        costBasisEur: fifo.consumedCostEur,
+        realizedGainEur,
+        notes,
+        taxable: true,
+        humanLabel: getCategoryLabel("swap_out"),
+        humanDescription: permutaDescription,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [
+        buildTaxEvent({
+          tx,
+          eventType: "swap_out",
+          proceedsEur: permutaValueEur,
+          costBasisEur: fifo.consumedCostEur,
+          realizedGainEur,
+          incomeType: realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
+          tokenSymbol: symbol,
+          tokenAmount: amount,
+          lotsConsumed: fifo.lotsConsumed,
+          notes,
+        }),
+      ],
+      consumedLotUpdates: fifo.lotUpdates,
     };
   }
 

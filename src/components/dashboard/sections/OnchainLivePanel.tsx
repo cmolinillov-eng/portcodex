@@ -572,10 +572,11 @@ export function OnchainLivePanel({
 
       {canManage && showWallets ? <WalletManager portfolioId={portfolioId} /> : null}
 
-      {/* Bandeja on-chain retirada: el escáner del worker ingiere los eventos
-          directamente en la contabilidad (auto-ingesta vía position_links con
-          auto_ingest=true). Las posiciones sin enlazar se resuelven inline en
-          la propia tabla con el input "$ depositado" (adopción). */}
+      {/* Bandeja de revisión: con la auto-ingesta activa, aquí solo queda lo
+          que NO pudo contabilizarse solo (p.ej. permuta con un token sin
+          posición enlazada, evento sin precio). Sin esta bandeja, esos
+          eventos quedaban pendientes e INVISIBLES para siempre. */}
+      {canManage ? <HarvestInbox portfolioId={portfolioId} manualPositions={manualPositions ?? []} /> : null}
 
       {error ? <p className="text-sm text-rose-400 mb-3">{error}</p> : null}
 

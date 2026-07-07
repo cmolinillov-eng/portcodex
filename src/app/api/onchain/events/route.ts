@@ -11,7 +11,15 @@ import { computeReinvestSplit, type ReinvestSplit, type SwapLeg } from "@/lib/on
  * asignado a una posición manual) o descartarlo. Solo perfiles que operan.
  */
 
-type EventToken = { symbol: string; amount: number; priceUsd: number | null; valueUsd: number | null };
+type EventToken = {
+  symbol: string;
+  amount: number;
+  priceUsd: number | null;
+  valueUsd: number | null;
+  /** Solo eventos kind=swap: lado de la permuta y ref del hold de esa pata. */
+  side?: "sold" | "bought";
+  holdRef?: string;
+};
 type EventRow = {
   id: string;
   chain: string;
@@ -111,6 +119,85 @@ async function performIngest(
   // Tipo contable según el evento detectado (Fases C1/C2/C3), misma semántica
   // que el flujo manual auditado.
   const kind = (ev.kind as string) ?? "harvest";
+
+  // ─── PERMUTA (swap de wallet): dos filas con posiciones DISTINTAS ────────
+  // El lado vendido sale de su hold (withdrawal, tributa como swap_out por
+  // FIFO en el motor fiscal) y el comprado entra en el suyo (deposit, nace
+  // lote swap_in a FMV). Si el token comprado no tiene posición aún, se crea
+  // implícita y se enlaza con auto_ingest (los siguientes eventos fluyen).
+  if (kind === "swap") {
+    const sold = usable.filter((t) => t.side === "sold" && t.holdRef);
+    const bought = usable.filter((t) => t.side === "bought" && t.holdRef);
+    if (!sold.length || !bought.length) {
+      return { ok: false, error: "Permuta sin las dos patas con precio; regístrala a mano.", status: 400 };
+    }
+    const links = await getLinks(portfolioId);
+    const refId = (r: string) => (r.includes(":") ? r : `${ev.chain}:hold:${r}`);
+    const soldLabel = sold.map((t) => `${t.amount.toFixed(6)} ${t.symbol}`).join(" + ");
+    const boughtLabel = bought.map((t) => `${t.amount.toFixed(6)} ${t.symbol}`).join(" + ");
+    const operationGroupId = crypto.randomUUID();
+    const noteTail = `on-chain permuta (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim();
+    const rows: Array<Record<string, unknown>> = [];
+
+    for (const t of sold) {
+      const link = links.get(refId(t.holdRef!));
+      if (!link) {
+        // Vender un token sin posición contable = historia incompleta (no hay
+        // lotes que consumir). Mejor pendiente que una venta sin base.
+        return { ok: false, error: `Permuta: el token vendido (${t.symbol}) no tiene posición enlazada — regístrala a mano.`, status: 400 };
+      }
+      rows.push({
+        portfolio_id: portfolioId,
+        type: "withdrawal",
+        operation_group_id: operationGroupId,
+        token_in_symbol: null,
+        token_in_amount: null,
+        token_out_symbol: t.symbol.toUpperCase(),
+        token_out_amount: t.amount,
+        spot_price: t.priceUsd,
+        fee_amount: 0,
+        notes: `Permuta (entrega) ${noteTail}`,
+        transaction_date: timestamp,
+        protocol: link.protocol,
+        position_id: link.position_id,
+        position_type: link.position_type || "Hold",
+        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel },
+      });
+    }
+    for (const t of bought) {
+      const oid = refId(t.holdRef!);
+      let link = links.get(oid);
+      if (!link) {
+        const positionId = `${t.symbol.toUpperCase()}-${oid.slice(-24).replace(/[^\w-]+/g, "-")}`;
+        link = { protocol: "Wallet", position_id: positionId, position_type: "Hold", auto_ingest: true };
+        await client.from("position_links").upsert(
+          { portfolio_id: portfolioId, onchain_id: oid, protocol: "Wallet", position_id: positionId, position_type: "Hold", auto_ingest: true },
+          { onConflict: "portfolio_id,onchain_id" },
+        );
+      }
+      rows.push({
+        portfolio_id: portfolioId,
+        type: "deposit",
+        operation_group_id: operationGroupId,
+        token_in_symbol: t.symbol.toUpperCase(),
+        token_in_amount: t.amount,
+        token_out_symbol: null,
+        token_out_amount: null,
+        spot_price: t.priceUsd,
+        fee_amount: 0,
+        notes: `Permuta (recepción) ${noteTail}`,
+        transaction_date: timestamp,
+        protocol: link.protocol,
+        position_id: link.position_id,
+        position_type: link.position_type || "Hold",
+        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel },
+      });
+    }
+
+    const { error: swapErr } = await client.from("transactions").insert(rows);
+    if (swapErr) return { ok: false, error: swapErr.message, status: 500 };
+    return { ok: true, inserted: rows.length };
+  }
   const TX_TYPE: Record<string, string> = {
     harvest: "harvest",
     deposit: "lp_deposit",

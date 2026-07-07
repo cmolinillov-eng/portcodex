@@ -750,8 +750,10 @@ async function scanEvmTransfers(portfolioId, addr) {
   const key = process.env.ZERION_API_KEY;
   if (!key) return 0;
   const auth = Buffer.from(`${key}:`).toString("base64");
+  // send/receive = transferencias del hold; trade = swaps de wallet (permuta
+  // fiscal — antes no se pedían y la permuta se perdía).
   const res = await fetch(
-    `https://api.zerion.io/v1/wallets/${addr}/transactions/?currency=usd&page[size]=100&filter[operation_types]=send,receive&filter[trash]=only_non_trash`,
+    `https://api.zerion.io/v1/wallets/${addr}/transactions/?currency=usd&page[size]=100&filter[operation_types]=send,receive,trade&filter[trash]=only_non_trash`,
     { headers: { Authorization: `Basic ${auth}`, accept: "application/json" } },
   );
   if (!res.ok) throw new Error(`Zerion txs ${res.status}`);
@@ -767,6 +769,51 @@ async function scanEvmTransfers(portfolioId, addr) {
     if (a.status && a.status !== "confirmed") continue;
     if (maxTs < tsSec) maxTs = tsSec;
     const chain = CHAIN_ALIASES[tx.relationships?.chain?.data?.id] ?? tx.relationships?.chain?.data?.id ?? "evm";
+
+    // ── PERMUTA (trade de Zerion): swap dentro de la wallet → un solo evento
+    // kind=swap con las dos patas; la ingesta lo convierte en permuta fiscal.
+    if (a.operation_type === "trade") {
+      const legs = [];
+      for (const tr of a.transfers ?? []) {
+        const dir = tr.direction;
+        if (dir !== "in" && dir !== "out") continue;
+        const symbol = tr.fungible_info?.symbol ?? "?";
+        const amount = Number(tr.quantity?.float ?? 0);
+        if (!(amount > 0)) continue;
+        if (/^(a|variableDebt|stableDebt)[A-Z]/.test(symbol) || symbol === "?") continue;
+        const price = tr.price != null ? Number(tr.price) : (tr.value != null ? Number(tr.value) / amount : null);
+        if (price == null || price <= 0) continue;
+        const impl = (tr.fungible_info?.implementations ?? []).find((m) => (CHAIN_ALIASES[m.chain_id] ?? m.chain_id) === chain);
+        legs.push({ symbol, amount, priceUsd: price, valueUsd: amount * price, side: dir === "out" ? "sold" : "bought", holdRef: impl?.address ?? symbol });
+      }
+      const soldLegs = legs.filter((l) => l.side === "sold");
+      const boughtLegs = legs.filter((l) => l.side === "bought");
+      if (soldLegs.length && boughtLegs.length) {
+        const soldUsd = soldLegs.reduce((s, l) => s + l.valueUsd, 0);
+        const boughtUsd = boughtLegs.reduce((s, l) => s + l.valueUsd, 0);
+        const maxUsd = Math.max(soldUsd, boughtUsd);
+        if (maxUsd >= 0.5 && Math.abs(soldUsd - boughtUsd) / maxUsd <= 0.3) {
+          const { error } = await sb.from("onchain_events").upsert({
+            portfolio_id: portfolioId,
+            event_key: `${chain}:${a.hash}:swap`,
+            kind: "swap",
+            chain,
+            protocol: "Wallet",
+            wallet_address: addr,
+            position_ref: soldLegs[0].holdRef,
+            label: `${soldLegs.map((l) => l.symbol).join("+")} → ${boughtLegs.map((l) => l.symbol).join("+")}`,
+            tokens: legs,
+            value_usd: boughtUsd,
+            block_time: new Date(tsSec * 1000).toISOString(),
+            tx_hash: a.hash ?? null,
+            includes_principal: false,
+          }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+          if (error) console.error(`  insert swap evm: ${error.message}`);
+          else found++;
+        }
+      }
+      continue;
+    }
 
     for (const [i, tr] of (a.transfers ?? []).entries()) {
       const dir = tr.direction; // in | out
@@ -936,6 +983,47 @@ async function scanSolanaTransfers(portfolioId, addr) {
       totalUsd += delta > 0 ? valueUsd : -valueUsd;
     }
     if (!tokens.length) continue;
+
+    // ── PERMUTA (swap de wallet): antes se ignoraba y la permuta fiscal se
+    // perdía. Un SWAP con pata vendida y comprada de valor comparable es un
+    // intercambio del hold: se emite kind=swap con las dos patas (side +
+    // holdRef) y la ingesta lo convierte en withdrawal(swap_out) +
+    // deposit(swap_in). Si los valores no casan (zap a pool, interacción
+    // rara), se ignora: los depósitos LP ya los emiten sus ramas.
+    if (type === "SWAP") {
+      const soldLegs = tokens.filter((t) => t.delta < 0);
+      const boughtLegs = tokens.filter((t) => t.delta > 0);
+      if (soldLegs.length && boughtLegs.length) {
+        const soldUsd = soldLegs.reduce((s, t) => s + t.valueUsd, 0);
+        const boughtUsd = boughtLegs.reduce((s, t) => s + t.valueUsd, 0);
+        const maxUsd = Math.max(soldUsd, boughtUsd);
+        if (maxUsd >= 0.5 && Math.abs(soldUsd - boughtUsd) / maxUsd <= 0.3) {
+          const holdRefOf = (t) => (t.mint === "SOL" ? "SOL" : t.mint);
+          const evTokens = [
+            ...soldLegs.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, side: "sold", holdRef: holdRefOf(t) })),
+            ...boughtLegs.map((t) => ({ symbol: t.symbol, amount: t.amount, priceUsd: t.priceUsd, valueUsd: t.valueUsd, side: "bought", holdRef: holdRefOf(t) })),
+          ];
+          const { error } = await sb.from("onchain_events").upsert({
+            portfolio_id: portfolioId,
+            event_key: `solana:${tx.signature}:swap`,
+            kind: "swap",
+            chain: "solana",
+            protocol: "Wallet",
+            wallet_address: addr,
+            position_ref: holdRefOf(soldLegs[0]),
+            label: `${soldLegs.map((t) => t.symbol).join("+")} → ${boughtLegs.map((t) => t.symbol).join("+")}`,
+            tokens: evTokens,
+            value_usd: boughtUsd,
+            block_time: new Date(tsSec * 1000).toISOString(),
+            tx_hash: tx.signature ?? null,
+            includes_principal: false,
+          }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+          if (error) console.error(`  insert swap solana: ${error.message}`);
+          else found++;
+        }
+      }
+      continue;
+    }
 
     const isOrcaCollect = type === "COLLECT_FEES";
     const isMeteora = programs.has(METEORA_DLMM_PROGRAM);
