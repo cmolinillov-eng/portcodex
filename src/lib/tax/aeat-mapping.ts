@@ -255,6 +255,9 @@ export function getAeatClassification(
     case "liquidation":
     case "derivative_open":
     case "derivative_funding_paid":
+    // swap_in = lado RECIBIDO de una permuta: no imponible en sí (la ganancia
+    // tributó en swap_out), solo nace el lote FIFO con la base a FMV.
+    case "swap_in":
       return {
         badge: "No imponible",
         tone: "neutral",
