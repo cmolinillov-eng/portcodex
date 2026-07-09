@@ -756,9 +756,11 @@ async function scanEvmTransfers(portfolioId, addr) {
   if (!key) return 0;
   const auth = Buffer.from(`${key}:`).toString("base64");
   // send/receive = transferencias del hold; trade = swaps de wallet (permuta
-  // fiscal — antes no se pedían y la permuta se perdía).
+  // fiscal); deposit/withdraw = entradas/salidas de vaults (Beefy vía mooToken;
+  // el resto de deposit/withdraw se ignora: ya lo cubren los escáneres de
+  // protocolo por getLogs).
   const res = await fetch(
-    `https://api.zerion.io/v1/wallets/${addr}/transactions/?currency=usd&page[size]=100&filter[operation_types]=send,receive,trade&filter[trash]=only_non_trash`,
+    `https://api.zerion.io/v1/wallets/${addr}/transactions/?currency=usd&page[size]=100&filter[operation_types]=send,receive,trade,deposit,withdraw&filter[trash]=only_non_trash`,
     { headers: { Authorization: `Basic ${auth}`, accept: "application/json" } },
   );
   if (!res.ok) throw new Error(`Zerion txs ${res.status}`);
@@ -784,6 +786,60 @@ async function scanEvmTransfers(portfolioId, addr) {
       : (Number(a.fee?.quantity?.float ?? 0) > 0 && Number(a.fee?.price ?? 0) > 0
         ? Number(a.fee.quantity.float) * Number(a.fee.price)
         : 0);
+
+    // ── BEEFY (vaults): depósito/retirada detectados por el mooToken ──────
+    // El mooToken es el recibo del vault (su contrato ES el vault): la pata
+    // NO-moo es el capital real que entra/sale. El resto de operaciones
+    // deposit/withdraw de Zerion se ignoran (los protocolos con adaptador
+    // propio ya se escanean por getLogs y aquí duplicarían).
+    if (a.operation_type === "deposit" || a.operation_type === "withdraw") {
+      const legs = [];
+      let vaultAddr = null;
+      for (const tr of a.transfers ?? []) {
+        const dir = tr.direction;
+        if (dir !== "in" && dir !== "out") continue;
+        const symbol = tr.fungible_info?.symbol ?? "?";
+        const amount = Number(tr.quantity?.float ?? 0);
+        if (!(amount > 0)) continue;
+        const impl = (tr.fungible_info?.implementations ?? []).find((m) => (CHAIN_ALIASES[m.chain_id] ?? m.chain_id) === chain);
+        if (/^moo[A-Z0-9]/.test(symbol)) {
+          if (impl?.address) vaultAddr = String(impl.address).toLowerCase();
+          continue; // recibo: no es capital
+        }
+        const price = tr.price != null ? Number(tr.price) : (tr.value != null ? Number(tr.value) / amount : null);
+        if (price == null || price <= 0) continue;
+        legs.push({ symbol, amount, priceUsd: price, valueUsd: amount * price, dir });
+      }
+      if (vaultAddr && legs.length) {
+        const kind = a.operation_type === "deposit" ? "deposit" : "withdraw";
+        const useDir = kind === "deposit" ? "out" : "in"; // capital sale de la wallet al depositar
+        const evTokens = legs
+          .filter((l) => l.dir === useDir)
+          .map((l, i) => ({ symbol: l.symbol, amount: l.amount, priceUsd: l.priceUsd, valueUsd: l.valueUsd, ...(i === 0 && evmFeeUsd > 0 ? { feeUsd: evmFeeUsd } : {}) }));
+        const valueUsd = evTokens.reduce((s2, t) => s2 + t.valueUsd, 0);
+        if (evTokens.length && valueUsd >= 0.5) {
+          const { error } = await sb.from("onchain_events").upsert({
+            portfolio_id: portfolioId,
+            event_key: `${chain}:${a.hash}:beefy-${kind}`,
+            kind,
+            chain,
+            protocol: "Beefy",
+            wallet_address: addr,
+            // id del adaptador genérico: `${chain}:generic:beefy:${vault(-8)}`
+            position_ref: `${chain}:generic:beefy:${vaultAddr.slice(-8)}`,
+            label: `Beefy ${evTokens.map((t) => t.symbol).join("+")}`,
+            tokens: evTokens,
+            value_usd: valueUsd,
+            block_time: new Date(tsSec * 1000).toISOString(),
+            tx_hash: a.hash ?? null,
+            includes_principal: true,
+          }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+          if (error) console.error(`  insert beefy ${kind}: ${error.message}`);
+          else found++;
+        }
+      }
+      continue;
+    }
 
     if (a.operation_type === "trade") {
       const legs = [];

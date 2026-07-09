@@ -237,13 +237,26 @@ async function performIngest(
   if (kind.startsWith("lending_") && positionType === "Liquidity Pool") positionType = "Lending";
   if (kind.startsWith("transfer_") && positionType === "Liquidity Pool") positionType = "Hold";
 
+  // deposit/withdraw sobre posiciones que NO son LP (Beefy y otros vaults del
+  // adaptador genérico van como Staking; holds como Hold): el tipo contable
+  // debe seguir al tipo de posición. Con lp_deposit a secas, el trigger de
+  // integridad exigiría metadata.lp que estas posiciones no tienen y el
+  // evento se quedaría atascado.
+  let effectiveTxType = txType;
+  if (kind === "deposit" || kind === "withdraw") {
+    const pt = positionType.toLowerCase();
+    if (pt.includes("staking")) effectiveTxType = kind === "deposit" ? "staking_deposit" : "staking_withdrawal";
+    else if (pt.includes("hold")) effectiveTxType = kind === "deposit" ? "deposit" : "withdrawal";
+    else if (pt.includes("lending")) effectiveTxType = kind === "deposit" ? "lending_supply" : "lending_withdraw";
+  }
+
   // metadata.lp: el trigger validate_transaction_integrity la exige en
   // lp_deposit/lp_withdraw (tokenA/B, rango, ratio). Se hereda del último
   // lp_deposit de la posición — mismo criterio que el flujo manual
   // (getLatestLpMetadata). Sin depósito previo no hay rango/ratio fiables:
   // el evento se queda en la bandeja para registrarlo a mano.
   let lpMeta: Record<string, unknown> | null = null;
-  if (txType === "lp_deposit" || txType === "lp_withdraw") {
+  if (effectiveTxType === "lp_deposit" || effectiveTxType === "lp_withdraw") {
     const { data: lastDep } = await client
       .from("transactions")
       .select("metadata")
@@ -329,7 +342,7 @@ async function performIngest(
   const noteTail = `on-chain ${ev.protocol} (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim();
   const buildRow = (t: EventToken, amount: number, reinvest: boolean, swapLegs?: SwapLeg[], noteLabel?: string) => ({
     portfolio_id: portfolioId,
-    type: txType,
+    type: effectiveTxType,
     operation_group_id: operationGroupId,
     token_in_symbol: isOut ? null : t.symbol.toUpperCase(),
     token_in_amount: isOut ? null : amount,

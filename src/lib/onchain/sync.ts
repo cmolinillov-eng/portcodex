@@ -53,7 +53,11 @@ function genericDefiPositions(zerion: ZerionPosition[], w: WalletRef): LivePosit
     if (!proto) continue;
     if (HANDLED_PROTOCOLS.some((h) => proto.includes(h))) continue;
     if (!(Math.abs(z.valueUsd ?? 0) > 0.5)) continue;
-    const key = `${z.chain}:${z.protocol}`;
+    // Discriminar por POOL (vault): un protocolo como Beefy puede tener
+    // varios vaults en la misma cadena y cada uno es una posición con su
+    // propio depositado/P&L. Sin pool (raro), se agrupa por protocolo.
+    const disc = z.poolAddress ? `:${z.poolAddress.slice(-8).toLowerCase()}` : "";
+    const key = `${z.chain}:${z.protocol}${disc}`;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(z);
   }
@@ -68,15 +72,20 @@ function genericDefiPositions(zerion: ZerionPosition[], w: WalletRef): LivePosit
     }));
     const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
     const protoSlug = (first.protocol ?? "defi").toLowerCase().replace(/[^\w]+/g, "-");
+    const poolDisc = first.poolAddress ? `:${first.poolAddress.slice(-8).toLowerCase()}` : "";
     return {
-      id: `${first.chain}:generic:${protoSlug}`,
+      id: `${first.chain}:generic:${protoSlug}${poolDisc}`,
       portfolioId: w.portfolioId,
       walletAddress: w.address,
       chainKind: w.chainKind,
       chain: first.chain,
       protocol: first.protocol,
       kind: hasLoan ? ("lending_supply" as const) : ("staking" as const),
-      label: rows.length === 1 && first.symbol ? `${first.protocol} · ${first.symbol}` : `${first.protocol}`,
+      label: (() => {
+        const tag = first.name?.match(/\(([^)]+)\)\s*$/)?.[1];
+        if (tag) return `${first.protocol} · ${tag}`;
+        return rows.length === 1 && first.symbol ? `${first.protocol} · ${first.symbol}` : `${first.protocol}`;
+      })(),
       tokens,
       valueUsd,
       range: null,
@@ -155,11 +164,22 @@ async function syncEvmWallet(w: WalletRef): Promise<{ positions: LivePosition[];
     };
   }
 
-  // Hold (tokens sueltos)
-  positions.push(...holdsToPositions(zerion, w));
+  // DeFi sin adaptador específico (ether.fi, Beefy, Morpho…): con su valor.
+  const generic = genericDefiPositions(zerion, w);
 
-  // DeFi sin adaptador específico (ether.fi, Morpho…): visible con su valor.
-  positions.push(...genericDefiPositions(zerion, w));
+  // Hold (tokens sueltos), menos los mooTokens de Beefy cuando el vault ya
+  // aparece como posición compleja en esa cadena: el mooToken es el RECIBO
+  // del vault (mismo capital) y como hold lo contaría dos veces — mismo bug
+  // que los aTokens de Aave. Si Zerion no indexa el vault, el mooToken-hold
+  // se conserva (mejor visible que perdido).
+  const beefyChains = new Set(
+    generic.filter((g) => (g.protocol ?? "").toLowerCase().includes("beefy")).map((g) => g.chain),
+  );
+  const holds = holdsToPositions(zerion, w).filter(
+    (h) => !(/^moo[A-Z0-9]/.test(h.label) && beefyChains.has(h.chain)),
+  );
+  positions.push(...holds);
+  positions.push(...generic);
 
   // Adaptadores por protocolo (cada uno filtra lo suyo del descubrimiento):
   const ctx = { portfolioId: w.portfolioId, address: w.address };
