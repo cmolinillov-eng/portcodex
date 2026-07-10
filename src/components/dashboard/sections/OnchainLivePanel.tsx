@@ -496,46 +496,54 @@ export function OnchainLivePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canManage, data, links, manualPositions, portfolioId]);
 
+  // Lectura robusta: la respuesta puede NO ser JSON (timeout de la función en
+  // Vercel devuelve una página de texto "An error occurred…"). Nunca revienta
+  // por JSON.parse: si no es JSON o falla, devuelve null y el llamador
+  // conserva el snapshot que ya tenía.
+  async function fetchLive(refresh: boolean): Promise<LiveResult | null> {
+    const url = `/api/wallet/live?portfolioId=${encodeURIComponent(portfolioId)}${refresh ? "&refresh=1" : ""}`;
+    const res = await fetch(url);
+    const text = await res.text();
+    let body: (LiveResult & { error?: string }) | null = null;
+    try {
+      body = JSON.parse(text) as LiveResult & { error?: string };
+    } catch {
+      return null; // respuesta no-JSON (timeout / error de plataforma)
+    }
+    if (!res.ok || !Array.isArray(body?.positions)) return null;
+    return body;
+  }
+
   async function load(refresh = true) {
     if (!portfolioId) return;
     setLoading(true);
     setError("");
     try {
-      const url = `/api/wallet/live?portfolioId=${encodeURIComponent(portfolioId)}${refresh ? "&refresh=1" : ""}`;
-      const res = await fetch(url);
-      const body = (await res.json()) as LiveResult & { error?: string };
-      if (!res.ok) throw new Error(body.error ?? "No se pudo leer on-chain.");
-      setData(body);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Error leyendo on-chain.");
+      const body = await fetchLive(refresh);
+      if (body) setData(body);
+      else if (!data) setError("No se pudo leer on-chain ahora mismo. Reintenta en unos segundos.");
+      // Si ya había datos y falla, se conservan (sin error rojo).
     } finally {
       setLoading(false);
     }
   }
 
-  // Al montar: snapshot cacheado (instantáneo). Si está viejo (>15 min), se
-  // lanza detrás una lectura en vivo que lo sustituye. "Actualizar" fuerza.
+  // Al montar: snapshot cacheado (instantáneo). Luego, en segundo plano, una
+  // lectura en vivo lo actualiza SIEMPRE (para que no dependa de pulsar). Si
+  // la lectura en vivo falla o tarda, se conserva el snapshot sin mostrar error.
   useEffect(() => {
     if (!portfolioId) return;
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch(`/api/wallet/live?portfolioId=${encodeURIComponent(portfolioId)}`);
-        const body = (await res.json()) as LiveResult & { error?: string };
-        if (cancelled) return;
-        if (!res.ok) throw new Error(body.error ?? "No se pudo leer on-chain.");
-        setData(body);
-        const ageMs = Date.now() - new Date(body.syncedAt).getTime();
-        if (body.cached && ageMs > 15 * 60_000) {
-          const fresh = await fetch(`/api/wallet/live?portfolioId=${encodeURIComponent(portfolioId)}&refresh=1`);
-          const freshBody = (await fresh.json()) as LiveResult & { error?: string };
-          if (!cancelled && fresh.ok) setData(freshBody);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Error leyendo on-chain.");
-      }
+      const snap = await fetchLive(false);
+      if (cancelled) return;
+      if (snap) setData(snap);
+      // Refresco en vivo en segundo plano (silencioso): actualiza el snapshot.
+      const fresh = await fetchLive(true);
+      if (!cancelled && fresh) setData(fresh);
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portfolioId]);
 
   const total = data?.positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0) ?? 0;

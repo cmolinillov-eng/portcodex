@@ -4,10 +4,12 @@ import { checkRateLimit } from "@/lib/security/rate-limit";
 import { syncPortfolioLive } from "@/lib/onchain/sync";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 
-// La lectura en vivo con refresh puede derivar decenas de direcciones de un
-// monedero HD Bitcoin (xpub) y llamar a los adaptadores DeFi: necesita más que
-// el timeout por defecto (~10-15s) para no abortar la lectura de BTC.
-export const maxDuration = 60;
+// La lectura en vivo con refresh llama a Zerion (con reintentos), RPCs EVM y
+// los adaptadores DeFi de varias wallets: puede superar 60s. Con más margen la
+// función completa y devuelve JSON en vez de que Vercel corte con un error de
+// texto (que rompía el JSON.parse del cliente). El refresco es en 2º plano, así
+// que el usuario no espera; ve el snapshot al instante.
+export const maxDuration = 300;
 
 /**
  * Lectura on-chain "En vivo" de un portfolio (solo lectura). Devuelve las
