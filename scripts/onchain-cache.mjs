@@ -461,6 +461,12 @@ async function meteoraPositions(portfolioId, owner) {
 // El SDK @kamino-finance/klend-sdk (que usa el rpc de @solana/kit) resuelve las
 // shares del usuario y el valor por share; aquí calculamos el valor en el token
 // subyacente y lo pasamos a USD con Jupiter.
+//
+// RECOMPENSAS: las bóvedas con incentivos tienen un farm (state.vaultFarm). El
+// Farms SDK da las recompensas PENDIENTES y las COBRADAS acumuladas del usuario
+// en ese farm; con ellas mostramos el yield sin reclamar (unclaimedUsd) y, por
+// delta del acumulado entre lecturas, detectamos cada claim como harvest
+// reinvertible (misma señal fiable que Kamino LP / Meteora).
 async function kaminoLendPositions(portfolioId, owner) {
   const client = new KaminoVaultClient(rpc, 450);
   const balances = await client.getUserSharesBalanceAllVaults(address(String(owner)));
@@ -470,9 +476,25 @@ async function kaminoLendPositions(portfolioId, owner) {
   const slot = BigInt(await rpc.getSlot().send());
   const vaults = await client.getVaults(entries.map(([a]) => address(String(a))));
 
-  // Precios de todos los mints implicados.
+  // Farms del usuario → recompensas pendientes + cobradas acumuladas por farm.
+  // Cada bóveda enlaza su farm por state.vaultFarm; así atribuimos sus rewards
+  // a la posición correcta (escala a varias bóvedas sin ambigüedad).
+  const farms = new Farms(rpc);
+  const now = new Decimal(Math.floor(Date.now() / 1000));
+  let userFarms = new Map();
+  try {
+    userFarms = await farms.getAllFarmsForUser(address(String(owner)), now);
+  } catch (e) {
+    console.error(`  farms lend de ${owner.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
+  }
+  const farmByAddr = new Map();
+  for (const uf of userFarms.values()) farmByAddr.set(String(uf.farm), uf);
+  const farmStateCache = new Map();
+
+  // Precios: token subyacente + todos los mints de recompensa.
   const mints = new Set();
   for (const v of vaults) if (v?.state?.tokenMint) mints.add(String(v.state.tokenMint));
+  for (const uf of userFarms.values()) for (const r of uf.pendingRewards ?? []) mints.add(String(r.rewardTokenMint));
   const prices = await jupPrices([...mints]);
 
   const out = [];
@@ -497,6 +519,40 @@ async function kaminoLendPositions(portfolioId, owner) {
       const valueUsd = px != null ? amount * px : null;
       const symbol = symbolFor(mint);
 
+      // Recompensas del farm de la bóveda: pendientes (USD) + cobradas acumuladas.
+      let unclaimedUsd = null;
+      const claimedRewards = {};
+      const farmAddr = String(st?.vaultFarm ?? "");
+      const uf = farmAddr && farmAddr !== "11111111111111111111111111111111" ? farmByAddr.get(farmAddr) : null;
+      if (uf) {
+        let sum = 0;
+        for (const r of uf.pendingRewards ?? []) {
+          const info = prices.get(String(r.rewardTokenMint));
+          if (!info?.usdPrice) continue;
+          sum += (Number(r.cumulatedPendingRewards) / 10 ** Number(info.decimals ?? 0)) * info.usdPrice;
+        }
+        if (sum > 0) unclaimedUsd = sum;
+        // Cobradas acumuladas (monotónico): cum − unclaimed, por mint. El delta
+        // entre lecturas = harvest cobrado (se emite en el upsert de main()).
+        try {
+          if (!farmStateCache.has(farmAddr)) farmStateCache.set(farmAddr, (await fetchFarmState(rpc, uf.farm)).data);
+          const farmState = farmStateCache.get(farmAddr);
+          const cum = uf.userState?.rewardsIssuedCumulative ?? [];
+          const unc = uf.userState?.rewardsIssuedUnclaimed ?? [];
+          for (let j = 0; j < (farmState?.rewardInfos?.length ?? 0); j++) {
+            const ri = farmState.rewardInfos[j];
+            const rmint = String(ri?.token?.mint ?? "");
+            if (!rmint || rmint === "11111111111111111111111111111111") continue;
+            const rdec = Number(ri?.token?.decimals ?? 0);
+            const raw = (cum[j] ?? 0n) - (unc[j] ?? 0n);
+            if (raw <= 0n) continue;
+            claimedRewards[rmint] = (claimedRewards[rmint] ?? 0) + Number(raw) / 10 ** rdec;
+          }
+        } catch (e) {
+          console.error(`  farm claimed lend ${farmAddr.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+        }
+      }
+
       out.push({
         id: `solana:kamino-lend:${entries[i][0]}`,
         portfolioId,
@@ -509,10 +565,12 @@ async function kaminoLendPositions(portfolioId, owner) {
         tokens: [{ symbol, address: mint, amount, valueUsd }],
         valueUsd,
         range: null,
-        unclaimedUsd: null,
+        unclaimedUsd,
         meta: {
           vault: String(entries[i][0]),
           mint, dec, symbol, shares, tokensPerShare,
+          farm: farmAddr || null,
+          claimedRewards,
         },
         source: "kamino_lend",
       });
@@ -803,15 +861,63 @@ async function main() {
   }
 
   // Kamino Lend: siempre upsert (incluso 0 pos) para limpiar la caché al cerrar
-  // la última bóveda. Es una posición de préstamo (no LP): sin harvests de fees.
+  // la última bóveda. ANTES de sobrescribir, se comparan las recompensas
+  // COBRADAS acumuladas del farm con la lectura anterior: cada incremento es un
+  // claim → se emite como harvest reinvertible (misma señal que Kamino LP).
   const kaminoLendPids = new Set([...kaminoLendByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
   for (const portfolioId of kaminoLendPids) {
     const positions = kaminoLendByPortfolio.get(portfolioId) ?? [];
+
+    try {
+      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino_lend").maybeSingle();
+      const prev = new Map();
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p);
+
+      for (const p of positions) {
+        const before = prev.get(p.id)?.meta?.claimedRewards ?? null;
+        if (!before) continue; // primera lectura con contadores: solo baseline
+        const nowClaims = p.meta?.claimedRewards ?? {};
+        const tokens = [];
+        for (const [mint, amt] of Object.entries(nowClaims)) {
+          const d = amt - (before[mint] ?? 0);
+          if (d <= 0) continue;
+          const px = await jupPrices([mint]);
+          const price = px.get(mint)?.usdPrice ?? null;
+          tokens.push({ symbol: await symbolOf(mint), amount: d, priceUsd: price, valueUsd: price != null ? d * price : null });
+        }
+        if (!tokens.length) continue;
+        const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
+        if (valueUsd < 0.5) continue;
+        const claimStamp = Object.entries(nowClaims)
+          .map(([m, val]) => `${m.slice(0, 6)}-${Math.round(val * 1e6)}`)
+          .sort()
+          .join(":");
+        await sb.from("onchain_events").upsert({
+          portfolio_id: portfolioId,
+          event_key: `solana:kamino-lend-claim:${p.id}:${claimStamp}`,
+          kind: "harvest",
+          chain: "solana",
+          protocol: p.protocol ?? "Kamino Lend",
+          wallet_address: p.walletAddress,
+          position_ref: p.id, // LivePosition.id → auto-enlace/auto-ingesta
+          label: p.label,
+          tokens,
+          value_usd: valueUsd,
+          block_time: new Date().toISOString(),
+          tx_hash: null,
+          includes_principal: false,
+        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+        console.log(`  🌾 kamino_lend harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+      }
+    } catch (e) {
+      console.error(`  kamino_lend claim delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+    }
+
     const { error: upErr } = await sb
       .from("onchain_cache")
       .upsert({ portfolio_id: portfolioId, source: "kamino_lend", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
     if (upErr) console.error(`  upsert kamino_lend ${portfolioId.slice(0, 8)}: ${upErr.message}`);
-    else if (positions.length) console.log(`  ✅ kamino_lend ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
+    else if (positions.length) console.log(`  ✅ kamino_lend ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)}, sin reclamar $${positions.reduce((s, p) => s + (p.unclaimedUsd ?? 0), 0).toFixed(2)})`);
   }
 
   console.log("Done.");
