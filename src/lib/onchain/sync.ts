@@ -6,13 +6,14 @@ import { enrichUniswapV3 } from "./evm/uniswap-v3";
 import { enrichAave } from "./evm/aave";
 import { enrichProjectX } from "./evm/projectx";
 import { enrichKamino } from "./solana/kamino";
+import { enrichKaminoLend } from "./solana/kamino-lend";
 import { enrichOrca } from "./solana/orca";
 import { enrichMeteora } from "./solana/meteora";
 import { syncBitcoinWallet } from "./bitcoin/balance";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
 
 type SolanaAdapter = (ctx: { portfolioId: string; address: string }) => Promise<{ positions: LivePosition[]; warnings: string[] }>;
-const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichOrca, enrichMeteora];
+const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichKaminoLend, enrichOrca, enrichMeteora];
 
 /**
  * Orquestador de la lectura on-chain de un portfolio. Genérico: recorre las

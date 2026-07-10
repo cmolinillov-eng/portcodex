@@ -16,6 +16,7 @@ import { createSolanaRpc, address } from "@solana/kit";
 import Decimal from "decimal.js";
 import { Kamino, MeteoraService, getMeteoraPriceLowerUpper } from "@kamino-finance/kliquidity-sdk";
 import { Farms, fetchFarmState } from "@kamino-finance/farms-sdk";
+import { KaminoVaultClient, decodeVaultName } from "@kamino-finance/klend-sdk";
 
 // El SDK de Meteora (DLMM) es CJS con imports de directorio → se carga con
 // require. El módulo exporta la clase DLMM como default.
@@ -454,6 +455,74 @@ async function meteoraPositions(portfolioId, owner) {
   return out;
 }
 
+// ── Posiciones Kamino Lend (kVaults) ─────────────────────────────────────────
+// Los depósitos en las bóvedas de préstamo de Kamino (p. ej. "Sentora PYUSD")
+// son cuentas de SHARES, distintas de las posiciones de liquidez concentrada.
+// El SDK @kamino-finance/klend-sdk (que usa el rpc de @solana/kit) resuelve las
+// shares del usuario y el valor por share; aquí calculamos el valor en el token
+// subyacente y lo pasamos a USD con Jupiter.
+async function kaminoLendPositions(portfolioId, owner) {
+  const client = new KaminoVaultClient(rpc, 450);
+  const balances = await client.getUserSharesBalanceAllVaults(address(String(owner)));
+  const entries = [...balances.entries()].filter(([, b]) => Number(b.totalShares) > 0);
+  if (entries.length === 0) return [];
+
+  const slot = BigInt(await rpc.getSlot().send());
+  const vaults = await client.getVaults(entries.map(([a]) => address(String(a))));
+
+  // Precios de todos los mints implicados.
+  const mints = new Set();
+  for (const v of vaults) if (v?.state?.tokenMint) mints.add(String(v.state.tokenMint));
+  const prices = await jupPrices([...mints]);
+
+  const out = [];
+  for (let i = 0; i < vaults.length; i++) {
+    const v = vaults[i];
+    if (!v) continue;
+    try {
+      const st = v.state;
+      const shares = Number(entries[i][1].totalShares);
+      if (!(shares > 0)) continue;
+      const dec = Number(st?.tokenMintDecimals ?? 6);
+      const mint = String(st?.tokenMint ?? "");
+      const name = st?.name ? decodeVaultName(st.name) : "Kamino Lend";
+
+      // Reservas de la bóveda → valor por share (token subyacente por share).
+      let reservesMap;
+      try { reservesMap = await client.loadVaultReserves(st); } catch { /* solo idle */ }
+      const tokensPerShare = Number(await client.getTokensPerShareSingleVault(v, slot, reservesMap));
+
+      const amount = shares * tokensPerShare; // en unidades del token subyacente
+      const px = prices.get(mint)?.usdPrice ?? null;
+      const valueUsd = px != null ? amount * px : null;
+      const symbol = symbolFor(mint);
+
+      out.push({
+        id: `solana:kamino-lend:${entries[i][0]}`,
+        portfolioId,
+        walletAddress: owner,
+        chainKind: "solana",
+        chain: "solana",
+        protocol: "Kamino Lend",
+        kind: "lending_supply",
+        label: name,
+        tokens: [{ symbol, address: mint, amount, valueUsd }],
+        valueUsd,
+        range: null,
+        unclaimedUsd: null,
+        meta: {
+          vault: String(entries[i][0]),
+          mint, dec, symbol, shares, tokensPerShare,
+        },
+        source: "kamino_lend",
+      });
+    } catch (e) {
+      console.error(`  Kamino Lend ${String(entries[i][0]).slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+    }
+  }
+  return out;
+}
+
 async function main() {
   const { data: wallets, error } = await sb
     .from("portfolio_wallets")
@@ -466,6 +535,7 @@ async function main() {
   const kaminoByPortfolio = new Map();
   const orcaByPortfolio = new Map();
   const meteoraByPortfolio = new Map();
+  const kaminoLendByPortfolio = new Map();
   for (const w of wallets ?? []) {
     try {
       const positions = await kaminoPositions(w.portfolio_id, w.address);
@@ -474,6 +544,14 @@ async function main() {
       console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Kamino`);
     } catch (e) {
       console.error(`  Kamino fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
+    }
+    try {
+      const positions = await kaminoLendPositions(w.portfolio_id, w.address);
+      const cur = kaminoLendByPortfolio.get(w.portfolio_id) ?? [];
+      kaminoLendByPortfolio.set(w.portfolio_id, cur.concat(positions));
+      if (positions.length) console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Kamino Lend`);
+    } catch (e) {
+      console.error(`  Kamino Lend fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
     }
     try {
       const fees = await orcaUnclaimed(w.portfolio_id, w.address);
@@ -723,6 +801,19 @@ async function main() {
     if (upErr) console.error(`  upsert meteora ${portfolioId.slice(0, 8)}: ${upErr.message}`);
     else if (positions.length) console.log(`  ✅ meteora ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
   }
+
+  // Kamino Lend: siempre upsert (incluso 0 pos) para limpiar la caché al cerrar
+  // la última bóveda. Es una posición de préstamo (no LP): sin harvests de fees.
+  const kaminoLendPids = new Set([...kaminoLendByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
+  for (const portfolioId of kaminoLendPids) {
+    const positions = kaminoLendByPortfolio.get(portfolioId) ?? [];
+    const { error: upErr } = await sb
+      .from("onchain_cache")
+      .upsert({ portfolio_id: portfolioId, source: "kamino_lend", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
+    if (upErr) console.error(`  upsert kamino_lend ${portfolioId.slice(0, 8)}: ${upErr.message}`);
+    else if (positions.length) console.log(`  ✅ kamino_lend ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
+  }
+
   console.log("Done.");
 }
 
