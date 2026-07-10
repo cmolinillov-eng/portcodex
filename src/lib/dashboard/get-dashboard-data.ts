@@ -1864,8 +1864,39 @@ export async function getDashboardData(options?: {
     (acc, entry) => acc + Math.max(0, entry.pendingUsd),
     0,
   );
-  const adjustedTotalValueUsd =
+  const accountingTotalValueUsd =
     adjustedPositions.reduce((acc, position) => acc + position.currentValue, 0) + totalPendingHarvestUsd;
+
+  // ─── VALOR TOTAL DESDE EL SNAPSHOT ON-CHAIN (fuente de verdad de la vista) ──
+  // En modo on-chain, lo que el cliente ve son las posiciones leídas de
+  // blockchain + lo "sin reclamar". El valor de cabecera debe ser EXACTAMENTE
+  // esa suma, no la contable, para que no diverja de las secciones ni cuente
+  // dos veces el harvest ya cobrado (que vive en el saldo de la wallet on-chain
+  // y por tanto ya está dentro de las posiciones). Si no hay snapshot (aún no
+  // se ha leído on-chain), se cae a la cifra contable.
+  let onchainTotalValueUsd: number | null = null;
+  try {
+    const snapClient = getSupabaseServiceClient() ?? getSupabaseServerClient();
+    const { data: snapRows } = await snapClient
+      .from("onchain_cache")
+      .select("positions")
+      .in("portfolio_id", allowedPortfolioIds)
+      .eq("source", "snapshot");
+    let sum = 0;
+    let hasAny = false;
+    for (const row of snapRows ?? []) {
+      const positions = (row.positions as { positions?: Array<{ valueUsd?: number | null; unclaimedUsd?: number | null }> })?.positions ?? [];
+      for (const p of positions) {
+        hasAny = true;
+        sum += Number(p.valueUsd ?? 0) + Number(p.unclaimedUsd ?? 0);
+      }
+    }
+    if (hasAny) onchainTotalValueUsd = sum;
+  } catch {
+    /* sin snapshot: usar la cifra contable */
+  }
+
+  const adjustedTotalValueUsd = onchainTotalValueUsd ?? accountingTotalValueUsd;
 
   // Compute realized P&L from position_closed snapshots
   let totalRealizedPnl = 0;
@@ -1895,12 +1926,12 @@ export async function getDashboardData(options?: {
       portfolioTransactions as unknown as ValuationTx[],
       (symbol: string) => cachedPrices.pricesBySymbol.get(symbol.toUpperCase()) ?? 0,
     );
-    const tol = Math.max(1, adjustedTotalValueUsd * 0.005);
-    const valueDiff = Math.abs(canonical.totalValueUsd - adjustedTotalValueUsd);
+    const tol = Math.max(1, accountingTotalValueUsd * 0.005);
+    const valueDiff = Math.abs(canonical.totalValueUsd - accountingTotalValueUsd);
     const depDiff = Math.abs(canonical.totalDepositedUsd - totalDepositedUsd);
     if (process.env.NODE_ENV !== "production" && (valueDiff > tol || depDiff > tol)) {
       console.warn(
-        `[coherencia] header vs canónico divergen — valor: ${adjustedTotalValueUsd.toFixed(2)} vs ${canonical.totalValueUsd.toFixed(2)} (Δ${valueDiff.toFixed(2)}); depositado: ${totalDepositedUsd.toFixed(2)} vs ${canonical.totalDepositedUsd.toFixed(2)} (Δ${depDiff.toFixed(2)}). Revisa posiciones de la vista sin transacciones.`,
+        `[coherencia] contable vs canónico divergen — valor: ${accountingTotalValueUsd.toFixed(2)} vs ${canonical.totalValueUsd.toFixed(2)} (Δ${valueDiff.toFixed(2)}); depositado: ${totalDepositedUsd.toFixed(2)} vs ${canonical.totalDepositedUsd.toFixed(2)} (Δ${depDiff.toFixed(2)}). Nota: el header muestra el total on-chain del snapshot, no esta cifra.`,
       );
     }
   } catch {
