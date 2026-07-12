@@ -594,11 +594,15 @@ async function main() {
   const orcaByPortfolio = new Map();
   const meteoraByPortfolio = new Map();
   const kaminoLendByPortfolio = new Map();
+  // Wallets cuya lectura Kamino fue EXITOSA este run. Solo para ellas se puede
+  // afirmar que una posición ausente = cierre real (y no un fallo de RPC).
+  const kaminoReadOk = new Set();
   for (const w of wallets ?? []) {
     try {
       const positions = await kaminoPositions(w.portfolio_id, w.address);
       const cur = kaminoByPortfolio.get(w.portfolio_id) ?? [];
       kaminoByPortfolio.set(w.portfolio_id, cur.concat(positions));
+      kaminoReadOk.add(w.address);
       console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Kamino`);
     } catch (e) {
       console.error(`  Kamino fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
@@ -738,6 +742,49 @@ async function main() {
           includes_principal: false,
         }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
         console.log(`  🌾 kamino harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+      }
+
+      // ── CIERRE TOTAL de una posición LP (retirada del principal) ──────────
+      // Una posición que estaba en la lectura anterior y ahora NO aparece = el
+      // usuario la cerró del todo (retiró todo). Se emite como retirada para
+      // que su depósito no siga contando (si no, al pasar el principal a un
+      // hold contaría doble). GUARDA anti-fantasma: solo si la wallet se leyó
+      // con ÉXITO este run (kaminoReadOk) — si la lectura de esa wallet falló,
+      // la ausencia puede ser un fallo de RPC, no un cierre real.
+      const nowIds = new Set(positions.map((p) => p.id));
+      for (const prevPos of prev.values()) {
+        if (nowIds.has(prevPos.id)) continue;
+        const w = prevPos.walletAddress;
+        if (!w || !kaminoReadOk.has(w)) continue;
+        const prevShares = Number(prevPos.meta?.shares ?? 0);
+        const prevVal = Number(prevPos.valueUsd ?? 0);
+        if (!(prevShares > 0) || !(prevVal >= 1)) continue;
+        const legs = (prevPos.tokens ?? [])
+          .filter((t) => Number(t.amount) > 0 && Number(t.valueUsd) > 0)
+          .map((t) => ({
+            symbol: t.symbol,
+            amount: Number(t.amount),
+            priceUsd: Number(t.valueUsd) / Number(t.amount),
+            valueUsd: Number(t.valueUsd),
+          }));
+        if (!legs.length) continue;
+        const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
+        await sb.from("onchain_events").upsert({
+          portfolio_id: portfolioId,
+          event_key: `solana:kamino-close:${prevPos.id}:${Math.round(prevVal * 100)}`,
+          kind: "withdraw",
+          chain: "solana",
+          protocol: prevPos.protocol ?? "Kamino",
+          wallet_address: w,
+          position_ref: prevPos.id,
+          label: prevPos.label,
+          tokens: legs,
+          value_usd: wdUsd,
+          block_time: new Date().toISOString(),
+          tx_hash: null,
+          includes_principal: true,
+        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+        console.log(`  📕 kamino cierre total ${prevPos.label}: $${wdUsd.toFixed(2)}`);
       }
     } catch (e) {
       console.error(`  kamino delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
