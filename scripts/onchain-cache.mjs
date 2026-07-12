@@ -366,6 +366,59 @@ const MET_MINTS = {
   USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA: "USDS",
 };
 const symbolFor = (mint) => MET_MINTS[mint] ?? `${mint.slice(0, 4)}…`;
+// Inverso (símbolo → mint) para localizar el HOLD destino de una retirada.
+// El SOL nativo usa la ref "SOL" (así emite el escáner sus holds).
+const MINT_BY_SYMBOL = Object.fromEntries(Object.entries(MET_MINTS).map(([m, s]) => [s.toUpperCase(), m]));
+MINT_BY_SYMBOL.SOL = "SOL";
+
+// ── Llegada del principal retirado a los holds de la wallet ──────────────────
+// Una retirada de LP (parcial o cierre total) deja los tokens en la wallet.
+// El escáner NO emite esa entrada (ignora el money-in de Kamino/Meteora para
+// no confundir harvests con retiradas), así que sin esta pata el Total
+// Depositado quedaría infra-contado: la retirada resta y la llegada nunca
+// suma. Aquí se emite un transfer_in por token hacia su hold — creando el
+// enlace del hold si no existe, igual que hace la ingesta de permutas — y la
+// auto-ingesta lo contabiliza: el movimiento pool→wallet queda NEUTRO en el
+// total, que es lo correcto para un movimiento interno.
+async function emitHoldArrivals(portfolioId, walletAddress, legs, baseKey, mintBySymbol = {}) {
+  for (const leg of legs) {
+    const sym = String(leg.symbol ?? "").toUpperCase();
+    if (!(Number(leg.valueUsd) >= 1)) continue;
+    const mint = mintBySymbol[sym] ?? MINT_BY_SYMBOL[sym];
+    if (!mint) {
+      // Sin mint conocido no hay hold destino fiable: el gestor adopta el hold
+      // desde el panel (flujo normal de posiciones sin contabilizar).
+      console.log(`  ⚠️ llegada de ${sym} sin hold conocido: adoptar a mano`);
+      continue;
+    }
+    const oid = `solana:hold:${mint}`;
+    // Mismo formato de position_id que la ingesta de permutas (token comprado
+    // sin posición): la posición contable nace implícita con su primera tx.
+    const positionId = `${sym}-${oid.slice(-24).replace(/[^\w-]+/g, "-")}`;
+    await sb.from("position_links").upsert(
+      { portfolio_id: portfolioId, onchain_id: oid, protocol: "Wallet", position_id: positionId, position_type: "Hold", auto_ingest: true },
+      { onConflict: "portfolio_id,onchain_id", ignoreDuplicates: true },
+    );
+    await sb.from("onchain_events").upsert({
+      portfolio_id: portfolioId,
+      event_key: `${baseKey}:in:${sym}`,
+      kind: "transfer_in",
+      chain: "solana",
+      protocol: "Wallet",
+      wallet_address: walletAddress,
+      position_ref: oid,
+      label: sym,
+      tokens: [leg],
+      value_usd: leg.valueUsd,
+      // +5s sobre la retirada: la auto-ingesta exige block_time POSTERIOR al
+      // created_at del enlace (recién creado unas líneas más arriba).
+      block_time: new Date(Date.now() + 5000).toISOString(),
+      tx_hash: null,
+      includes_principal: true,
+    }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+    console.log(`  📥 llegada a hold ${sym}: $${Number(leg.valueUsd).toFixed(2)}`);
+  }
+}
 // Precio humano de un bin: (1 + binStep/10000)^binId · 10^(decX-decY).
 const binPrice = (binId, binStep, decX, decY) =>
   Math.pow(1 + Number(binStep) / 10000, Number(binId)) * Math.pow(10, decX - decY);
@@ -684,9 +737,10 @@ async function main() {
                 valueUsd: Number(t.valueUsd) * frac,
               }));
             if (wdUsd >= 1 && legs.length) {
+              const wdKey = `solana:kamino-withdraw:${p.id}:${Math.round(nowShares * 1e6)}`;
               await sb.from("onchain_events").upsert({
                 portfolio_id: portfolioId,
-                event_key: `solana:kamino-withdraw:${p.id}:${Math.round(nowShares * 1e6)}`,
+                event_key: wdKey,
                 kind: "withdraw",
                 chain: "solana",
                 protocol: p.protocol ?? "Kamino",
@@ -700,6 +754,7 @@ async function main() {
                 includes_principal: true,
               }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
               console.log(`  📤 kamino withdraw ${p.label}: $${wdUsd.toFixed(2)}`);
+              await emitHoldArrivals(portfolioId, p.walletAddress, legs, wdKey);
             }
           }
         } catch (e) {
@@ -769,9 +824,10 @@ async function main() {
           }));
         if (!legs.length) continue;
         const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
+        const closeKey = `solana:kamino-close:${prevPos.id}:${Math.round(prevVal * 100)}`;
         await sb.from("onchain_events").upsert({
           portfolio_id: portfolioId,
-          event_key: `solana:kamino-close:${prevPos.id}:${Math.round(prevVal * 100)}`,
+          event_key: closeKey,
           kind: "withdraw",
           chain: "solana",
           protocol: prevPos.protocol ?? "Kamino",
@@ -785,6 +841,9 @@ async function main() {
           includes_principal: true,
         }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
         console.log(`  📕 kamino cierre total ${prevPos.label}: $${wdUsd.toFixed(2)}`);
+        // Pata de ENTRADA: los tokens retirados llegan a los holds → el
+        // movimiento pool→wallet queda neutro en el Total Depositado.
+        await emitHoldArrivals(portfolioId, w, legs, closeKey);
       }
     } catch (e) {
       console.error(`  kamino delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
@@ -842,9 +901,10 @@ async function main() {
             }).filter(Boolean);
             const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
             if (wdUsd >= 1 && legs.length) {
+              const wdKey = `solana:meteora-withdraw:${p.id}:${Math.round(nowVal * 100)}`;
               await sb.from("onchain_events").upsert({
                 portfolio_id: portfolioId,
-                event_key: `solana:meteora-withdraw:${p.id}:${Math.round(nowVal * 100)}`,
+                event_key: wdKey,
                 kind: "withdraw",
                 chain: "solana",
                 protocol: p.protocol ?? "Meteora",
@@ -858,6 +918,11 @@ async function main() {
                 includes_principal: true,
               }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
               console.log(`  📤 meteora withdraw ${p.label}: $${wdUsd.toFixed(2)}`);
+              // Meteora trae los mints exactos en meta: destino de hold directo.
+              const mintsBySym = {};
+              if (p.meta?.symX && p.meta?.mintX) mintsBySym[String(p.meta.symX).toUpperCase()] = String(p.meta.mintX);
+              if (p.meta?.symY && p.meta?.mintY) mintsBySym[String(p.meta.symY).toUpperCase()] = String(p.meta.mintY);
+              await emitHoldArrivals(portfolioId, p.walletAddress, legs, wdKey, mintsBySym);
             }
           }
         }
