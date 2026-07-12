@@ -288,6 +288,65 @@ async function kaminoPositions(portfolioId, owner) {
       source: "kamino",
     });
   }
+
+  // ── Farms sin posición viva (pool CERRADO con recompensas de farm) ─────────
+  // Al cerrar un LP sus recompensas no reclamadas siguen en el farm, y el
+  // claim posterior debe detectarse como harvest. Sin esta entrada, la
+  // posición desaparecía de la caché y el delta de claims perdía su baseline
+  // (el claim post-cierre no sumaba al yield). Se emite una entrada "solo
+  // farm" con el MISMO id que tenía la posición → el delta sobrevive al
+  // cierre. Se mantiene mientras queden recompensas pendientes (≥$0.5) o
+  // hasta emitir el último delta (claims cambiaron vs la lectura anterior);
+  // después desaparece sola (sin basura eterna de farms antiguos).
+  const DEFAULT_PK = "11111111111111111111111111111111";
+  const emittedStrats = new Set(out.map((p) => p.meta.strategy));
+  const candidateStrats = new Set([...pendingByStrategy.keys(), ...claimedByStrategy.keys()]);
+  let prevById = new Map();
+  if ([...candidateStrats].some((s) => s !== DEFAULT_PK && !emittedStrats.has(s))) {
+    try {
+      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino").maybeSingle();
+      for (const p of prevRow?.positions ?? []) prevById.set(p.id, p);
+    } catch { /* sin previo */ }
+  }
+  for (const stratId of candidateStrats) {
+    if (stratId === DEFAULT_PK || emittedStrats.has(stratId)) continue;
+    const claimed = claimedByStrategy.get(stratId) ?? {};
+    // Pendiente valorado en USD (mismos precios ya cargados para rewardMints).
+    let pendingUsd = 0;
+    for (const r of pendingByStrategy.get(stratId) ?? []) {
+      const info = prices.get(String(r.rewardTokenMint));
+      if (info?.usdPrice) pendingUsd += (Number(r.cumulatedPendingRewards) / 10 ** Number(info.decimals ?? 0)) * info.usdPrice;
+    }
+    const prevEntry = prevById.get(`solana:kamino:${stratId}`);
+    const prevClaims = prevEntry?.meta?.claimedRewards ?? null;
+    const claimsChanged = prevClaims
+      ? Object.entries(claimed).some(([m, v]) => Math.abs(Number(v) - Number(prevClaims[m] ?? 0)) > 1e-9)
+      : false;
+    if (!(pendingUsd >= 0.5) && !claimsChanged) continue;
+    const lab = labels[stratId];
+    out.push({
+      id: `solana:kamino:${stratId}`,
+      portfolioId,
+      walletAddress: owner,
+      chainKind: "solana",
+      chain: "solana",
+      protocol: prevEntry?.protocol ?? "Kamino",
+      kind: "liquidity",
+      label: prevEntry?.label ?? (lab ? `${lab.tokenA}/${lab.tokenB}` : "Kamino Farm"),
+      tokens: [],
+      valueUsd: null,
+      range: null,
+      unclaimedUsd: pendingUsd >= 0.5 ? pendingUsd : null,
+      meta: {
+        strategy: stratId,
+        farmOnly: true, // sin principal: no cuenta como posición viva (cierres)
+        shares: 0,
+        claimedRewards: claimed,
+      },
+      source: "kamino",
+    });
+    console.log(`  🧺 farm restante ${prevEntry?.label ?? stratId.slice(0, 8)}: pendiente $${pendingUsd.toFixed(2)}`);
+  }
   return out;
 }
 
@@ -806,9 +865,12 @@ async function main() {
       // hold contaría doble). GUARDA anti-fantasma: solo si la wallet se leyó
       // con ÉXITO este run (kaminoReadOk) — si la lectura de esa wallet falló,
       // la ausencia puede ser un fallo de RPC, no un cierre real.
-      const nowIds = new Set(positions.map((p) => p.id));
+      // Las entradas "solo farm" (recompensas restantes de un pool cerrado) no
+      // son principal vivo: no cuentan como presencia a efectos de cierre.
+      const nowIds = new Set(positions.filter((p) => !p.meta?.farmOnly).map((p) => p.id));
       for (const prevPos of prev.values()) {
         if (nowIds.has(prevPos.id)) continue;
+        if (prevPos.meta?.farmOnly) continue; // restos de farm: nunca son un cierre
         const w = prevPos.walletAddress;
         if (!w || !kaminoReadOk.has(w)) continue;
         const prevShares = Number(prevPos.meta?.shares ?? 0);

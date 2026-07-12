@@ -275,33 +275,41 @@ async function performIngest(
   }
 
   // ─── REINVERSIÓN DE HARVEST ────────────────────────────────────────────
-  // Un depósito poco después de un harvest de la MISMA posición y con valor
-  // similar es la reinversión del yield: se registra con la semántica manual
-  // auditada (metadata.source = "harvest_reinvest") para que el capital
-  // aportado NO se infle — el yield suma al valor, no al depositado.
+  // Un depósito tras un harvest de valor similar es la reinversión del yield:
+  // se registra con la semántica manual auditada (metadata.source =
+  // "harvest_reinvest") para que el capital aportado NO se infle — el yield
+  // suma al valor, no al depositado. Se empareja primero con harvests de la
+  // MISMA posición; si no hay, con el de OTRA posición del portfolio (el
+  // gestor cobra en un pool y reinvierte en otro) siempre que el candidato
+  // sea ÚNICO y su posición contable esté enlazada (para saber de qué
+  // pending descontar).
   let isReinvest = false;
   let reinvestSplit: ReinvestSplit | null = null;
   let reinvestHarvestId: string | null = null;
+  // Posición ORIGEN del harvest (cuyo pending se consume). Por defecto, la
+  // propia posición destino (reinversión clásica en el mismo pool).
+  let reinvestSourcePositionId = positionId;
+  let reinvestSourceProtocol = protocol;
   if (kind === "deposit" && ev.block_time && ev.value_usd != null) {
     try {
-      const windowStart = new Date(new Date(ev.block_time).getTime() - 45 * 60_000).toISOString();
-      // La ventana también mira HACIA DELANTE: los harvests de Kamino/Meteora
-      // se detectan por delta de caché y su block_time es la hora de la
-      // LECTURA (hasta un ciclo del worker DESPUÉS del claim/depósito real).
-      // Solo hacia atrás, esos harvests jamás emparejarían con su reinversión.
+      // Hacia atrás 48h: el gestor puede cobrar hoy y reinvertir mañana; el
+      // pending contable no caduca, así que el emparejamiento tampoco exige
+      // inmediatez. Hacia delante 45min: los harvests de Kamino/Meteora se
+      // detectan por delta de caché y su block_time es la hora de la LECTURA
+      // (hasta un ciclo del worker DESPUÉS del claim real).
+      const windowStart = new Date(new Date(ev.block_time).getTime() - 48 * 3600_000).toISOString();
       const windowEnd = new Date(new Date(ev.block_time).getTime() + 45 * 60_000).toISOString();
       const { data: recentHarvests } = await client
         .from("onchain_events")
-        .select("id, value_usd, tokens, block_time")
+        .select("id, value_usd, tokens, block_time, position_ref, chain, protocol")
         .eq("portfolio_id", portfolioId)
         .eq("kind", "harvest")
-        .eq("position_ref", ev.position_ref ?? "")
         .in("status", ["ingested", "pending"])
         .gte("block_time", windowStart)
         .lte("block_time", windowEnd)
         .order("block_time", { ascending: false });
-      // Harvests de esa posición ya consumidos por otra reinversión (para no
-      // emparejar dos veces el mismo pending).
+      // Harvests ya consumidos por otra reinversión (para no emparejar dos
+      // veces el mismo pending).
       const { data: usedHarvests } = await client
         .from("transactions")
         .select("metadata")
@@ -313,14 +321,29 @@ async function performIngest(
           .map((r) => (r.metadata as Record<string, unknown> | null)?.reinvestHarvestId)
           .filter((x): x is string => typeof x === "string"),
       );
-      // De los candidatos por valor (±50%) y no consumidos, el MÁS CERCANO en
-      // el tiempo (recentHarvests viene ordenado desc, así que el primero que
-      // cumple es el más reciente antes del depósito).
-      const match = (recentHarvests ?? []).find((h) => {
+      // Candidatos: no consumidos y de valor similar (±50%).
+      const candidates = (recentHarvests ?? []).filter((h) => {
         if (consumedIds.has(h.id as string)) return false;
         const hv = Number(h.value_usd ?? 0);
         return hv > 0 && Math.abs(Number(ev.value_usd) - hv) / hv <= 0.5;
       });
+      // 1º la propia posición: el MÁS CERCANO en el tiempo (orden desc).
+      let match = candidates.find((h) => (h.position_ref ?? "") === (ev.position_ref ?? ""));
+      // 2º otra posición del portfolio, solo con candidato ÚNICO (sin
+      // ambigüedad) y enlace conocido → el pending se descuenta del origen.
+      if (!match) {
+        const others = candidates.filter((h) => (h.position_ref ?? "") !== (ev.position_ref ?? ""));
+        if (others.length === 1) {
+          const links = await getLinks(portfolioId);
+          const srcOid = eventOnchainId(others[0] as { chain: string; protocol: string; position_ref: string | null });
+          const srcLink = srcOid ? links.get(srcOid) : undefined;
+          if (srcLink) {
+            match = others[0];
+            reinvestSourcePositionId = srcLink.position_id;
+            reinvestSourceProtocol = srcLink.protocol;
+          }
+        }
+      }
       if (match) {
         isReinvest = true;
         reinvestHarvestId = match.id as string;
@@ -368,7 +391,7 @@ async function performIngest(
       txHash: ev.tx_hash,
       chain: ev.chain,
       nftId: ev.position_ref,
-      ...(reinvest ? { sourcePositionId: positionId, sourceProtocol: protocol } : {}),
+      ...(reinvest ? { sourcePositionId: reinvestSourcePositionId, sourceProtocol: reinvestSourceProtocol } : {}),
       // swapLegs: permuta implícita dentro de la reinversión (cesta
       // redepositada ≠ cesta cobrada). El motor fiscal consume por FIFO el
       // lote del vendido y crea el del comprado con base trasladada; el
