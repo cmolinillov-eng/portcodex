@@ -9,11 +9,12 @@ import { enrichKamino } from "./solana/kamino";
 import { enrichKaminoLend } from "./solana/kamino-lend";
 import { enrichOrca } from "./solana/orca";
 import { enrichMeteora } from "./solana/meteora";
+import { enrichJupiterLend } from "./solana/jupiter-lend";
 import { syncBitcoinWallet } from "./bitcoin/balance";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
 
 type SolanaAdapter = (ctx: { portfolioId: string; address: string }) => Promise<{ positions: LivePosition[]; warnings: string[] }>;
-const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichKaminoLend, enrichOrca, enrichMeteora];
+const SOLANA_ADAPTERS: SolanaAdapter[] = [enrichKamino, enrichKaminoLend, enrichOrca, enrichMeteora, enrichJupiterLend];
 
 /**
  * Orquestador de la lectura on-chain de un portfolio. Genérico: recorre las
