@@ -469,9 +469,20 @@ async function performIngest(
 
 export async function GET(request: NextRequest) {
   const portfolioId = (request.nextUrl.searchParams.get("portfolioId") ?? "").trim();
-  const access = await getViewerAccess();
-  const check = ensurePortfolioAccess(access, portfolioId, false);
-  if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
+  // Bypass de SERVICIO (worker/cron): con el secreto compartido, la ingesta
+  // automática corre SIN sesión de operador → la contabilidad avanza sola
+  // aunque nadie abra el panel (antes solo se ingería al cargar el dashboard).
+  const cronSecret = process.env.CRON_SECRET;
+  const isCron = Boolean(cronSecret) && request.headers.get("x-cron-secret") === cronSecret;
+  let canWrite = false;
+  if (isCron) {
+    canWrite = true;
+  } else {
+    const access = await getViewerAccess();
+    const check = ensurePortfolioAccess(access, portfolioId, false);
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
+    canWrite = ensurePortfolioAccess(access, portfolioId, true).ok;
+  }
 
   const { data, error } = await getClient()
     .from("onchain_events")
@@ -487,8 +498,7 @@ export async function GET(request: NextRequest) {
   const links = await getLinks(portfolioId);
   const events: Array<EventRow & { kind?: string | null; link: LinkInfo | null }> = [];
   let autoIngested = 0;
-  // La ingesta automática ESCRIBE contabilidad: solo si el viewer puede operar.
-  const canWrite = ensurePortfolioAccess(access, portfolioId, true).ok;
+  // canWrite ya resuelto arriba (operador con sesión, o servicio con secreto).
   const client = getClient();
 
   for (const raw of (data ?? []) as Array<EventRow & { kind?: string | null }>) {

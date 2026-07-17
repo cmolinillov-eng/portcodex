@@ -42,6 +42,18 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           ZERION_API_KEY: ${{ secrets.ZERION_API_KEY }}
           HELIUS_API_KEY: ${{ secrets.HELIUS_API_KEY }}
+      # Ingesta AUTOMÁTICA en el worker: contabiliza los eventos enlazados sin
+      # esperar a que un operador abra el dashboard. Reusa la ruta auditada
+      # /api/onchain/events con un secreto de servicio. Requiere secrets
+      # CRON_SECRET (compartido con el endpoint) y APP_URL (base del sitio).
+      # Sin ellos, el paso se omite solo.
+      - run: node scripts/onchain-ingest.mjs
+        if: always()
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ secrets.APP_URL }}
       # Aviso por email POR PORTFOLIO: cada cliente recibe lo suyo en el email
       # de su perfil; NOTIFY_EMAIL (opcional) pone al gestor en copia.
       # Requiere secret RESEND_API_KEY; NOTIFY_FROM para remitente con dominio
