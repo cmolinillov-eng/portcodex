@@ -503,6 +503,25 @@ export async function GET(request: NextRequest) {
         ? new Date(raw.block_time).getTime() > new Date(link.created_at).getTime()
         : false;
     if (canWrite && link && link.auto_ingest && isNewer) {
+      // NO RESUCITAR lo deshecho/borrado a propósito: si existe una transacción
+      // BORRADA para este evento, el gestor lo quitó queriendo (deshacer deja
+      // el evento en 'pending', pero la idempotencia de performIngest solo mira
+      // filas vivas, así que sin esta guarda la auto-ingesta lo re-insertaba).
+      const { data: undone } = await client
+        .from("transactions")
+        .select("id")
+        .eq("portfolio_id", portfolioId)
+        .contains("metadata", { eventId: raw.id })
+        .not("deleted_at", "is", null)
+        .limit(1);
+      if (undone && undone.length > 0) {
+        await client
+          .from("onchain_events")
+          .update({ status: "dismissed", ingested_at: new Date().toISOString() })
+          .eq("id", raw.id)
+          .eq("status", "pending");
+        continue;
+      }
       // Reclamo atómico: dos GET concurrentes no pueden ingerir el mismo
       // evento dos veces (RCM duplicado). Solo quien "gana" el update sigue.
       const { data: claimed } = await client

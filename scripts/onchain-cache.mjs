@@ -917,6 +917,70 @@ async function main() {
     if (upErr) console.error(`  upsert kamino ${portfolioId.slice(0, 8)}: ${upErr.message}`);
     else console.log(`  ✅ kamino ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
   }
+
+  // Kamino Lend: se hace PRONTO (justo tras Kamino) porque sus deltas de harvest
+  // son críticos para la contabilidad y antes quedaba el ÚLTIMO → si el job de
+  // CI moría en el upsert de Meteora (lento), no llegaba a correr (caché
+  // congelada). Siempre upsert (incluso 0 pos) para limpiar al cerrar la última
+  // bóveda. ANTES de sobrescribir, se comparan las recompensas COBRADAS
+  // acumuladas del farm con la lectura anterior: cada incremento es un claim →
+  // se emite como harvest reinvertible (misma señal que Kamino LP).
+  const kaminoLendPids = new Set([...kaminoLendByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
+  for (const portfolioId of kaminoLendPids) {
+    const positions = kaminoLendByPortfolio.get(portfolioId) ?? [];
+
+    try {
+      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino_lend").maybeSingle();
+      const prev = new Map();
+      for (const p of prevRow?.positions ?? []) prev.set(p.id, p);
+
+      for (const p of positions) {
+        const before = prev.get(p.id)?.meta?.claimedRewards ?? null;
+        if (!before) continue; // primera lectura con contadores: solo baseline
+        const nowClaims = p.meta?.claimedRewards ?? {};
+        const tokens = [];
+        for (const [mint, amt] of Object.entries(nowClaims)) {
+          const d = amt - (before[mint] ?? 0);
+          if (d <= 0) continue;
+          const px = await jupPrices([mint]);
+          const price = px.get(mint)?.usdPrice ?? null;
+          tokens.push({ symbol: await symbolOf(mint), amount: d, priceUsd: price, valueUsd: price != null ? d * price : null });
+        }
+        if (!tokens.length) continue;
+        const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
+        if (valueUsd < 0.5) continue;
+        const claimStamp = Object.entries(nowClaims)
+          .map(([m, val]) => `${m.slice(0, 6)}-${Math.round(val * 1e6)}`)
+          .sort()
+          .join(":");
+        await sb.from("onchain_events").upsert({
+          portfolio_id: portfolioId,
+          event_key: `solana:kamino-lend-claim:${p.id}:${claimStamp}`,
+          kind: "harvest",
+          chain: "solana",
+          protocol: p.protocol ?? "Kamino Lend",
+          wallet_address: p.walletAddress,
+          position_ref: p.id, // LivePosition.id → auto-enlace/auto-ingesta
+          label: p.label,
+          tokens,
+          value_usd: valueUsd,
+          block_time: new Date().toISOString(),
+          tx_hash: null,
+          includes_principal: false,
+        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+        console.log(`  🌾 kamino_lend harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+      }
+    } catch (e) {
+      console.error(`  kamino_lend claim delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
+    }
+
+    const { error: upErr } = await sb
+      .from("onchain_cache")
+      .upsert({ portfolio_id: portfolioId, source: "kamino_lend", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
+    if (upErr) console.error(`  upsert kamino_lend ${portfolioId.slice(0, 8)}: ${upErr.message}`);
+    else if (positions.length) console.log(`  ✅ kamino_lend ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)}, sin reclamar $${positions.reduce((s, p) => s + (p.unclaimedUsd ?? 0), 0).toFixed(2)})`);
+  }
+
   for (const [portfolioId, positions] of orcaByPortfolio) {
     const { error: upErr } = await sb
       .from("onchain_cache")
@@ -1032,66 +1096,6 @@ async function main() {
       .upsert({ portfolio_id: portfolioId, source: "meteora", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
     if (upErr) console.error(`  upsert meteora ${portfolioId.slice(0, 8)}: ${upErr.message}`);
     else if (positions.length) console.log(`  ✅ meteora ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)})`);
-  }
-
-  // Kamino Lend: siempre upsert (incluso 0 pos) para limpiar la caché al cerrar
-  // la última bóveda. ANTES de sobrescribir, se comparan las recompensas
-  // COBRADAS acumuladas del farm con la lectura anterior: cada incremento es un
-  // claim → se emite como harvest reinvertible (misma señal que Kamino LP).
-  const kaminoLendPids = new Set([...kaminoLendByPortfolio.keys(), ...(wallets ?? []).map((w) => w.portfolio_id)]);
-  for (const portfolioId of kaminoLendPids) {
-    const positions = kaminoLendByPortfolio.get(portfolioId) ?? [];
-
-    try {
-      const { data: prevRow } = await sb.from("onchain_cache").select("positions").eq("portfolio_id", portfolioId).eq("source", "kamino_lend").maybeSingle();
-      const prev = new Map();
-      for (const p of prevRow?.positions ?? []) prev.set(p.id, p);
-
-      for (const p of positions) {
-        const before = prev.get(p.id)?.meta?.claimedRewards ?? null;
-        if (!before) continue; // primera lectura con contadores: solo baseline
-        const nowClaims = p.meta?.claimedRewards ?? {};
-        const tokens = [];
-        for (const [mint, amt] of Object.entries(nowClaims)) {
-          const d = amt - (before[mint] ?? 0);
-          if (d <= 0) continue;
-          const px = await jupPrices([mint]);
-          const price = px.get(mint)?.usdPrice ?? null;
-          tokens.push({ symbol: await symbolOf(mint), amount: d, priceUsd: price, valueUsd: price != null ? d * price : null });
-        }
-        if (!tokens.length) continue;
-        const valueUsd = tokens.reduce((s, t) => s + (t.valueUsd ?? 0), 0);
-        if (valueUsd < 0.5) continue;
-        const claimStamp = Object.entries(nowClaims)
-          .map(([m, val]) => `${m.slice(0, 6)}-${Math.round(val * 1e6)}`)
-          .sort()
-          .join(":");
-        await sb.from("onchain_events").upsert({
-          portfolio_id: portfolioId,
-          event_key: `solana:kamino-lend-claim:${p.id}:${claimStamp}`,
-          kind: "harvest",
-          chain: "solana",
-          protocol: p.protocol ?? "Kamino Lend",
-          wallet_address: p.walletAddress,
-          position_ref: p.id, // LivePosition.id → auto-enlace/auto-ingesta
-          label: p.label,
-          tokens,
-          value_usd: valueUsd,
-          block_time: new Date().toISOString(),
-          tx_hash: null,
-          includes_principal: false,
-        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
-        console.log(`  🌾 kamino_lend harvest ${p.label}: $${valueUsd.toFixed(2)}`);
-      }
-    } catch (e) {
-      console.error(`  kamino_lend claim delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
-    }
-
-    const { error: upErr } = await sb
-      .from("onchain_cache")
-      .upsert({ portfolio_id: portfolioId, source: "kamino_lend", positions, updated_at: new Date().toISOString() }, { onConflict: "portfolio_id,source" });
-    if (upErr) console.error(`  upsert kamino_lend ${portfolioId.slice(0, 8)}: ${upErr.message}`);
-    else if (positions.length) console.log(`  ✅ kamino_lend ${portfolioId.slice(0, 8)} (${positions.length} pos, $${positions.reduce((s, p) => s + (p.valueUsd ?? 0), 0).toFixed(2)}, sin reclamar $${positions.reduce((s, p) => s + (p.unclaimedUsd ?? 0), 0).toFixed(2)})`);
   }
 
   console.log("Done.");

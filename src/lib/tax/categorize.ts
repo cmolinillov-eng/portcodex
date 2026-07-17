@@ -1217,8 +1217,13 @@ function handleLpWithdraw(
     };
   }
 
-  const symbol = (tx.tokenInSymbol ?? "").toUpperCase();
-  const amount = Number(tx.tokenInAmount ?? 0);
+  // El flujo manual emite la retirada con token_in (recibes los tokens); la
+  // auto-ingesta on-chain la emite con token_out (salen de la posición, para
+  // que el dashboard la reste del depositado). Se acepta cualquiera de los dos
+  // o la rotación de lotes no correría y la retirada degradaría a "datos
+  // incompletos" (base sin trasladar → ganancias futuras sobredeclaradas).
+  const symbol = (tx.tokenInSymbol ?? tx.tokenOutSymbol ?? "").toUpperCase();
+  const amount = Number(tx.tokenInAmount ?? tx.tokenOutAmount ?? 0);
   const spotUsd = Number(tx.spotPriceUsd ?? 0);
 
   if (!symbol || amount <= 0 || spotUsd <= 0) {

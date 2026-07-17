@@ -20,8 +20,9 @@ jobs:
   cache:
     runs-on: ubuntu-latest
     # La primera pasada EVM puede no caber: no pasa nada, el escáner guarda
-    # checkpoint por tramo y el siguiente run continúa donde se quedó.
-    timeout-minutes: 25
+    # checkpoint por tramo y el siguiente run continúa donde se quedó. 45 min
+    # de margen: a 25 min el caché moría antes de escribir kamino_lend (último).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
