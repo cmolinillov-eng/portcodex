@@ -6,6 +6,7 @@ import type { PositionSection, DefiPosition } from "@/types/portfolio";
 import { percent, plainPercent } from "../utils/formatters";
 import { useMoneyFormatters } from "../utils/currency-context";
 import { StrategyTagBadge } from "./StrategyTagBadge";
+import { ProtocolIdentity, TokenIdentity, TokenPairIdentity } from "@/components/ui/AssetIdentity";
 
 interface PositionSectionCardProps {
   section: PositionSection;
@@ -201,7 +202,7 @@ function BreakdownCell({ items, emptyLabel }: { items: DefiPosition["collateralB
         <div key={item.tokenSymbol}>
           <p className="text-sm font-medium tabular-nums">
             {formatTokenAmount(item.amount)}{" "}
-            <span className="token-emphasis">{item.tokenSymbol}</span>
+            <TokenIdentity symbol={item.tokenSymbol} size="sm" />
           </p>
           <p className="text-[11px] tabular-nums text-[var(--muted)]">
             {currency(item.valueUsd)}
@@ -469,7 +470,11 @@ export function PositionSectionCard({
                     <>
                       {/* Asset */}
                       <td className="px-4 py-4">
-                        <p className="token-emphasis text-sm">{position.tokenSymbol}</p>
+                        {/[+/·\-]/.test(position.tokenSymbol) ? (
+                          <TokenPairIdentity pair={position.tokenSymbol} />
+                        ) : (
+                          <TokenIdentity symbol={position.tokenSymbol} />
+                        )}
                       </td>
 
                       {/* Balance */}
@@ -514,9 +519,7 @@ export function PositionSectionCard({
                   {/* Protocol badge + strategy tag */}
                   <td className="px-4 py-4">
                     <div className="flex flex-col gap-1.5">
-                      <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full border border-[var(--glass-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)]">
-                        {position.protocol}
-                      </span>
+                      <ProtocolIdentity protocol={position.protocol} />
                       {onChangeStrategyTag ? (
                         <StrategyTagBadge
                           currentTag={position.strategyTag}

@@ -38,12 +38,12 @@ function displayName(fullName: string, email: string): string {
 
 function roleBadgeClasses(role: Role): string {
   if (role === "cliente") {
-    return "border-[rgba(201,164,94,0.45)] bg-[rgba(201,164,94,0.12)] text-amber-300";
+    return "border-[color:var(--warn)] bg-[var(--warn-soft)] text-amber-300";
   }
   if (role === "admin") {
-    return "border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] text-[#6FAE8F]";
+    return "border-[var(--accent-primary)] bg-[var(--accent-glow)] text-[var(--accent-hover)]";
   }
-  return "border-[rgba(79,135,112,0.45)] bg-[rgba(79,135,112,0.12)] text-[#8CA0B3]";
+  return "border-[var(--info)] bg-[color:rgb(85_201_255_/_0.10)] text-[var(--info)]";
 }
 
 

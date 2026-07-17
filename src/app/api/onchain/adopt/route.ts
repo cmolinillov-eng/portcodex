@@ -16,6 +16,16 @@ import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabas
 type AdoptToken = { symbol: string; amount: number; valueUsd?: number | null };
 type AdoptRange = { lower?: number | null; upper?: number | null; current?: number | null } | null;
 
+// Stablecoins (~$1): al sellar la base de una adopción se anclan a su valor de
+// mercado en vez de repartirles una parte del depositado, que les inventaba un
+// precio unitario (p.ej. USDC@1,35) y generaba pérdidas/ganancias FICTICIAS en
+// permutas stable→stable por FIFO. El ajuste del depositado va a las volátiles.
+const STABLE_SYMBOLS = new Set([
+  "USDC", "USDT", "USDS", "DAI", "PYUSD", "EURC", "USDE", "SUSDE", "FDUSD",
+  "TUSD", "GUSD", "USDP", "SUSD", "CRVUSD", "GHO", "LUSD", "FRAX", "USDG",
+  "USDbC", "USDC.E", "AUSD", "RLUSD",
+].map((s) => s.toUpperCase()));
+
 /**
  * metadata.lp para las filas lp_deposit de la adopción. El trigger
  * validate_transaction_integrity la exige (tokenA/B, rango > 0, ratio > 0):
@@ -138,15 +148,28 @@ export async function POST(request: NextRequest) {
       // Reparto proporcional al VALOR original de cada fila (amount × precio
       // sellado), no a la cantidad: repartir por cantidad mezclaría unidades
       // de tokens distintos (0.2 WETH vs 1.000 USDC) y corrompería la base.
+      // Igual que en el alta: las stablecoins se anclan a la par ($1) y el
+      // ajuste del depositado va a las volátiles, para no re-inventar precios
+      // de stables (que corromperían el FIFO en permutas stable→stable).
+      const rowStable = (r: { token_in_symbol: unknown }) =>
+        STABLE_SYMBOLS.has(String(r.token_in_symbol ?? "").replace(/^-/, "").toUpperCase());
       const rowValue = (r: { token_in_amount: unknown; spot_price: unknown }) =>
         Math.abs(Number(r.token_in_amount ?? 0)) * Math.max(0, Number(r.spot_price ?? 0));
-      const totalValue = adoptRows.reduce((s, r) => s + rowValue(r), 0);
+      const stableBaseUsd = adoptRows
+        .filter(rowStable)
+        .reduce((s, r) => s + Math.abs(Number(r.token_in_amount ?? 0)), 0); // a la par
+      const volatileRows = adoptRows.filter((r) => !rowStable(r));
+      const volatileValue = volatileRows.reduce((s, r) => s + rowValue(r), 0);
+      const volatileBaseUsd = Math.max(0, depositedUsd - stableBaseUsd);
       const nowIso = new Date().toISOString();
       const newGroup = crypto.randomUUID();
       const rows = adoptRows.map((r) => {
         const amt = Math.abs(Number(r.token_in_amount ?? 0));
-        const share = totalValue > 0 ? rowValue(r) / totalValue : 1 / adoptRows.length;
-        const entryPrice = amt > 0 ? (depositedUsd * share) / amt : 0;
+        let entryPrice = 0;
+        if (amt <= 0) entryPrice = 0;
+        else if (rowStable(r)) entryPrice = 1; // stablecoin a la par
+        else if (volatileValue > 0 && volatileBaseUsd > 0) entryPrice = (volatileBaseUsd * (rowValue(r) / volatileValue)) / amt;
+        else entryPrice = (depositedUsd / adoptRows.length) / amt; // último recurso
         return {
           portfolio_id: portfolioId,
           type: (TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet).txType,
@@ -196,22 +219,48 @@ export async function POST(request: NextRequest) {
   const label = (body.label ?? "posicion").toString();
   const positionId = `${label.replace(/[^\w/.-]+/g, "-")}-${onchainId.slice(-24).replace(/[^\w-]+/g, "-")}`;
 
-  // Reparto del depositado entre tokens: proporcional a su valor actual
-  // (o a partes iguales si no hay valores). El precio de entrada implícito
-  // de cada token = su parte del depositado / cantidad.
-  const totalValue = tokens.reduce((s, t) => s + Math.max(0, Number(t.valueUsd ?? 0)), 0);
+  // Reparto del depositado entre tokens. Las STABLECOINS se anclan a su FMV
+  // de mercado (~$1): repartir el depositado por valor actual les inventaba
+  // un precio unitario (p.ej. USDC@1,35) que luego generaba pérdidas/ganancias
+  // FICTICIAS en permutas stable→stable por FIFO. El ajuste del depositado
+  // (deposited vs valor actual) se concentra en las patas VOLÁTILES, donde un
+  // precio de entrada medio distinto del de mercado sí es defendible.
   const operationGroupId = crypto.randomUUID();
   const nowIso = new Date().toISOString();
+  const fmv = (t: { amount: number; valueUsd?: number | null }) => {
+    const a = Number(t.amount);
+    const v = Number(t.valueUsd ?? 0);
+    return a > 0 && v > 0 ? v / a : 0;
+  };
+  const isStable = (t: { symbol: string }) => STABLE_SYMBOLS.has(t.symbol.replace(/^-/, "").toUpperCase());
+  const stableBaseUsd = tokens.filter(isStable).reduce((s, t) => s + fmv(t) * Number(t.amount), 0);
+  const volatileTokens = tokens.filter((t) => !isStable(t));
+  const volatileValue = volatileTokens.reduce((s, t) => s + Math.max(0, Number(t.valueUsd ?? 0)), 0);
+  // Lo que queda del depositado tras cubrir las stablecoins a la par → volátiles.
+  const volatileBaseUsd = Math.max(0, depositedUsd - stableBaseUsd);
+  const totalValue = tokens.reduce((s, t) => s + Math.max(0, Number(t.valueUsd ?? 0)), 0);
 
   // Las filas lp_deposit necesitan metadata.lp (el trigger de integridad la
   // exige); sin ella la adopción de pools fallaba con 500 siempre.
   const lpMeta = mapping.txType === "lp_deposit" ? buildAdoptLpMetadata(tokens, label, body.range ?? null) : {};
 
   const rows = tokens.flatMap((t) => {
-    const share = totalValue > 0 ? Math.max(0, Number(t.valueUsd ?? 0)) / totalValue : 1 / tokens.length;
-    const tokenDeposited = depositedUsd * share;
     const amount = Number(t.amount);
-    const entryPrice = tokenDeposited / amount;
+    let entryPrice: number;
+    if (isStable(t)) {
+      // Ancla al precio de mercado (~$1); si no hay FMV, $1 por defecto.
+      entryPrice = fmv(t) || 1;
+    } else if (volatileValue > 0 && volatileBaseUsd > 0) {
+      // Base restante repartida entre volátiles por su valor actual.
+      const share = Math.max(0, Number(t.valueUsd ?? 0)) / volatileValue;
+      entryPrice = (volatileBaseUsd * share) / amount;
+    } else if (totalValue > 0) {
+      // Sin base para volátiles (deposited ≤ valor de stables): FMV real.
+      entryPrice = fmv(t);
+    } else {
+      // Sin valores conocidos: reparto a partes iguales (último recurso).
+      entryPrice = (depositedUsd / tokens.length) / amount;
+    }
     // Pata sin valor dentro de una cesta con valores (share 0): fuera — una
     // fila a precio 0 viola el check de integridad y tumbaría el alta entera.
     if (!Number.isFinite(entryPrice) || entryPrice <= 0) return [];

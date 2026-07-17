@@ -87,7 +87,7 @@ export default async function ResumenFiscalPage({
         action={
           <Link
             href={`/fiscal/exportar${portfolio ? `?portfolio=${portfolio}` : ""}`}
-            className="inline-flex items-center gap-2 rounded-lg border border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] px-3.5 py-2 text-sm font-medium text-[#6FAE8F] transition-colors hover:bg-[rgba(111,174,143,0.18)]"
+            className="inline-flex items-center gap-2 rounded-lg border border-[var(--accent-primary)] bg-[var(--accent-glow)] px-3.5 py-2 text-sm font-medium text-[var(--accent-hover)] transition-colors hover:bg-[var(--accent-glow-strong)]"
           >
             <Download className="h-4 w-4" /> Exportar
           </Link>
@@ -106,7 +106,7 @@ export default async function ResumenFiscalPage({
                   href={yearHref(y)}
                   className={`rounded-md px-3 py-1.5 font-mono text-xs font-medium tracking-wide transition-colors ${
                     y === selectedYear
-                      ? "bg-[rgba(111,174,143,0.16)] text-[var(--foreground)]"
+                      ? "bg-[var(--accent-glow-strong)] text-[var(--foreground)]"
                       : "text-[var(--muted)] hover:text-[var(--foreground)]"
                   }`}
                 >
