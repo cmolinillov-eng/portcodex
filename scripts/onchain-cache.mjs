@@ -157,7 +157,12 @@ async function kaminoPositions(portfolioId, owner) {
   try {
     userFarms = await farms.getAllFarmsForUser(address(owner), now);
   } catch (e) {
-    console.error(`  farms de ${owner.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
+    // Sin farms no sabemos las shares STAKED ni las recompensas cobradas: las
+    // posiciones en farming saldrían con shares 0 (parecerían CERRADAS → cierre
+    // fantasma) y el baseline de claims quedaría a 0 (HARVEST fantasma gigante
+    // al recuperarse). Propagamos: el run salta esta wallet, conserva la caché
+    // anterior y NO dispara cierres/harvests falsos. El siguiente run reintenta.
+    throw new Error(`getAllFarmsForUser falló para ${owner.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
   }
 
   // Índices por estrategia: shares staked y recompensas pendientes.
@@ -194,7 +199,11 @@ async function kaminoPositions(portfolioId, owner) {
         if (raw <= 0n) continue;
         claimed[mint] = (claimed[mint] ?? 0) + Number(raw) / 10 ** dec;
       }
-      if (Object.keys(claimed).length) claimedByStrategy.set(stratId, claimed);
+      // Se registra SIEMPRE que la lectura del farm fue OK (incluso claimed
+      // vacío = baseline 0 legítimo). Si NO se registra (lectura fallida), la
+      // posición llevará claimedRewards=null → el delta se re-baselinea en vez
+      // de tomar 0 y disparar un harvest fantasma del acumulado de por vida.
+      claimedByStrategy.set(stratId, claimed);
     } catch (e) {
       console.error(`  farm claimed de ${stratId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
     }
@@ -209,7 +218,10 @@ async function kaminoPositions(portfolioId, owner) {
   for (const p of userStrats) {
     const strategyAddr = String(p.strategy);
     const staked = stakedByStrategy.get(strategyAddr);
-    const shares = staked ? Number(staked) : Number(p.sharesAmount ?? 0);
+    // staked es un Decimal; Decimal(0) es truthy (objeto). Se usa el stake solo
+    // si es > 0; si el usuario des-stakeó, las shares están en su cuenta
+    // (p.sharesAmount) — sin esto la posición saldría con 0 y parecería cerrada.
+    const shares = staked && staked.gt(0) ? Number(staked) : Number(p.sharesAmount ?? 0);
     if (!shares || shares <= 0) continue;
 
     let sharePrice = 0;
@@ -283,7 +295,9 @@ async function kaminoPositions(portfolioId, owner) {
         shares,
         sharePrice,
         // Acumulado cobrado por mint → el delta entre runs es un harvest.
-        claimedRewards: claimedByStrategy.get(strategyAddr) ?? {},
+        // null (no {}) cuando no se pudo leer el farm → baseline "desconocido":
+        // el delta se re-baselinea en vez de disparar un harvest fantasma.
+        claimedRewards: claimedByStrategy.has(strategyAddr) ? claimedByStrategy.get(strategyAddr) : null,
       },
       source: "kamino",
     });
@@ -594,9 +608,11 @@ async function kaminoLendPositions(portfolioId, owner) {
   const farms = new Farms(rpc);
   const now = new Decimal(Math.floor(Date.now() / 1000));
   let userFarms = new Map();
+  let farmsOk = true; // si falla, el baseline de claims va null (no {}) → sin harvest fantasma
   try {
     userFarms = await farms.getAllFarmsForUser(address(String(owner)), now);
   } catch (e) {
+    farmsOk = false;
     console.error(`  farms lend de ${owner.slice(0, 8)}: ${String(e.message).slice(0, 100)}`);
   }
   const farmByAddr = new Map();
@@ -682,7 +698,9 @@ async function kaminoLendPositions(portfolioId, owner) {
           vault: String(entries[i][0]),
           mint, dec, symbol, shares, tokensPerShare,
           farm: farmAddr || null,
-          claimedRewards,
+          // null (no {}) si no se pudieron leer los farms → baseline desconocido
+          // (evita un harvest fantasma del acumulado al recuperarse la lectura).
+          claimedRewards: farmsOk ? claimedRewards : null,
         },
         source: "kamino_lend",
       });
@@ -706,9 +724,11 @@ async function main() {
   const orcaByPortfolio = new Map();
   const meteoraByPortfolio = new Map();
   const kaminoLendByPortfolio = new Map();
-  // Wallets cuya lectura Kamino fue EXITOSA este run. Solo para ellas se puede
-  // afirmar que una posición ausente = cierre real (y no un fallo de RPC).
+  // Wallets cuya lectura Kamino/Meteora fue EXITOSA este run. Solo para ellas se
+  // puede afirmar que una posición ausente = cierre real (y no un fallo de RPC).
   const kaminoReadOk = new Set();
+  const meteoraReadOk = new Set();
+  const kaminoLendReadOk = new Set();
   for (const w of wallets ?? []) {
     try {
       const positions = await kaminoPositions(w.portfolio_id, w.address);
@@ -723,6 +743,7 @@ async function main() {
       const positions = await kaminoLendPositions(w.portfolio_id, w.address);
       const cur = kaminoLendByPortfolio.get(w.portfolio_id) ?? [];
       kaminoLendByPortfolio.set(w.portfolio_id, cur.concat(positions));
+      kaminoLendReadOk.add(w.address);
       if (positions.length) console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Kamino Lend`);
     } catch (e) {
       console.error(`  Kamino Lend fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
@@ -739,6 +760,7 @@ async function main() {
       const positions = await meteoraPositions(w.portfolio_id, w.address);
       const cur = meteoraByPortfolio.get(w.portfolio_id) ?? [];
       meteoraByPortfolio.set(w.portfolio_id, cur.concat(positions));
+      meteoraReadOk.add(w.address);
       if (positions.length) console.log(`  ${w.portfolio_id.slice(0, 8)} ${w.address.slice(0, 8)} → ${positions.length} posiciones Meteora`);
     } catch (e) {
       console.error(`  Meteora fallo en ${w.address}: ${String(e.message).slice(0, 120)}`);
@@ -970,6 +992,58 @@ async function main() {
         }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
         console.log(`  🌾 kamino_lend harvest ${p.label}: $${valueUsd.toFixed(2)}`);
       }
+
+      // ── RETIRADA de una bóveda Kamino Lend (parcial o cierre total) ────────
+      // Antes no se detectaba: retirar de una kVault dejaba su depositado
+      // contando para siempre. Se emite por caída de SHARES (el token subyacente
+      // que sale = Δshares · tokensPerShare). Parcial: posición presente en
+      // ambas lecturas. Cierre: presente antes y AUSENTE ahora, con guarda
+      // anti-fantasma (kaminoLendReadOk: la wallet se leyó con éxito).
+      const emitLendWithdraw = async (prevPos, nowShares) => {
+        const prevShares = Number(prevPos?.meta?.shares ?? 0);
+        const tps = Number(prevPos?.meta?.tokensPerShare ?? 0);
+        if (!(prevShares > 0) || !(tps > 0)) return;
+        const dShares = prevShares - nowShares;
+        if (dShares <= prevShares * 0.01) return; // <1%: ruido
+        const amount = dShares * tps;
+        const mint = String(prevPos?.meta?.mint ?? "");
+        const symbol = prevPos?.meta?.symbol ?? symbolFor(mint);
+        const px = mint ? (await jupPrices([mint])).get(mint)?.usdPrice ?? null : null;
+        const valueUsd = px != null ? amount * px : null;
+        if (!(valueUsd >= 1)) return;
+        const leg = { symbol, amount, priceUsd: px, valueUsd };
+        const wdKey = `solana:kamino-lend-withdraw:${prevPos.id}:${Math.round(nowShares * 1e6)}`;
+        await sb.from("onchain_events").upsert({
+          portfolio_id: portfolioId,
+          event_key: wdKey,
+          kind: "withdraw",
+          chain: "solana",
+          protocol: prevPos.protocol ?? "Kamino Lend",
+          wallet_address: prevPos.walletAddress,
+          position_ref: prevPos.id,
+          label: prevPos.label,
+          tokens: [leg],
+          value_usd: valueUsd,
+          block_time: new Date().toISOString(),
+          tx_hash: null,
+          includes_principal: true,
+        }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+        console.log(`  📤 kamino_lend withdraw ${prevPos.label}: $${valueUsd.toFixed(2)}`);
+        const mintsBySym = mint ? { [String(symbol).toUpperCase()]: mint } : {};
+        await emitHoldArrivals(portfolioId, prevPos.walletAddress, [leg], wdKey, mintsBySym);
+      };
+      const nowById = new Map(positions.map((p) => [p.id, p]));
+      for (const p of positions) {
+        const prevPos = prev.get(p.id);
+        if (prevPos) await emitLendWithdraw(prevPos, Number(p.meta?.shares ?? 0)); // parcial
+      }
+      for (const prevPos of prev.values()) {
+        // Cierre total: ausente ahora + wallet leída OK.
+        if (nowById.has(prevPos.id)) continue;
+        const w = prevPos.walletAddress;
+        if (!w || !kaminoLendReadOk.has(w)) continue;
+        await emitLendWithdraw(prevPos, 0);
+      }
     } catch (e) {
       console.error(`  kamino_lend claim delta ${portfolioId.slice(0, 8)}: ${String(e.message).slice(0, 80)}`);
     }
@@ -1027,7 +1101,11 @@ async function main() {
             }).filter(Boolean);
             const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
             if (wdUsd >= 1 && legs.length) {
-              const wdKey = `solana:meteora-withdraw:${p.id}:${Math.round(nowVal * 100)}`;
+              // Clave por las CANTIDADES restantes (no por USD): un re-cálculo
+              // con precio distinto no debe generar otra clave (duplicado); y el
+              // mismo estado post-retirada siempre da la misma clave.
+              const amtKey = pT.map((t) => Math.round(Number(t.amount) * 1e6)).join("-");
+              const wdKey = `solana:meteora-withdraw:${p.id}:${amtKey}`;
               await sb.from("onchain_events").upsert({
                 portfolio_id: portfolioId,
                 event_key: wdKey,
@@ -1089,6 +1167,46 @@ async function main() {
         includes_principal: false,
       }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
       console.log(`  🌾 meteora harvest ${p.label}: $${valueUsd.toFixed(2)}`);
+    }
+
+    // ── CIERRE TOTAL de una posición Meteora (retirada del principal) ────────
+    // Antes solo se detectaban retiradas PARCIALES (posición presente en ambas
+    // lecturas); cerrar un DLMM entero dejaba su depositado contando para
+    // siempre. Igual que Kamino: presente antes y AUSENTE ahora = cerrada.
+    // Guarda anti-fantasma: solo si la wallet se leyó con ÉXITO (meteoraReadOk).
+    const nowIdsMet = new Set(positions.map((p) => p.id));
+    for (const prevPos of prev.values()) {
+      if (nowIdsMet.has(prevPos.id)) continue;
+      const w = prevPos.walletAddress;
+      if (!w || !meteoraReadOk.has(w)) continue;
+      const prevVal = Number(prevPos.valueUsd ?? 0);
+      if (!(prevVal >= 1)) continue;
+      const legs = (prevPos.tokens ?? [])
+        .filter((t) => Number(t.amount) > 0 && Number(t.valueUsd) > 0)
+        .map((t) => ({ symbol: t.symbol, amount: Number(t.amount), priceUsd: Number(t.valueUsd) / Number(t.amount), valueUsd: Number(t.valueUsd) }));
+      if (!legs.length) continue;
+      const wdUsd = legs.reduce((s2, l) => s2 + l.valueUsd, 0);
+      const closeKey = `solana:meteora-close:${prevPos.id}:${Math.round(prevVal * 100)}`;
+      await sb.from("onchain_events").upsert({
+        portfolio_id: portfolioId,
+        event_key: closeKey,
+        kind: "withdraw",
+        chain: "solana",
+        protocol: prevPos.protocol ?? "Meteora",
+        wallet_address: w,
+        position_ref: prevPos.id,
+        label: prevPos.label,
+        tokens: legs,
+        value_usd: wdUsd,
+        block_time: new Date().toISOString(),
+        tx_hash: null,
+        includes_principal: true,
+      }, { onConflict: "portfolio_id,event_key", ignoreDuplicates: true });
+      console.log(`  📕 meteora cierre total ${prevPos.label}: $${wdUsd.toFixed(2)}`);
+      const mintsBySym = {};
+      if (prevPos.meta?.symX && prevPos.meta?.mintX) mintsBySym[String(prevPos.meta.symX).toUpperCase()] = String(prevPos.meta.mintX);
+      if (prevPos.meta?.symY && prevPos.meta?.mintY) mintsBySym[String(prevPos.meta.symY).toUpperCase()] = String(prevPos.meta.mintY);
+      await emitHoldArrivals(portfolioId, w, legs, closeKey, mintsBySym);
     }
 
     const { error: upErr } = await sb
