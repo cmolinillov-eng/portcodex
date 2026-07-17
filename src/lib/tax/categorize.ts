@@ -308,6 +308,42 @@ function handleDeposit(
   const category = isOnchainTransfer ? "non_taxable_transfer" : decideDepositCategory(walletKind);
   const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
 
+  // ─── CASO ESPECIAL: depósito de una corrección manual (editar posición) ─
+  // La otra pata (retirada manual_edit) ya consumió los lotes viejos SIN
+  // ganancia; aquí se crea el lote del estado deseado a su precio indicado
+  // (base corregida), también SIN hecho imponible. Sin esto, la corrección
+  // creaba un lote "comprado hoy" y la retirada una venta ficticia.
+  const depReason = typeof tx.metadata?.reason === "string" ? tx.metadata.reason : null;
+  if (depReason === "manual_edit" || depReason === "manual_edit_cleanup_orphan") {
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: valueEur,
+        realizedGainEur: 0,
+        notes: `Corrección manual de estado: lote re-sellado a ${amount} ${symbol} (base ${valueEur} €). Sin hecho imponible; la fecha de adquisición es la de la corrección.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: `Ajustaste el estado registrado a ${amount} ${symbol} en ${walletName} (base ${valueEur} €).`,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [
+        {
+          tokenSymbol: symbol,
+          amount,
+          costBasisEur: valueEur,
+          acquiredAt: tx.transactionDate,
+          acquiredViaEvent: "buy",
+          acquiredViaTransactionId: tx.id ?? null,
+        },
+      ],
+      taxEvents: [],
+      consumedLotUpdates: [],
+    };
+  }
+
   // ─── CASO ESPECIAL: Destino de un rebalanceo ───────────────────────────
   // Si la fila viene marcada con `metadata.source === "rebalance_transfer"`,
   // el activo se MATERIALIZA aquí por un rebalanceo. La app trata el
@@ -632,6 +668,45 @@ function handleWithdrawal(
       newLots: [],
       taxEvents: [],
       consumedLotUpdates: [],
+    };
+  }
+
+  // ─── CASO ESPECIAL: corrección manual del estado (editar posición) ──────
+  // Editar una posición emite un par {retirada del estado actual, depósito del
+  // deseado} con reason=manual_edit. NO es una venta real: se CONSUMEN los
+  // lotes FIFO (para quitar el estado viejo — el depósito de corrección crea el
+  // nuevo) pero SIN realizar ganancia/pérdida (no hay hecho imponible). Sin
+  // esta rama, editar una cantidad generaba una VENTA FICTICIA en el Modelo 100.
+  if (wReason === "manual_edit" || wReason === "manual_edit_cleanup_orphan") {
+    const valueEur = roundEur(usdToEur(amount * spotUsd, rate));
+    const fifo = applyFifo(symbol, amount, currentLots, tx.transactionDate);
+    const description = buildHumanDescription({
+      category: "non_taxable_transfer",
+      walletKind,
+      walletName,
+      tokenSymbol: symbol,
+      amount,
+      valueEur,
+    });
+    return {
+      annotation: {
+        category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur,
+        costBasisEur: roundEur(fifo.consumedCostEur),
+        realizedGainEur: 0,
+        notes: `Corrección manual de estado: se retira ${amount} ${symbol} (base FIFO ${roundEur(fifo.consumedCostEur)} €) SIN hecho imponible; el estado nuevo lo fija el depósito de corrección.`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: description,
+        inferred: true,
+        walletKind,
+      },
+      newLots: [],
+      taxEvents: [],
+      // Consume los lotes viejos (a diferencia del rebalanceo, cuya base viaja
+      // a otra posición): aquí el estado se re-crea en la MISMA posición.
+      consumedLotUpdates: fifo.lotUpdates,
     };
   }
 
