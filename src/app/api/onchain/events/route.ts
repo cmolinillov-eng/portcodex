@@ -112,9 +112,21 @@ async function performIngest(
   // fiscal degrada a "datos incompletos" y el rendimiento desaparecería del
   // Modelo 100 en silencio. Mejor dejar el evento en bandeja y registrarlo
   // a mano con precio correcto.
-  const usable = tokens.filter((t) => t.amount > 0 && t.priceUsd != null && t.priceUsd > 0);
+  const withAmount = tokens.filter((t) => t.amount > 0);
+  const usable = withAmount.filter((t) => t.priceUsd != null && t.priceUsd > 0);
   if (!usable.length) {
     return { ok: false, error: "El evento no tiene tokens con precio; regístralo a mano.", status: 400 };
+  }
+  // Si SOLO algunos tokens tienen precio, NO se ingiere a medias: ingerir solo
+  // los valorables descartaría el resto EN SILENCIO (rendimiento que desaparece
+  // del Modelo 100). Se deja el evento entero pendiente para registrarlo a mano
+  // con todos los precios — así nada se pierde sin que nadie lo vea.
+  if (usable.length < withAmount.length) {
+    return {
+      ok: false,
+      error: `El evento tiene ${withAmount.length - usable.length} token(s) sin precio; regístralo a mano para no perder rendimiento.`,
+      status: 400,
+    };
   }
 
   const timestamp = ev.block_time ?? new Date().toISOString();

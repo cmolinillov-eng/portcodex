@@ -306,8 +306,20 @@ function HarvestInbox({
         <button
           type="button"
           onClick={async () => {
-            if (!window.confirm(`¿Descartar los ${events.length} eventos pendientes? Úsalo solo si ya están contabilizados.`)) return;
-            for (const ev of [...events]) await act(ev, "dismiss");
+            // Los HARVEST son rendimiento declarable (Modelo 100): descartarlos
+            // en masa perdía datos fiscales. Se excluyen del descarte masivo; si
+            // el gestor quiere quitar uno, lo hace individualmente (deliberado).
+            const dismissable = events.filter((e) => e.kind !== "harvest");
+            const kept = events.length - dismissable.length;
+            if (!dismissable.length) {
+              window.alert("Solo quedan harvests (rendimiento declarable). Revísalos uno a uno.");
+              return;
+            }
+            const msg = kept > 0
+              ? `¿Descartar ${dismissable.length} eventos? Se CONSERVAN ${kept} harvest(s) — rendimiento declarable; descártalos uno a uno solo si estás seguro.`
+              : `¿Descartar los ${dismissable.length} eventos pendientes? Úsalo solo si ya están contabilizados.`;
+            if (!window.confirm(msg)) return;
+            for (const ev of dismissable) await act(ev, "dismiss");
           }}
           disabled={busy !== ""}
           className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
