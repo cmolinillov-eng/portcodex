@@ -1,49 +1,53 @@
 @import "tailwindcss";
 
-/* PORTCODEX / CONTROL DE CAPITAL
-   Terminal patrimonial: azul tinta, lectura compacta y marca eléctrica.
-   El azul es navegación/acción. Verde y rojo son exclusivamente financieros. */
+/* =====================================================================
+   PORTCODEX «INSTRUMENTO» — design system v1.0 (Claude Design)
+   "La caja fuerte que respira": azul-carbón acero pavonado, UN acento
+   verde institucional usado con avaricia, tipografía como estructura.
+   Tres elevaciones por luminancia, no por bordes. Semánticos desaturados.
+   Voces: Archivo (display) · Spline Sans Mono (datos) · Public Sans (UI).
+   ===================================================================== */
 
 :root {
-  --font-designer: var(--font-ui);
   /* Superficies — 3 elevaciones por luminancia */
-  --void-deep: #080b14;
-  --void-surface: #10172a;
-  --void-elevated: #151e34;
-  --float: #1b2540;
+  --void-deep: #101318;      /* lienzo de página */
+  --void-surface: #14171c;   /* superficie base */
+  --void-elevated: #191d23;  /* panel */
+  --float: #20252c;          /* elemento flotante */
 
-  --glass-border: #25304b;
-  --glass-border-strong: #3a4767;
-  --glass-bg: var(--void-surface);
-  --glass-bg-hover: var(--void-elevated);
+  --glass-border: rgb(255 255 255 / 0.07);
+  --glass-border-strong: rgb(255 255 255 / 0.10);
+  --glass-bg: #191d23;
+  --glass-bg-hover: #1d222a;
 
-  --accent-primary: #5b7cfa;
-  --accent-hover: #91a5ff;
-  --accent-press: #405ed5;
-  --accent-secondary: #55c9ff;
-  --accent-glow: rgb(91 124 250 / 0.14);
-  --accent-glow-strong: rgb(91 124 250 / 0.22);
+  /* Acento — verde institucional (el ÚNICO color de marca) */
+  --accent-primary: #6fae8f;
+  --accent-hover: #8fc7ac;
+  --accent-press: #4f8770;
+  --accent-secondary: #4f8770;
+  --accent-glow: rgb(111 174 143 / 0.12);
+  --accent-glow-strong: rgb(111 174 143 / 0.18);
   --accent: var(--accent-primary);
 
   /* Semánticos desaturados */
-  --profit: #2bcb91;
-  --loss: #ff6b7a;
-  --warn: #ffb454;
-  --info: #55c9ff;
-  --loss-soft: rgb(255 107 122 / 0.12);
-  --warn-soft: rgb(255 180 84 / 0.13);
+  --profit: #8fbfa4;
+  --loss: #ce8b82;
+  --warn: #c9a45e;
+  --info: #8ca0b3;
+  --loss-soft: rgb(206 139 130 / 0.12);
+  --warn-soft: rgb(201 164 94 / 0.13);
 
   /* Tinta */
   --background: var(--void-deep);
-  --foreground: #f4f7ff;
-  --ink-2: #aab5cc;
-  --muted: #9aa8bf;
-  --faint: #71809e;
+  --foreground: #edf0f3;
+  --ink-2: #b4bcc6;
+  --muted: #8a94a0; /* AA sobre paneles */
+  --faint: #5e6873;
   --surface: var(--void-surface);
   --surface-2: var(--void-elevated);
   --brand: var(--accent-primary);
-  --brand-soft: #91a5ff;
-  --line: #25304b;
+  --brand-soft: #a9d4bf;
+  --line: rgb(255 255 255 / 0.07);
   --token-accent: var(--foreground);
   --value-accent: var(--foreground);
 
@@ -63,25 +67,16 @@
   --dur-slow: 250ms;
 
   /* Composición por sección — verde solo para LP; el resto, neutros */
-  --section-wallet: #55c9ff;
-  --section-staking: #ffb454;
-  --section-lending: #91a5ff;
-  --section-lp: #5b7cfa;
+  --section-wallet: rgb(140 160 179 / 0.9);
+  --section-staking: rgb(201 164 94 / 0.9);
+  --section-lending: rgb(126 136 148 / 0.9);
+  --section-lp: rgb(111 174 143 / 0.9);
 
   /* Radios */
   --radius-sm: 4px;
   --radius-md: 6px;
-  --radius-lg: 8px;
-  --radius-xl: 10px;
-
-  /* Ritmo compacto: la información financiera se lee en columnas, no en
-     una sucesión de tarjetas de presentación. */
-  --space-1: 0.375rem;
-  --space-2: 0.625rem;
-  --space-3: 0.875rem;
-  --space-4: 1.125rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
 }
 
 @theme inline {
@@ -89,32 +84,37 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-ui);
   --font-mono: var(--font-mono);
-  --font-designer: var(--font-ui);
+  --font-designer: var(--font-designer);
 }
 
 /* Paleta Tailwind remapeada al sistema: todas las utilidades emerald/rose/
    amber/red que usan los componentes pasan a los semánticos desaturados. */
 @theme {
-  --color-emerald-300: #74ddba;
-  --color-emerald-400: #2bcb91;
-  --color-emerald-500: #22a875;
-  --color-rose-300: #ff9ba5;
-  --color-rose-400: #ff6b7a;
-  --color-rose-500: #dc4f60;
-  --color-red-300: #ff9ba5;
-  --color-red-400: #ff6b7a;
-  --color-red-500: #dc4f60;
-  --color-amber-300: #ffd08d;
-  --color-amber-400: #ffb454;
-  --color-violet-300: #91a5ff;
-  --color-indigo-300: #91a5ff;
+  --color-emerald-300: #a5cdb7;
+  --color-emerald-400: #8fbfa4;
+  --color-emerald-500: #6fae8f;
+  --color-rose-300: #dba8a1;
+  --color-rose-400: #ce8b82;
+  --color-rose-500: #c07b71;
+  --color-red-300: #dba8a1;
+  --color-red-400: #ce8b82;
+  --color-red-500: #c07b71;
+  --color-amber-300: #d6b577;
+  --color-amber-400: #c9a45e;
+  --color-violet-300: #9fb0c1;
+  --color-indigo-300: #9fb0c1;
 }
 
 body {
   background-color: var(--void-deep);
   color: var(--foreground);
   font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: -0.005em;
+  letter-spacing: 0.005em;
+  /* Luz fría desde arriba-izquierda, casi subliminal. Sin retículas. */
+  background-image:
+    radial-gradient(1200px 520px at 30% -14%, rgb(111 174 143 / 0.035), transparent 60%),
+    radial-gradient(900px 620px at 92% 112%, rgb(140 160 179 / 0.025), transparent 60%);
+  background-attachment: fixed;
 }
 
 /* Los números son el producto — mono tabular en todo dato */
@@ -125,19 +125,19 @@ body {
 }
 
 ::selection {
-  background: var(--accent-primary);
-  color: #fff;
+  background: rgb(111 174 143 / 0.85);
+  color: #0d1410;
 }
 
 /* Scrollbar técnico discreto */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #25304b;
+  background: #262b33;
   border-radius: 8px;
   border: 2px solid var(--void-deep);
 }
-::-webkit-scrollbar-thumb:hover { background: #3a4767; }
+::-webkit-scrollbar-thumb:hover { background: #303640; }
 
 input,
 select,
@@ -175,7 +175,7 @@ button, a {
 .glass-panel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: none;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset;
   border-radius: var(--radius-xl);
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
   overflow: hidden;
@@ -190,18 +190,39 @@ button, a {
 .glass-panel-elevated {
   background: var(--float);
   border: 1px solid var(--glass-border-strong);
-  box-shadow: 0 16px 48px rgb(0 0 0 / 0.28);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 0.05) inset,
+    0 8px 30px rgb(0 0 0 / 0.45);
   border-radius: var(--radius-xl);
   z-index: var(--z-modal);
 }
 
-.bg-orb, .glow-accent, .ola-border, .header-balance-glow, .header-shimmer-line { display: none !important; }
+.bg-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.5;
+}
+
+.glow-accent {
+  position: absolute;
+  width: 150px;
+  height: 150px;
+  background: var(--accent-primary);
+  filter: blur(80px);
+  opacity: 0.05;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+}
 
 /* El gran número — Archivo, tinta sólida, decimales que susurran */
 .text-hero {
   font-family: var(--font-designer), var(--font-ui), sans-serif;
   font-weight: 700;
-  letter-spacing: -0.055em;
+  letter-spacing: -0.03em;
   line-height: 1.02;
   font-variant-numeric: tabular-nums;
   color: var(--foreground);
@@ -230,7 +251,7 @@ button, a {
 .card-premium {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  box-shadow: none;
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset;
   border-radius: var(--radius-xl);
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
   overflow: hidden;
@@ -359,8 +380,8 @@ button, a {
   width: 100%;
   max-width: none;
   flex-direction: column;
-  gap: var(--space-5);
-  padding: var(--space-5);
+  gap: 1.5rem;
+  padding: 1.5rem;
 }
 
 .page-header-card {
@@ -379,8 +400,8 @@ button, a {
 
 @media (min-width: 768px) {
   .page-content {
-    gap: var(--space-6);
-    padding: 2rem 2.5rem;
+    gap: 2rem;
+    padding: 2rem 3rem;
   }
 }
 

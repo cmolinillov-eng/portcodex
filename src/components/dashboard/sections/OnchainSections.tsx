@@ -4,7 +4,6 @@ import { useState } from "react";
 import { BadgeDollarSign, Layers, Pencil, TrendingDown, TrendingUp } from "lucide-react";
 import type { LivePosition, ManualPositionRef } from "./OnchainLivePanel";
 import { useMoneyFormatters } from "../utils/currency-context";
-import { ProtocolIdentity, TokenIdentity, TokenPairIdentity } from "@/components/ui/AssetIdentity";
 
 /** currency() ligada a la moneda activa (€/$). Null-safe como la de módulo. */
 function useCurrencyFmt() {
@@ -200,7 +199,7 @@ function MobilePositionCard({
       {/* Fila 1: activo + protocolo (izq) · valor + P&L (der) */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          {/[+/·\-]/.test(p.label) ? <TokenPairIdentity pair={p.label} size="sm" /> : <TokenIdentity symbol={p.label} size="sm" />}
+          <p className="token-emphasis text-sm">{p.label}</p>
           <p className="truncate text-[11px] text-[var(--muted)]">
             {p.protocol ?? "Wallet"}
             {p.chain ? ` · ${p.chain}` : ""}
@@ -506,8 +505,8 @@ export function OnchainSections({
                       <tr key={p.id} className="border-t border-[var(--line)]">
                         {/* ACTIVO */}
                         <td className="px-4 py-4">
-                          <div className="inline-flex items-center gap-1.5">
-                            {/[+/·\-]/.test(p.label) ? <TokenPairIdentity pair={p.label} /> : <TokenIdentity symbol={p.label} />}
+                          <p className="token-emphasis text-sm inline-flex items-center gap-1.5">
+                            {p.label}
                             {linkByOnchain.get(p.id)?.auto_ingest ? (
                               <span
                                 className="inline-flex items-center rounded-full border border-[rgba(111,174,143,0.4)] bg-[rgba(111,174,143,0.08)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--accent-primary)]"
@@ -516,7 +515,7 @@ export function OnchainSections({
                                 ✓ contabilizada
                               </span>
                             ) : null}
-                          </div>
+                          </p>
                           {typeof p.meta?.collateralUsd === "number" && typeof p.meta?.debtUsd === "number" && (p.meta.debtUsd as number) > 0 ? (
                             <p className="text-[11px] tabular-nums">
                               <span className="text-[var(--muted)]">colateral {currency(p.meta.collateralUsd as number)}</span>
@@ -538,14 +537,14 @@ export function OnchainSections({
                                 {p.tokens.filter((t) => t.amount > 0).slice(0, 4).map((t, i) => (
                                   <p key={`c${i}`} className="tabular-nums">
                                     {formatTokenAmount(t.amount)}{" "}
-                                    <TokenIdentity symbol={t.symbol.replace(/^-/, "")} size="sm" />
+                                    <span className="token-emphasis">{t.symbol.replace(/^-/, "")}</span>
                                   </p>
                                 ))}
                                 <p className="pt-1 text-[9px] uppercase tracking-[0.14em] text-rose-300/80">Deuda</p>
                                 {p.tokens.filter((t) => t.amount < 0).slice(0, 3).map((t, i) => (
                                   <p key={`d${i}`} className="tabular-nums text-rose-300">
                                     {formatTokenAmount(Math.abs(t.amount))}{" "}
-                                    <TokenIdentity symbol={t.symbol.replace(/^-/, "")} size="sm" />
+                                    <span className="token-emphasis text-rose-300">{t.symbol.replace(/^-/, "")}</span>
                                   </p>
                                 ))}
                               </div>
@@ -554,7 +553,7 @@ export function OnchainSections({
                                 {p.tokens.slice(0, 4).map((t, i) => (
                                   <p key={i} className="tabular-nums">
                                     {formatTokenAmount(Math.abs(t.amount))}{" "}
-                                    <TokenIdentity symbol={t.symbol.replace(/^-/, "")} size="sm" />
+                                    <span className="token-emphasis">{t.symbol.replace(/^-/, "")}</span>
                                   </p>
                                 ))}
                               </div>
@@ -584,9 +583,11 @@ export function OnchainSections({
                           </div>
                         </td>
 
-                        {/* PROTOCOLO */}
+                        {/* PROTOCOLO — pill de contorno neutro (única caja de la fila) */}
                         <td className="px-4 py-4">
-                          <ProtocolIdentity protocol={p.protocol ?? "Wallet"} />
+                          <span className="inline-flex w-fit items-center whitespace-nowrap rounded-full border border-[var(--glass-border-strong)] px-2.5 py-1 text-xs font-medium text-[var(--ink-2)]">
+                            {p.protocol ?? "Wallet"}
+                          </span>
                         </td>
 
                         {/* YIELD: sin reclamar (on-chain) arriba + total cosechado (contable) debajo */}

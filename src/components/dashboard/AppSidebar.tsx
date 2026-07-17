@@ -104,7 +104,7 @@ export function AppSidebar({
                 onClick={() => scrollTo(item.id)}
                 className={`group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] font-medium transition-colors ${
                   isActive
-                    ? "bg-[var(--accent-glow)] text-[var(--foreground)]"
+                    ? "bg-[rgba(111,174,143,0.10)] text-[var(--foreground)]"
                     : "text-[var(--muted)] hover:bg-white/[0.04] hover:text-[var(--foreground)]"
                 }`}
               >

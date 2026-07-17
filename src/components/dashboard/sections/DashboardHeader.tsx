@@ -84,6 +84,34 @@ export function DashboardHeader({
 
   return (
     <header className="glass-panel relative overflow-hidden rounded-2xl px-5 pt-7 pb-5 md:px-8 md:pt-8 md:pb-6 animate-fade-up">
+      {/* ── Iridescent top border ── */}
+      <div
+        className="pointer-events-none absolute top-0 left-0 right-0 z-20"
+        style={{ height: "2px" }}
+      >
+        <div className="ola-border" />
+      </div>
+
+      {/* ── Multi-layer ambient lighting ── */}
+      <div
+        className="pointer-events-none absolute -top-20 -right-20 h-[560px] w-[560px]"
+        style={{
+          background: "radial-gradient(ellipse at 70% 20%, rgba(111,174,143,0.09), transparent 50%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute -bottom-16 -left-16 h-[400px] w-[400px]"
+        style={{
+          background: "radial-gradient(ellipse at 30% 80%, rgba(79,135,112,0.07), transparent 55%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute top-1/2 left-1/2 h-[300px] w-[600px] -translate-x-1/2 -translate-y-1/2"
+        style={{
+          background: "radial-gradient(ellipse, rgba(111,174,143,0.03), transparent 60%)",
+        }}
+      />
+
       {/* ── Slim icon toolbar (top-right) ─────────────────────────
           Toda la barra de acciones secundarias condensada en iconos.
           Saca presión visual de col 1 → header simétrico. */}
@@ -145,7 +173,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("USD")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "USD"
-                ? "bg-[var(--accent-glow-strong)] text-[var(--accent-hover)]"
+                ? "bg-[rgba(111,174,143,0.18)] text-[#6FAE8F]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "USD"}
@@ -158,7 +186,7 @@ export function DashboardHeader({
             onClick={() => setActiveCurrency("EUR")}
             className={`rounded-full px-2.5 py-1 font-semibold transition ${
               activeCurrency === "EUR"
-                ? "bg-[var(--accent-glow-strong)] text-[var(--accent-hover)]"
+                ? "bg-[rgba(111,174,143,0.18)] text-[#6FAE8F]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
             aria-pressed={activeCurrency === "EUR"}
@@ -264,7 +292,7 @@ export function DashboardHeader({
                   : viewer.role === "cliente"
                     ? "text-amber-300"
                     : viewer.role === "admin"
-                      ? "text-[var(--accent-hover)]"
+                      ? "text-[#6FAE8F]"
                       : "text-[#8CA0B3]"
               }`}
             >
@@ -497,7 +525,7 @@ export function DashboardHeader({
         <div className="flex flex-col justify-center animate-fade-up stagger-3 xl:justify-self-end w-full xl:max-w-[320px]">
           <div className="rounded-2xl border border-[var(--line)] bg-black/20 p-4 space-y-3">
             {/* Depositado */}
-            <div className="header-stat-row" style={{ "--stat-accent": "var(--accent-primary)" } as React.CSSProperties}>
+            <div className="header-stat-row" style={{ "--stat-accent": "#6FAE8F" } as React.CSSProperties}>
               <div className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">Depositado</div>
               <p className="mt-0.5 text-xl font-semibold leading-tight tabular-nums">
                 {currencyCompact(summary.totalDepositedUsd)}
@@ -508,9 +536,9 @@ export function DashboardHeader({
             <div className="header-stat-row" style={{ "--stat-accent": "var(--accent-primary)" } as React.CSSProperties}>
               <div className="flex items-center gap-1.5">
                 <span className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">Harvest</span>
-                <BadgeDollarSign className="h-3 w-3 text-[var(--accent-primary)] opacity-50" aria-hidden="true" />
+                <BadgeDollarSign className="h-3 w-3 text-[#6FAE8F] opacity-50" aria-hidden="true" />
               </div>
-              <p className="mt-0.5 text-xl font-semibold leading-tight text-[var(--accent-hover)] tabular-nums">
+              <p className="mt-0.5 text-xl font-semibold leading-tight text-[#6FAE8F] tabular-nums">
                 {currencyCompact(summary.totalHarvestUsd)}
               </p>
             </div>

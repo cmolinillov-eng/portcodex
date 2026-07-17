@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Radio, RefreshCw, Wallet2, Sprout } from "lucide-react";
 import {
   OnchainSections,
@@ -393,6 +394,7 @@ export function OnchainLivePanel({
   manualPositions?: ManualPositionRef[];
 }) {
   const usd = useUsdFmt();
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<LiveResult | null>(null);
   const [error, setError] = useState("");
@@ -520,8 +522,16 @@ export function OnchainLivePanel({
     setError("");
     try {
       const body = await fetchLive(refresh);
-      if (body) setData(body);
-      else if (!data) setError("No se pudo leer on-chain ahora mismo. Reintenta en unos segundos.");
+      if (body) {
+        setData(body);
+        // La lectura en vivo escribió un snapshot nuevo. Las secciones
+        // Hold/Lending/LP y el total del header los pinta el SERVIDOR con el
+        // snapshot del momento de cargar la página; sin este refresco suave
+        // se quedaban con datos viejos aunque el panel ya tuviera lo fresco.
+        if (refresh && !body.cached) router.refresh();
+      } else if (!data) {
+        setError("No se pudo leer on-chain ahora mismo. Reintenta en unos segundos.");
+      }
       // Si ya había datos y falla, se conservan (sin error rojo).
     } finally {
       setLoading(false);
@@ -540,7 +550,13 @@ export function OnchainLivePanel({
       if (snap) setData(snap);
       // Refresco en vivo en segundo plano (silencioso): actualiza el snapshot.
       const fresh = await fetchLive(true);
-      if (!cancelled && fresh) setData(fresh);
+      if (!cancelled && fresh) {
+        setData(fresh);
+        // Sincroniza las secciones/​header (renderizados por el servidor) con el
+        // snapshot recién escrito → dejan de mostrar posiciones ya cerradas o
+        // saldos viejos sin que el usuario tenga que recargar a mano.
+        if (!fresh.cached) router.refresh();
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
