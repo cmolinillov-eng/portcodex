@@ -10,6 +10,7 @@ import { enrichKaminoLend } from "./solana/kamino-lend";
 import { enrichOrca } from "./solana/orca";
 import { enrichMeteora } from "./solana/meteora";
 import { enrichJupiterLend } from "./solana/jupiter-lend";
+import { fetchSolanaHoldsRpc } from "./solana/holds-rpc";
 import { syncBitcoinWallet } from "./bitcoin/balance";
 import type { LivePosition, LiveSyncResult, WalletRef } from "./types";
 
@@ -209,18 +210,26 @@ async function syncSolanaWallet(w: WalletRef): Promise<{ positions: LivePosition
   const positions: LivePosition[] = [];
   const warnings: string[] = [];
 
-  // Hold (tokens sueltos con valor) vía Zerion (Solana solo admite only_simple).
+  // Hold (tokens sueltos con valor) EN DIRECTO vía Jupiter Ultra balances. Se
+  // lee al slot actual, así que un token movido a un pool desaparece del hold
+  // al instante (Zerion iba con retraso y lo contaba doble: hold fantasma +
+  // pool). Respaldos escalonados: Zerion, y si también cae, el último snapshot.
   try {
-    const zerion = await fetchZerionPositions(w.address, { filter: "only_simple" });
-    positions.push(...holdsToPositions(zerion, w));
-  } catch (e) {
-    // Zerion caído: recupera los holds de esta wallet del último snapshot
-    // (los adaptadores DeFi de abajo no dependen de Zerion y siguen en vivo).
-    const cached = await snapshotFallback(w.portfolioId, w.address, "wallet");
-    positions.push(...cached);
-    warnings.push(
-      `Zerion Solana caído para ${w.address.slice(0, 8)}… (${(e as Error).message.slice(0, 60)}) — holds del último snapshot.`,
-    );
+    const holds = await fetchSolanaHoldsRpc(w);
+    positions.push(...holds.positions);
+    warnings.push(...holds.warnings);
+  } catch (eJup) {
+    try {
+      const zerion = await fetchZerionPositions(w.address, { filter: "only_simple" });
+      positions.push(...holdsToPositions(zerion, w));
+      warnings.push(`Jupiter balances caído para ${w.address.slice(0, 8)}… — holds vía Zerion (posible retraso).`);
+    } catch (eZer) {
+      const cached = await snapshotFallback(w.portfolioId, w.address, "wallet");
+      positions.push(...cached);
+      warnings.push(
+        `Holds Solana ${w.address.slice(0, 8)}… sin fuente viva (Jupiter: ${(eJup as Error).message.slice(0, 40)}; Zerion: ${(eZer as Error).message.slice(0, 40)}) — último snapshot.`,
+      );
+    }
   }
 
   // Adaptadores DeFi de Solana (cada uno consulta la API pública del protocolo):
