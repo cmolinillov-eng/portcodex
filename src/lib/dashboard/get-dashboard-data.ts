@@ -1610,6 +1610,17 @@ export async function getDashboardData(options?: {
     // de la posición origen. Se trata como movimiento interno.
     const isRebalanceHarvestOut = reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
     const isInternalMovement = isHarvestReinvestInternal || isRebalanceTransfer || isRebalanceHarvestOut;
+    // ROTACIÓN de capital hold→posición: un depósito de LP/staking/lending
+    // AUTO-INGERIDO (onchain_ingest) mueve fondos que YA entraron por un hold y
+    // que ya cuentan en el Total Depositado; contarlo otra vez inflaría el total
+    // en cada apertura de pool (el hold no emite su salida). Se trata como
+    // interno: el capital "vive" en el hold a efectos de total. El CIERRE no
+    // necesita cambio — su lp_withdraw (−) y la llegada al hold (+) ya se netean.
+    // Solo el lado DEPÓSITO y solo onchain_ingest: onchain_adopt (baseline de
+    // alta de cliente) y aportaciones externas SÍ cuentan.
+    const isRotationDeposit =
+      source === "onchain_ingest" &&
+      (txType === "lp_deposit" || txType === "staking_deposit" || txType === "lending_supply");
 
     if (txType === "harvest") {
       totalHarvestUsd += inAmount * spotPrice;
@@ -1652,14 +1663,15 @@ export async function getDashboardData(options?: {
     }
 
     if (capitalInTypes.has(txType)) {
-      if (!isInternalMovement && positionId) {
+      const skipCapitalIn = isInternalMovement || isRotationDeposit;
+      if (!skipCapitalIn && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
         const delta = inAmount * spotPrice;
         depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
         depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
       }
-      if (!isInternalMovement) {
+      if (!skipCapitalIn) {
         totalDepositedUsd += inAmount * spotPrice;
       }
       // Rebalance hereda el cost basis del origen sin afectar al total global.

@@ -137,6 +137,13 @@ export function computePortfolioValuation(
     const source = flag(tx.metadata, tx.notes, "source");
     const reason = flag(tx.metadata, tx.notes, "reason");
     const isInternal = INTERNAL_SOURCES.has(source ?? "") || INTERNAL_SOURCES.has(reason ?? "");
+    // Rotación hold→posición (depósito de LP/staking/lending auto-ingerido): el
+    // capital ya entró por un hold y ya cuenta; no debe sumar otra vez al total.
+    // Solo el lado DEPÓSITO onchain_ingest (el cierre ya se netea). Igual que en
+    // get-dashboard-data.ts, para que el candado de coherencia no divergiera.
+    const isRotationDeposit =
+      source === "onchain_ingest" &&
+      (type === "lp_deposit" || type === "staking_deposit" || type === "lending_supply");
 
     if (type === "harvest") {
       if (positionId && inSym) {
@@ -162,7 +169,7 @@ export function computePortfolioValuation(
         cur.balance += inAmt;
         balByPosSym.set(k, cur);
       }
-      if (!isInternal) {
+      if (!isInternal && !isRotationDeposit) {
         totalDepositedUsd += inAmt * spot;
         depositedByPosition.set(posKey, (depositedByPosition.get(posKey) ?? 0) + inAmt * spot);
       }

@@ -77,6 +77,15 @@
   --radius-md: 6px;
   --radius-lg: 10px;
   --radius-xl: 14px;
+
+  /* Ritmo compacto: la información financiera se lee en columnas, no en
+     una sucesión de tarjetas de presentación. */
+  --space-1: 0.375rem;
+  --space-2: 0.625rem;
+  --space-3: 0.875rem;
+  --space-4: 1.125rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
 }
 
 @theme inline {
@@ -380,8 +389,8 @@ button, a {
   width: 100%;
   max-width: none;
   flex-direction: column;
-  gap: 1.5rem;
-  padding: 1.5rem;
+  gap: var(--space-5);
+  padding: var(--space-5);
 }
 
 .page-header-card {
@@ -400,9 +409,202 @@ button, a {
 
 @media (min-width: 768px) {
   .page-content {
-    gap: 2rem;
-    padding: 2rem 3rem;
+    gap: var(--space-6);
+    padding: 2rem 2.5rem;
   }
+}
+
+/* =====================================================================
+   ADMIN — "ledger room"
+   Una superficie de trabajo continua. Las líneas y el ritmo tipográfico
+   organizan los datos; las tarjetas solo aparecen cuando hay una decisión
+   aislada que tomar. Esto evita el aspecto de dashboard generado por bloques.
+   ===================================================================== */
+.admin-shell {
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgb(111 174 143 / 0.035) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(rgb(111 174 143 / 0.025) 1px, transparent 1px) 0 0 / 56px 56px,
+    var(--void-deep);
+}
+
+.admin-frame {
+  width: min(100% - 2rem, 1440px);
+  margin: 0 auto;
+  padding: 1.5rem 0 3rem;
+}
+
+.admin-topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 0 0 var(--space-4);
+  border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.admin-topbar::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: min(17rem, 34vw);
+  height: 2px;
+  background: var(--accent-primary);
+}
+
+.admin-eyebrow,
+.admin-column-label {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--muted);
+  font-size: 0.625rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.admin-title {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-designer), sans-serif;
+  font-size: clamp(1.65rem, 3vw, 2.45rem);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+
+.admin-subtitle {
+  margin: 0.65rem 0 0;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.admin-ledger {
+  margin-top: var(--space-5);
+  border-top: 1px solid var(--glass-border-strong);
+  background: rgb(20 23 28 / 0.72);
+}
+
+.admin-ledger-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+}
+
+.admin-section-title {
+  margin: 0.25rem 0 0;
+  font-family: var(--font-designer), sans-serif;
+  font-size: 1.25rem;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+
+.admin-stats {
+  display: flex;
+  align-items: stretch;
+  border-left: 1px solid var(--line);
+}
+
+.admin-stat {
+  min-width: 5.5rem;
+  padding: 0 0.85rem;
+  border-right: 1px solid var(--line);
+}
+
+.admin-stat strong {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 0 0 var(--space-3);
+}
+
+.admin-filter-group {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: rgb(0 0 0 / 0.12);
+}
+
+.admin-filter {
+  min-height: 2.25rem;
+  padding: 0 0.75rem;
+  border-right: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.75rem;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.admin-filter:last-child { border-right: 0; }
+.admin-filter:hover { background: rgb(255 255 255 / 0.035); color: var(--foreground); }
+.admin-filter[aria-pressed="true"] { background: var(--accent-glow); color: var(--accent-hover); box-shadow: inset 0 -2px 0 var(--accent-primary); }
+
+.admin-table-wrap {
+  overflow-x: auto;
+  border-top: 1px solid var(--glass-border-strong);
+  border-bottom: 1px solid var(--glass-border-strong);
+}
+
+.admin-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.admin-table th {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: rgb(8 11 14 / 0.5);
+  color: var(--muted);
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.admin-table td {
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid var(--line);
+  font-size: 0.8125rem;
+  vertical-align: middle;
+}
+
+.admin-table tbody tr:last-child td { border-bottom: 0; }
+.admin-table tbody tr { transition: background var(--dur-fast) var(--ease); }
+.admin-table tbody tr:hover { background: rgb(111 174 143 / 0.045); box-shadow: inset 2px 0 0 var(--accent-primary); }
+
+.admin-person { color: var(--foreground); font-weight: 600; }
+.admin-email, .admin-date { color: var(--muted); }
+.admin-role {
+  min-width: 7.25rem;
+  border-radius: 0 !important;
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.6875rem !important;
+  letter-spacing: 0.02em;
+}
+
+.admin-link { color: var(--accent-hover); text-decoration: none; border-bottom: 1px solid rgb(143 199 172 / 0.35); }
+.admin-link:hover { color: var(--foreground); border-color: var(--foreground); }
+
+@media (max-width: 640px) {
+  .admin-frame { width: min(100% - 1.25rem, 1440px); padding-top: 1rem; }
+  .admin-topbar, .admin-ledger-head, .admin-toolbar { align-items: flex-start; flex-direction: column; }
+  .admin-stats { width: 100%; }
+  .admin-stat { flex: 1; }
+  .admin-filter-group { width: 100%; overflow-x: auto; }
+  .admin-filter { flex: 1 0 auto; }
 }
 
 /* Animaciones de login (recoloreadas al verde) */
