@@ -73,14 +73,38 @@ async function computeClosureSnapshot(
     const spotPrice = toNumber(tx.spot_price);
     positionType = (tx.position_type as string) ?? positionType;
 
+    // MISMAS reglas que el motor (get-dashboard-data) para el Total Depositado,
+    // o el realizedPnl al borrar divergía del P&L del dashboard: excluir
+    // movimientos internos, aplicar depositedDelta del rebalanceo, netear la
+    // deuda y no contar las rotaciones on-chain (capital que ya entró por hold).
+    const meta = (tx.metadata ?? {}) as Record<string, unknown>;
+    const src = typeof meta.source === "string" ? meta.source : "";
+    const reason = typeof meta.reason === "string" ? meta.reason : "";
+    const isInternal = /harvest_reinvest|rebalance_transfer|rebalance_harvest_out/.test(src + reason);
+    const isRebalance = src === "rebalance_transfer" || reason === "rebalance_transfer";
+    const isRotationDeposit =
+      src === "onchain_ingest" && (txType === "lp_deposit" || txType === "staking_deposit" || txType === "lending_supply");
+    const depositedDelta = typeof meta.depositedDelta === "number" ? meta.depositedDelta : null;
+
+    // lending_borrow: pedir prestado extrae capital (−), repagar lo restituye (+).
+    if (txType === "lending_borrow") {
+      totalDeposited += (outAmount - inAmount) * spotPrice;
+      // balances no se tocan aquí: la deuda la refleja la valoración, no el saldo.
+      continue;
+    }
+
     if (capitalInTypes.has(txType)) {
-      totalDeposited += inAmount * spotPrice;
+      if (!isInternal && !isRotationDeposit) totalDeposited += inAmount * spotPrice;
+      // El rebalanceo hereda la base del origen vía depositedDelta.
+      if (isRebalance && depositedDelta !== null) totalDeposited += depositedDelta;
+      // El saldo del token SIEMPRE se actualiza (para valorar al cierre).
       if (inSymbol) {
         balances[inSymbol] = (balances[inSymbol] ?? 0) + inAmount;
         tokenSet.add(inSymbol);
       }
     } else if (capitalOutTypes.has(txType)) {
-      totalDeposited -= outAmount * spotPrice;
+      if (!isInternal) totalDeposited -= outAmount * spotPrice;
+      if (isRebalance && depositedDelta !== null) totalDeposited += depositedDelta; // sale del origen (negativo)
       if (outSymbol) {
         balances[outSymbol] = (balances[outSymbol] ?? 0) - outAmount;
       }
