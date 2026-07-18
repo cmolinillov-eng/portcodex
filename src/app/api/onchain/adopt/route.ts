@@ -188,7 +188,16 @@ export async function POST(request: NextRequest) {
           position_id: linked.position_id as string,
           position_type: (TX_TYPE_BY_KIND[kind] ?? TX_TYPE_BY_KIND.wallet).positionType,
           // Conserva metadata.lp (obligatoria en lp_deposit) y demás claves.
-          metadata: { ...((r.metadata as Record<string, unknown>) ?? {}), source: "onchain_adopt", onchainId, depositedUsd },
+          // replacesTransactionIds: ids de las filas de adopción que esta
+          // corrección soft-borró. El undo de la corrección las revive — sin
+          // esto, deshacer borraba las nuevas y dejaba la posición con base 0.
+          metadata: {
+            ...((r.metadata as Record<string, unknown>) ?? {}),
+            source: "onchain_adopt",
+            onchainId,
+            depositedUsd,
+            replacesTransactionIds: adoptRows.map((a) => a.id),
+          },
         };
       });
       // Soft-delete de las filas de adopción anteriores + alta de las nuevas.
@@ -202,13 +211,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Override de vista (mejor esfuerzo; para posiciones de eventos reales es
-    // el único efecto). Si la columna no existe aún, no rompe la edición.
-    await client
+    // el único efecto). set_at (phase28) ancla el override en el tiempo: los
+    // flujos posteriores se le suman en el dashboard en vez de quedar
+    // congelado. Si esa columna no existe aún, reintenta solo con el valor.
+    const overrideUpdate = await client
       .from("position_links")
-      .update({ deposited_override_usd: depositedUsd })
+      .update({ deposited_override_usd: depositedUsd, deposited_override_set_at: new Date().toISOString() })
       .eq("portfolio_id", portfolioId)
       .eq("onchain_id", onchainId)
-      .then(() => undefined, () => undefined);
+      .then((r) => r, () => ({ error: { message: "unreachable" } }));
+    if (overrideUpdate.error) {
+      await client
+        .from("position_links")
+        .update({ deposited_override_usd: depositedUsd })
+        .eq("portfolio_id", portfolioId)
+        .eq("onchain_id", onchainId)
+        .then(() => undefined, () => undefined);
+    }
     return NextResponse.json({ ok: true, updated: true, depositedUsd, rewroteBase: (adoptRows?.length ?? 0) > 0 });
   }
 

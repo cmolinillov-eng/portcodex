@@ -61,7 +61,34 @@ export async function POST(request: NextRequest) {
     const client = getRestoreClient();
     const now = new Date().toISOString();
 
-    // 1. Re-activar las transacciones de capital (todo menos el snapshot de cierre).
+    // 1. Re-activar SOLO el último lote de borrado. positions/delete sella todas
+    //    las filas de un borrado con el MISMO deleted_at, así que el lote más
+    //    reciente = las filas cuyo deleted_at es el máximo. Antes se reactivaba
+    //    TODO el histórico (deleted_at: null sin filtro), resucitando también
+    //    filas borradas individualmente en el pasado (undos, correcciones) →
+    //    duplicaba capital y P&L que el gestor ya había quitado a propósito.
+    const { data: lastBatch, error: lastErr } = await client
+      .from("transactions")
+      .select("deleted_at")
+      .eq("portfolio_id", portfolioId)
+      .eq("protocol", protocol)
+      .eq("position_id", positionId)
+      .neq("type", "position_closed")
+      .not("deleted_at", "is", null)
+      .order("deleted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastErr) {
+      throw new Error(lastErr.message);
+    }
+    if (!lastBatch?.deleted_at) {
+      return NextResponse.json(
+        { error: "No hay transacciones borradas que restaurar para esta posición." },
+        { status: 404 },
+      );
+    }
+
     const { data, error } = await client
       .from("transactions")
       .update({ deleted_at: null })
@@ -69,6 +96,7 @@ export async function POST(request: NextRequest) {
       .eq("protocol", protocol)
       .eq("position_id", positionId)
       .neq("type", "position_closed")
+      .eq("deleted_at", lastBatch.deleted_at)
       .select("id");
 
     if (error) {

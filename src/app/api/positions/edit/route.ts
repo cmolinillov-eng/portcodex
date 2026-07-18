@@ -6,6 +6,7 @@ import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access
 import { validateCsrf } from "@/lib/security/csrf";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { autoClosePositionIfEmpty } from "@/lib/positions/auto-close";
+import { applyTxToState, type TokenState } from "@/lib/positions/edit-state";
 
 type EditPositionPayload = {
   portfolioId?: string;
@@ -31,58 +32,6 @@ function getClient(): SupabaseClient {
   const serviceClient = getSupabaseServiceClient();
   if (serviceClient) return serviceClient;
   return getSupabaseServerClient();
-}
-
-function toNumber(value: string | number | null | undefined): number {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
-}
-
-const CAPITAL_IN = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
-const CAPITAL_OUT = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
-
-type TokenState = { balance: number; costUsd: number };
-
-function applyTxToState(state: Map<string, TokenState>, tx: {
-  type: string | null;
-  token_in_symbol: string | null;
-  token_in_amount: string | number | null;
-  token_out_symbol: string | null;
-  token_out_amount: string | number | null;
-  spot_price: string | number | null;
-}) {
-  const txType = (tx.type ?? "").trim();
-  const inSymbol = (tx.token_in_symbol ?? "").toUpperCase();
-  const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
-  const inAmount = toNumber(tx.token_in_amount);
-  const outAmount = toNumber(tx.token_out_amount);
-  const spotPrice = toNumber(tx.spot_price);
-
-  const isIn = CAPITAL_IN.has(txType);
-  const isOut = CAPITAL_OUT.has(txType);
-  if (!isIn && !isOut) return;
-
-  const symbol = isIn ? inSymbol : outSymbol;
-  if (!symbol) return;
-
-  if (!state.has(symbol)) state.set(symbol, { balance: 0, costUsd: 0 });
-  const entry = state.get(symbol)!;
-
-  if (isIn) {
-    entry.balance += inAmount;
-    entry.costUsd += inAmount * spotPrice;
-  } else {
-    if (entry.balance > 0 && outAmount > 0) {
-      const fraction = Math.min(1, outAmount / entry.balance);
-      entry.costUsd -= entry.costUsd * fraction;
-    }
-    entry.balance -= outAmount;
-    if (entry.balance < 0) entry.balance = 0;
-  }
 }
 
 function mapPositionTypeToTxType(positionType: string, side: "in" | "out"): string {
@@ -153,7 +102,7 @@ export async function POST(request: NextRequest) {
     //    por cada token relevante, marcado con reason="manual_edit".
     const existingTxs = await client
       .from("transactions")
-      .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price")
+      .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata")
       .eq("portfolio_id", portfolioId)
       .eq("protocol", protocol)
       .eq("position_id", positionId)
@@ -205,7 +154,7 @@ export async function POST(request: NextRequest) {
     const outTxType = mapPositionTypeToTxType(positionType, "out");
 
     for (const target of targets) {
-      const existing = currentState.get(target.symbol) ?? { balance: 0, costUsd: 0 };
+      const existing = currentState.get(target.symbol) ?? { balance: 0, costUsd: 0, depositedUsd: 0 };
       const currentAvgPrice = existing.balance > 0 ? existing.costUsd / existing.balance : 0;
       const targetCostUsd = target.amount * target.entryPrice;
 
@@ -233,9 +182,15 @@ export async function POST(request: NextRequest) {
         ...(lpMetadata ? lpMetadata : {}),
       };
 
-      // 3a. Withdrawal de TODO el balance actual a su avgPrice histórico.
-      //     Esto saca exactamente el currentCostUsd, dejando la posición vacía.
+      // 3a. Withdrawal de TODO el balance actual, sellada al precio que pone a
+      //     CERO el depositado real del token (netDeposited/balance), no al
+      //     avgPrice: el Total Depositado del dashboard es Σin·spot − Σout·spot,
+      //     y si hubo retiradas previas a precio ≠ medio ambos divergen — con
+      //     avgPrice la edición dejaba el depositado desplazado en esa
+      //     diferencia. Así, tras el par, depositado = coste objetivo exacto.
+      //     (Fiscalmente da igual: manual_edit consume lotes por cantidad.)
       if (existing.balance > 0) {
+        const resetPrice = Math.max(0, existing.depositedUsd) / existing.balance;
         rows.push({
           portfolio_id: portfolioId,
           type: outTxType,
@@ -244,7 +199,7 @@ export async function POST(request: NextRequest) {
           token_in_amount: null,
           token_out_symbol: target.symbol,
           token_out_amount: existing.balance,
-          spot_price: currentAvgPrice,
+          spot_price: resetPrice,
           fee_amount: 0,
           notes: `[Edit] Reset ${target.symbol} balance previo`,
           transaction_date: now,
@@ -292,8 +247,9 @@ export async function POST(request: NextRequest) {
     for (const [symbol, state] of currentState.entries()) {
       if (targetSymbols.has(symbol)) continue;
       if (state.balance <= 1e-9) continue;
-      // Token presente con balance pero NO en los targets → es huérfano. Limpiar.
-      const orphanAvgPrice = state.balance > 0 ? state.costUsd / state.balance : 0;
+      // Token presente con balance pero NO en los targets → es huérfano. Limpiar
+      // sellando al precio que pone a CERO su depositado real (igual que 3a).
+      const orphanResetPrice = state.balance > 0 ? Math.max(0, state.depositedUsd) / state.balance : 0;
       rows.push({
         portfolio_id: portfolioId,
         type: outTxType,
@@ -302,7 +258,7 @@ export async function POST(request: NextRequest) {
         token_in_amount: null,
         token_out_symbol: symbol,
         token_out_amount: state.balance,
-        spot_price: orphanAvgPrice,
+        spot_price: orphanResetPrice,
         fee_amount: 0,
         notes: `[Edit] Limpieza token huérfano ${symbol} (no estaba en los targets del edit)`,
         transaction_date: now,

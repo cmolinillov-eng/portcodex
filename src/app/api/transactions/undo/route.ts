@@ -159,6 +159,29 @@ export async function POST(request: NextRequest) {
         .then(() => undefined, () => undefined); // mejor esfuerzo
     }
 
+    // Si la operación deshecha era una CORRECCIÓN que reemplazó filas previas
+    // (p.ej. re-sellar la base de una adopción soft-borra las filas viejas),
+    // hay que REVIVIR las reemplazadas: sin esto, deshacer la corrección
+    // borraba las nuevas y dejaba la posición con base 0.
+    const replacedIds = [
+      ...new Set(
+        (undone.data ?? []).flatMap((r) => {
+          const ids = (r.metadata as Record<string, unknown> | null)?.replacesTransactionIds;
+          return Array.isArray(ids) ? ids.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
+        }),
+      ),
+    ];
+    if (replacedIds.length > 0) {
+      const revived = await client
+        .from("transactions")
+        .update({ deleted_at: null })
+        .eq("portfolio_id", portfolioId)
+        .in("id", replacedIds)
+        .not("deleted_at", "is", null)
+        .select("id");
+      if (revived.error) throw new Error(revived.error.message);
+    }
+
     return NextResponse.json({
       ok: true,
       mode,

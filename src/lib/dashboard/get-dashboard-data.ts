@@ -793,6 +793,11 @@ type DepositOverrideRow = {
   protocol: string | null;
   position_id: string | null;
   deposited_override_usd: number | null;
+  /** Cuándo se fijó el override (phase28). Los flujos POSTERIORES a esta fecha
+   *  se suman al override — sin esto, la cifra quedaba congelada ante aportes
+   *  o retiradas posteriores. null (override antiguo/columna sin migrar) =
+   *  comportamiento anterior (valor fijo). */
+  deposited_override_set_at: string | null;
 };
 
 /**
@@ -808,16 +813,28 @@ async function fetchDepositOverrides(allowedPortfolioIds: string[]): Promise<Dep
   const client = serviceClient ?? getSupabaseServerClient();
   const query = await client
     .from("position_links")
+    .select("portfolio_id, protocol, position_id, deposited_override_usd, deposited_override_set_at")
+    .in("portfolio_id", allowedPortfolioIds)
+    .not("deposited_override_usd", "is", null);
+  if (!query.error) return (query.data ?? []) as DepositOverrideRow[];
+
+  // Columna set_at sin migrar (phase28 pendiente): reintenta sin ella —
+  // los overrides siguen funcionando como valor fijo.
+  const legacy = await client
+    .from("position_links")
     .select("portfolio_id, protocol, position_id, deposited_override_usd")
     .in("portfolio_id", allowedPortfolioIds)
     .not("deposited_override_usd", "is", null);
-  if (query.error) {
+  if (legacy.error) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("fetchDepositOverrides warning:", query.error);
+      console.warn("fetchDepositOverrides warning:", legacy.error);
     }
     return [];
   }
-  return (query.data ?? []) as DepositOverrideRow[];
+  return ((legacy.data ?? []) as Omit<DepositOverrideRow, "deposited_override_set_at">[]).map((r) => ({
+    ...r,
+    deposited_override_set_at: null,
+  }));
 }
 
 export async function getDashboardData(options?: {
@@ -1578,6 +1595,30 @@ export async function getDashboardData(options?: {
   let totalDepositedUsd = 0;
   let totalHarvestUsd = 0;
   const depositedByPosition = new Map<string, number>();
+  // Flujos de capital POSTERIORES a la fecha en que se fijó un override de
+  // depositado. El override sustituye la base en su momento; los aportes y
+  // retiradas siguientes deben seguir moviéndola (override + flujos después).
+  // Sin esto, el override congelaba la cifra para siempre.
+  const overrideSetAtMs = new Map<string, number>();
+  const depositedAfterOverride = new Map<string, number>();
+  for (const row of depositOverrideRows) {
+    const ts = Date.parse(row.deposited_override_set_at ?? "");
+    if (!Number.isFinite(ts)) continue;
+    overrideSetAtMs.set(positionCompositeKey(row.portfolio_id, row.protocol ?? "Wallet", row.position_id ?? ""), ts);
+    overrideSetAtMs.set(positionCompositeKey("", row.protocol ?? "Wallet", row.position_id ?? ""), ts);
+  }
+  const addDeposited = (fullKey: string, fallbackKey: string, delta: number, txDate: string | null) => {
+    depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
+    depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
+    const setAt = overrideSetAtMs.get(fullKey) ?? overrideSetAtMs.get(fallbackKey);
+    if (setAt !== undefined) {
+      const ts = Date.parse(txDate ?? "");
+      if (Number.isFinite(ts) && ts > setAt) {
+        depositedAfterOverride.set(fullKey, (depositedAfterOverride.get(fullKey) ?? 0) + delta);
+        depositedAfterOverride.set(fallbackKey, (depositedAfterOverride.get(fallbackKey) ?? 0) + delta);
+      }
+    }
+  };
   const harvestByPositionAcc: Record<
     string,
     {
@@ -1655,8 +1696,7 @@ export async function getDashboardData(options?: {
       if (positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
-        depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + net);
-        depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + net);
+        addDeposited(fullKey, fallbackKey, net, tx.transaction_date);
       }
       totalDepositedUsd += net;
       continue;
@@ -1667,9 +1707,7 @@ export async function getDashboardData(options?: {
       if (!skipCapitalIn && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
-        const delta = inAmount * spotPrice;
-        depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
-        depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
+        addDeposited(fullKey, fallbackKey, inAmount * spotPrice, tx.transaction_date);
       }
       if (!skipCapitalIn) {
         totalDepositedUsd += inAmount * spotPrice;
@@ -1680,8 +1718,7 @@ export async function getDashboardData(options?: {
         if (depositedDelta !== null) {
           const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
           const fallbackKey = positionCompositeKey("", protocol, positionId);
-          depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + depositedDelta);
-          depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + depositedDelta);
+          addDeposited(fullKey, fallbackKey, depositedDelta, tx.transaction_date);
         }
       }
       // Reinversión de harvest: descuenta la cantidad reinvertida del pending
@@ -1720,9 +1757,7 @@ export async function getDashboardData(options?: {
       if (!isInternalMovement && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
-        const delta = outAmount * spotPrice;
-        depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) - delta);
-        depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) - delta);
+        addDeposited(fullKey, fallbackKey, -(outAmount * spotPrice), tx.transaction_date);
       }
       if (!isInternalMovement) {
         totalDepositedUsd -= outAmount * spotPrice;
@@ -1733,8 +1768,7 @@ export async function getDashboardData(options?: {
         if (depositedDelta !== null) {
           const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
           const fallbackKey = positionCompositeKey("", protocol, positionId);
-          depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + depositedDelta);
-          depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + depositedDelta);
+          addDeposited(fullKey, fallbackKey, depositedDelta, tx.transaction_date);
         }
       }
       // Harvest arrastrado al destino de un rebalance: sale del pending del
@@ -1780,9 +1814,13 @@ export async function getDashboardData(options?: {
       if (!livePositionKeys.has(key)) continue;
       const fallbackKey = positionCompositeKey("", row.protocol ?? "Wallet", row.position_id ?? "");
       const derived = depositedByPosition.get(key) ?? depositedByPosition.get(fallbackKey) ?? 0;
-      totalDepositedUsd += override - derived;
-      depositedByPosition.set(key, override);
-      depositedByPosition.set(fallbackKey, override);
+      // El override manda SOBRE LA BASE en el momento en que se fijó; los
+      // flujos posteriores (aportes/retiradas tras esa fecha) siguen sumando.
+      const flowsAfter = depositedAfterOverride.get(key) ?? depositedAfterOverride.get(fallbackKey) ?? 0;
+      const effective = Math.max(0, override + flowsAfter);
+      totalDepositedUsd += effective - derived;
+      depositedByPosition.set(key, effective);
+      depositedByPosition.set(fallbackKey, effective);
     }
   }
 
