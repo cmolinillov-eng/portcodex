@@ -3,6 +3,19 @@
 import { Suspense, Component, type ReactNode } from "react";
 import Spline from "@splinetool/react-spline";
 
+/**
+ * Portada de acceso — sistema «INSTRUMENTO» (ver globals.css).
+ *
+ * Reglas que se aplican aquí y que antes se saltaba:
+ *  - Sin negro puro: la superficie más profunda del sistema es --void-deep
+ *    (#101318). El #000 cortaba contra ella y producía el salto de color.
+ *  - El acento verde se usa CON AVARICIA: un único punto de color en toda la
+ *    pantalla (la flecha del acceso). Nada de degradados de marca ni de
+ *    colores fuera de paleta.
+ *  - Colores por token, no por hex suelto, para que la portada envejezca con
+ *    el resto de la aplicación.
+ */
+
 class SplineBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   constructor(props: { children: ReactNode }) {
     super(props);
@@ -12,7 +25,7 @@ class SplineBoundary extends Component<{ children: ReactNode }, { failed: boolea
     return { failed: true };
   }
   render() {
-    if (this.state.failed) return <div className="h-full w-full bg-[#000000]" />;
+    if (this.state.failed) return <div className="h-full w-full bg-[var(--void-deep)]" />;
     return this.props.children;
   }
 }
@@ -23,11 +36,18 @@ interface SplineHeroProps {
 
 export function SplineHero({ onLoginClick }: SplineHeroProps) {
   return (
-    <div className="relative h-screen w-full overflow-hidden bg-[#000000]">
-      {/* Spline Background */}
+    <div className="relative h-screen w-full overflow-hidden bg-[var(--void-deep)]">
+      {/* Escena 3D de fondo */}
       <SplineBoundary>
-        <Suspense fallback={<div className="h-full w-full bg-[#000000]" />}>
-          <div className="absolute inset-0 z-0">
+        <Suspense fallback={<div className="h-full w-full bg-[var(--void-deep)]" />}>
+          {/* La escena venía en ARCOÍRIS (morados, naranjas, azules): el ruido
+              cromático que rompía la identidad. Se desatura a ACERO PAVONADO
+              —el material que el propio sistema nombra— para que el movimiento
+              se conserve pero el color deje de competir. */}
+          <div
+            className="absolute inset-0 z-0 opacity-[0.5]"
+            style={{ filter: "grayscale(1) brightness(0.95) contrast(1.08)" }}
+          >
             <Spline
               scene="https://prod.spline.design/ERBRBIQihzcom-vc/scene.splinecode"
               className="h-full w-full"
@@ -36,118 +56,114 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
         </Suspense>
       </SplineBoundary>
 
-      {/* Cover Spline watermark (bottom-right) */}
-      <div className="absolute bottom-0 right-0 z-20 h-20 w-56 bg-[#000000]" />
+      {/* Tapa la marca de agua de Spline (abajo derecha) */}
+      <div className="absolute bottom-0 right-0 z-20 h-20 w-56 bg-[var(--void-deep)]" />
 
-      {/* Vignette — edges fade to black for depth */}
+      {/* Viñeta: los bordes caen al carbón del sistema, no a negro */}
       <div
         className="absolute inset-0 z-[1] pointer-events-none"
         style={{
           background:
-            "radial-gradient(ellipse 80% 80% at 50% 50%, transparent 40%, rgba(0,0,0,0.55) 100%)",
+            "radial-gradient(ellipse 80% 80% at 50% 50%, transparent 35%, var(--void-deep) 100%)",
         }}
       />
 
-      {/* Bottom gradient fade */}
-      <div className="absolute bottom-0 left-0 right-0 z-[2] h-48 pointer-events-none bg-gradient-to-t from-black/70 to-transparent" />
+      {/* Base: asienta la composición sobre el lienzo */}
+      <div
+        className="absolute bottom-0 left-0 right-0 z-[2] h-56 pointer-events-none"
+        style={{ background: "linear-gradient(to top, var(--void-deep) 20%, transparent)" }}
+      />
 
-      {/* Ambient glow orb behind hero text */}
+      {/* Halo tenue tras el titular — la «caja fuerte que respira» */}
       <div
         className="hero-glow-orb absolute z-[3] pointer-events-none"
         style={{
           top: "50%",
           left: "50%",
-          width: "520px",
-          height: "220px",
-          background:
-            "radial-gradient(ellipse at center, rgba(111,174,143,0.12) 0%, rgba(79,135,112,0.08) 50%, transparent 75%)",
-          filter: "blur(32px)",
+          width: "560px",
+          height: "240px",
+          background: "radial-gradient(ellipse at center, var(--accent-glow) 0%, transparent 70%)",
+          filter: "blur(40px)",
           transform: "translate(-50%, -50%)",
         }}
       />
 
-      {/* Top bar — logo left, login right */}
+      {/* Barra superior — marca a la izquierda, acceso a la derecha */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-7 pt-7">
-        {/* Wordmark */}
         <div className="flex items-center gap-2.5 select-none">
           <div
             className="h-7 w-7 rounded-lg flex items-center justify-center"
             style={{
-              background: "linear-gradient(135deg, rgba(111,174,143,0.2), rgba(79,135,112,0.2))",
-              border: "1px solid rgba(111,174,143,0.25)",
-              backdropFilter: "blur(8px)",
+              background: "var(--void-elevated)",
+              border: "1px solid var(--line)",
             }}
             aria-hidden="true"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#6FAE8F" opacity="0.8" />
-              <rect x="8" y="10" width="4" height="2" fill="#4F8770" opacity="0.8" />
+              <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="var(--foreground)" opacity="0.75" />
+              <rect x="8" y="10" width="4" height="2" fill="var(--muted)" />
             </svg>
           </div>
-          <span
-            className="font-designer text-[13px] font-[300] tracking-[0.18em] uppercase"
-            style={{ color: "rgba(255,255,255,0.55)" }}
-          >
+          <span className="font-designer text-[13px] font-[300] tracking-[0.18em] uppercase text-[var(--foreground)]/70">
             Portcodex
           </span>
         </div>
 
-        {/* Login button */}
         <button
           onClick={onLoginClick}
           aria-label="Abrir panel de inicio de sesión"
-          className="group relative px-5 py-2 rounded-full border border-white/10 bg-white/[0.04] font-designer text-[12px] font-[300] tracking-[0.12em] text-white/55 hover:text-white hover:border-[#6FAE8F]/40 hover:bg-white/[0.08] transition-all duration-300 overflow-hidden"
+          className="rounded-full border border-[var(--line)] bg-[var(--void-elevated)]/60 px-5 py-2 font-mono text-[11px] font-[400] uppercase tracking-[0.14em] text-[var(--muted)] transition-colors duration-300 hover:border-[var(--accent-primary)]/40 hover:text-[var(--foreground)]"
         >
-          <span className="relative z-10">INICIAR SESIÓN</span>
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#6FAE8F]/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+          Iniciar sesión
         </button>
       </div>
 
-      {/* Hero text — centered */}
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-4 pb-16">
+      {/* Titular */}
+      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6 pb-16">
         <h1
-          className="text-center font-designer leading-tight select-none flex flex-wrap justify-center gap-x-4 overflow-hidden"
-          style={{ fontSize: "clamp(2.8rem, 7vw, 5.25rem)", fontWeight: 200, letterSpacing: "-0.02em" }}
+          className="max-w-[16ch] text-center font-designer leading-[1.05] text-[var(--foreground)] select-none"
+          style={{ fontSize: "clamp(2.5rem, 6vw, 4.5rem)", fontWeight: 200, letterSpacing: "-0.025em" }}
         >
-          <span className="hero-word hero-word-1 bg-gradient-to-r from-[#6FAE8F] to-[#A9D4BF] bg-clip-text text-transparent">
-            Control.
-          </span>
-          <span className="hero-word hero-word-2 text-white/90">
-            Visión.
-          </span>
-          <span className="hero-word hero-word-3 bg-gradient-to-r from-[#4F8770] to-[#8CA0B3] bg-clip-text text-transparent">
-            Cripto.
-          </span>
+          Cada movimiento,
+          <br />
+          en su sitio.
         </h1>
 
         <p
-          className="hero-tagline mt-5 font-designer text-center select-none leading-relaxed"
-          style={{ fontSize: "clamp(0.9rem, 1.5vw, 1.1rem)", fontWeight: 200, color: "rgba(255,255,255,0.38)", maxWidth: "480px" }}
+          className="hero-tagline mt-6 max-w-[52ch] text-center leading-relaxed text-[var(--muted)] select-none"
+          style={{ fontSize: "clamp(0.92rem, 1.4vw, 1.05rem)", fontWeight: 300 }}
         >
-          Tu patrimonio digital, bajo control total.
+          Portcodex lee tus posiciones en la cadena, mantiene la contabilidad al día
+          y deja el fiscal listo. Sin apuntar nada a mano.
         </p>
 
-        {/* CTA */}
-        <div className="hero-cta-reveal mt-10 pointer-events-auto">
+        <div className="hero-cta-reveal mt-11 pointer-events-auto">
           <button
             onClick={onLoginClick}
             aria-label="Acceder al terminal de Portcodex"
-            className="landing-cta font-designer"
+            className="landing-cta font-mono"
           >
+            {/* ÚNICO punto de acento en toda la portada */}
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
-              <path d="M2 7h10M7 2l5 5-5 5" stroke="#6FAE8F" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M2 7h10M7 2l5 5-5 5"
+                stroke="var(--accent-primary)"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
             ACCEDER AL TERMINAL
           </button>
         </div>
       </div>
 
-      {/* Bottom feature strip */}
+      {/* Franja inferior: qué hace, en el idioma del producto */}
       <div className="absolute bottom-6 left-0 right-0 z-10 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 px-6 pointer-events-none">
-        <span className="landing-feature-chip">Multi-chain</span>
-        <span className="landing-feature-chip">P&amp;L en tiempo real</span>
+        <span className="landing-feature-chip">Lectura on-chain</span>
+        <span className="landing-feature-chip">Contabilidad automática</span>
         <span className="landing-feature-chip">Staking · LP · Lending</span>
-        <span className="landing-feature-chip">Portfolio privado</span>
+        <span className="landing-feature-chip">Fiscal listo (AEAT)</span>
       </div>
     </div>
   );
