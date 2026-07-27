@@ -111,3 +111,13 @@ La identidad no definía espaciado, y en un producto denso en datos pesa tanto
 como el color. Está en `globals.css` como `--space-1` … `--space-12` (base 4 px),
 más `--measure-text` (68ch), `--measure-lead` (52ch) y `--shell-max` (1200px)
 para que las líneas no se estiren sin límite.
+
+## Nota sobre lo subido (27/07)
+
+En `referencias/` hay seis **mockups de rótulo luminoso** y el tablero de marca.
+Son material de presentación, **no activos de marca**: llevan el fondo gris
+incrustado y un halo azul de neón que el propio plan prohíbe (§16-17). Sirven
+para enseñar la marca en una propuesta; nunca para la aplicación.
+
+`logo/` sigue vacía a la espera del **SVG del símbolo**, que es lo único que
+falta para que la marca aparezca en el producto.
