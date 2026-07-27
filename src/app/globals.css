@@ -59,13 +59,25 @@
   --loss-soft: #442027;
   --warn-soft: #493317;
 
-  /* Tinta — blanco roto, nunca blanco puro (§22) */
+  /* ── TINTA ────────────────────────────────────────────────────────────────
+     Contrastes medidos contra las cuatro superficies del sistema (WCAG 2.1).
+     Blanco roto, nunca blanco puro… con UNA excepción, más abajo. */
   --background: var(--void-deep);
-  --foreground: #F3F6FA;
+  --foreground: #F3F6FA;  /* 18,2:1 sobre obsidiana — AAA */
   --ink-2: #A5B1C2;
-  --muted: #A5B1C2;  /* secundario: descripciones, etiquetas */
-  --faint: #718096;  /* terciario: metadatos, fechas */
-  --disabled: #4D5B6D;
+  --muted: #A5B1C2;       /* secundario — 9,1:1 obsidiana · 7,4:1 en tarjeta */
+  /* Terciario. La marca propone #718096, pero medido cae a 4,0:1 sobre la
+     tarjeta más clara: por debajo del AA justo donde viven las fechas y los
+     metadatos, que son texto PEQUEÑO. Se aclara lo mínimo para pasar en las
+     cuatro superficies (4,6:1 en la peor). */
+  --faint: #7D8B9E;
+  --disabled: #4D5B6D;    /* 2,9:1 — legítimo: un control apagado no debe leerse
+                             como activo, y no transporta información crítica */
+  /* Texto sobre el RELLENO azul. Única excepción a "nunca blanco puro": sobre
+     #2F6BFF el blanco da 4,50:1 —el AA exacto— y #F3F6FA se queda en 4,15:1,
+     que NO pasa. En el botón principal del producto no hay margen para ceder
+     ese cuarto de punto. */
+  --text-on-accent: #FFFFFF;
   --surface: var(--void-surface);
   --surface-2: var(--void-elevated);
   --brand: var(--accent-primary);
@@ -99,6 +111,9 @@
   --section-staking: #475467;  /* slate */
   --section-lending: #8B78FF;  /* terciaria */
   --section-lp: #2F6BFF;       /* principal */
+  /* SLATE es un color de ELEMENTO, no de texto. Medido da 2,6:1 sobre
+     obsidiana y 2,1:1 sobre tarjeta: como tinta es ilegible. Sirve para filos,
+     separadores y series neutras de gráfico. Para texto secundario, --muted. */
   --slate: #475467;
 
   /* Radios (§43) */
@@ -107,6 +122,38 @@
   --radius-lg: 10px;  /* tarjetas */
   --radius-xl: 12px;  /* paneles principales */
   --radius-modal: 14px;
+
+  /* ── RITMO (escala de espaciado) ──────────────────────────────────────────
+     La identidad fija color, tipografía y radios, pero no el espacio — y en un
+     producto denso en datos el espacio decide la legibilidad tanto como el
+     color. Base de 4 px con saltos que se distinguen a simple vista: si dos
+     medidas se parecen demasiado, nadie las respeta y la retícula se pierde.
+
+     Uso típico:
+       1-2  filos y separaciones internas de un control
+       3-4  entre etiqueta y su dato · padding de chips
+       5-6  padding de tarjeta · separación entre campos
+       7-8  entre tarjetas · entre bloques de un panel
+       9-10 entre secciones de una página
+       11-12 aire editorial: márgenes de portada, respiración de titulares */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 56px;
+  --space-10: 72px;
+  --space-11: 96px;
+  --space-12: 128px;
+
+  /* Anchos de medida. El contenido no se estira sin límite: una línea larga
+     cansa y rompe la lectura editorial. */
+  --measure-text: 68ch;   /* párrafos */
+  --measure-lead: 52ch;   /* entradillas y subtítulos */
+  --shell-max: 1200px;    /* ancho útil de página */
 }
 
 @theme inline {

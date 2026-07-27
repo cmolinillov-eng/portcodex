@@ -45,11 +45,24 @@ const DESCRIPTOR_INK: Record<LogoTone, string> = {
 
 export const DESCRIPTOR = "Inteligencia patrimonial para activos digitales";
 
+/**
+ * ÁREA DE SEGURIDAD: alrededor del logo queda libre un espacio equivalente a la
+ * altura de la "P". No es decorativo — es lo que impide que la marca acabe
+ * pegada a un borde o a otro logotipo. Se aplica sola, como padding.
+ */
+const CLEAR_SPACE_RATIO = 0.62; // altura de la "P" ≈ 62 % del cuerpo
+
+/** Por debajo de este ancho, el sistema exige usar SOLO el símbolo. */
+export const MIN_LOCKUP_WIDTH_PX = 120;
+
 interface PortCodexLogoProps {
   variant?: LogoVariant;
   tone?: LogoTone;
   /** Altura del símbolo y escala del nombre, en píxeles. */
   size?: number;
+  /** Reserva el área de seguridad alrededor. Quítalo solo si el contenedor ya
+   *  aporta ese aire; nunca para "ganar sitio". */
+  clearSpace?: boolean;
   className?: string;
 }
 
@@ -57,9 +70,12 @@ export function PortCodexLogo({
   variant = "principal",
   tone = "sobre-oscuro",
   size = 28,
+  clearSpace = true,
   className = "",
 }: PortCodexLogoProps) {
   const ink = WORDMARK_INK[tone];
+  const pad = clearSpace ? Math.round(size * CLEAR_SPACE_RATIO) : 0;
+  const frame = { padding: pad } as const;
 
   // Wordmark: Public Sans Semibold, UNA sola tinta, espaciado compacto. Sin
   // degradados, sin dos colores para "Port" y "Codex", sin efectos.
@@ -84,7 +100,7 @@ export function PortCodexLogo({
 
   if (variant === "corporativo") {
     return (
-      <span className={`inline-flex items-start gap-3 ${className}`}>
+      <span style={frame} className={`inline-flex items-start gap-3 ${className}`}>
         <Symbol tone={tone} size={size} />
         {/* El descriptor se alinea con el ARRANQUE del nombre y pesa menos que
             él: caja normal, sin mayúsculas ni tracking abierto. */}
@@ -107,7 +123,7 @@ export function PortCodexLogo({
   }
 
   return (
-    <span className={`inline-flex items-center gap-2.5 ${className}`}>
+    <span style={frame} className={`inline-flex items-center gap-2.5 ${className}`}>
       <Symbol tone={tone} size={size} />
       {wordmark}
     </span>

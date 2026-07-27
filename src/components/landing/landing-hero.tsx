@@ -65,7 +65,7 @@ export function LandingHero({ onLoginClick }: LandingHeroProps) {
           <div className="mt-11 flex flex-wrap items-center gap-5">
             <button
               onClick={onLoginClick}
-              className="rounded-[8px] bg-[var(--accent-primary)] px-6 py-3 text-[14px] font-medium text-white transition-colors duration-200 hover:bg-[var(--accent-hover)]"
+              className="rounded-[8px] bg-[var(--accent-primary)] px-6 py-3 text-[14px] font-medium text-[var(--text-on-accent)] transition-colors duration-200 hover:bg-[var(--accent-hover)]"
             >
               Acceder
             </button>

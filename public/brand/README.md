@@ -66,3 +66,48 @@ descriptor) · `simbolo` (cuando la marca ya se reconoce) · `corporativo`
 
 Cuando exista `logo/portcodex-symbol.svg`, basta con rellenar el componente
 `Symbol` de ese archivo: toda la aplicación lo hereda de golpe.
+
+## El logo sobre fotografía
+
+El plan permite fotografía (arquitectura, materiales, entornos financieros) pero
+no decía qué hacer con la marca encima. Sin regla, alguien acabará poniendo el
+azul sobre una imagen con poco contraste.
+
+**Sobre fotografía, siempre monocromo blanco** (`tone="mono-claro"`), nunca la
+versión azul. Si la zona de la imagen es clara o muy movida, se asienta el logo
+sobre un rectángulo obsidiana con opacidad — nunca una sombra ni un resplandor
+alrededor de las letras.
+
+## Contrastes medidos (WCAG 2.1)
+
+No son estimaciones: están calculados contra las cuatro superficies del sistema.
+
+| Tinta | Obsidiana | Tarjeta #162232 | Veredicto |
+|---|---|---|---|
+| Texto principal `#F3F6FA` | 18,2:1 | 14,8:1 | AAA |
+| Secundario `#A5B1C2` | 9,1:1 | 7,4:1 | AA |
+| Terciario `#7D8B9E` | 5,7:1 | 4,6:1 | AA |
+| **Slate `#475467`** | **2,6:1** | **2,1:1** | ❌ **nunca como texto** |
+| **Azul marca `#2F6BFF`** | **4,4:1** | **3,6:1** | ⚠️ **solo relleno, no tinta** |
+| Azul claro `#8AA8FF` | 8,6:1 | 7,0:1 | AA — este es el azul para TEXTO |
+| Positivo `#19B77A` | 7,6:1 | 6,2:1 | AA |
+| Negativo `#F0646F` | 6,3:1 | 5,2:1 | AA |
+
+**Tres reglas que salen de la tabla:**
+1. **Slate es color de elemento, no de tinta**: filos, separadores y series
+   neutras de gráfico. Para texto secundario, `--muted`.
+2. **El azul de marca se rellena, no se escribe.** Como tinta usa `--brand-soft`
+   `#8AA8FF`.
+3. **Sobre el relleno azul, blanco puro.** Es la única excepción a "nunca blanco
+   puro": da 4,50:1 —el AA exacto— y `#F3F6FA` se quedaría en 4,15:1, que no
+   pasa. Está en el token `--text-on-accent`.
+
+El terciario se aclaró de `#718096` a `#7D8B9E`: el valor original caía a 4,0:1
+sobre las tarjetas, justo donde viven fechas y metadatos, que son texto pequeño.
+
+## Ritmo (escala de espaciado)
+
+La identidad no definía espaciado, y en un producto denso en datos pesa tanto
+como el color. Está en `globals.css` como `--space-1` … `--space-12` (base 4 px),
+más `--measure-text` (68ch), `--measure-lead` (52ch) y `--shell-max` (1200px)
+para que las líneas no se estiren sin límite.
