@@ -112,12 +112,22 @@ como el color. Está en `globals.css` como `--space-1` … `--space-12` (base 4 
 más `--measure-text` (68ch), `--measure-lead` (52ch) y `--shell-max` (1200px)
 para que las líneas no se estiren sin límite.
 
-## Nota sobre lo subido (27/07)
 
-En `referencias/` hay seis **mockups de rótulo luminoso** y el tablero de marca.
-Son material de presentación, **no activos de marca**: llevan el fondo gris
-incrustado y un halo azul de neón que el propio plan prohíbe (§16-17). Sirven
-para enseñar la marca en una propuesta; nunca para la aplicación.
+## Estado de los activos (27/07)
 
-`logo/` sigue vacía a la espera del **SVG del símbolo**, que es lo único que
-falta para que la marca aparezca en el producto.
+`logo/portcodex-symbol.svg` — **PROVISIONAL, ya funcionando**. Dibujado en
+vectorial a partir del mockup para desbloquear el producto: plano, sin halo,
+fondo transparente y entintable. Cada hoja es un trazo continuo.
+
+Sigue haciendo falta el **redibujo profesional**, con los ajustes que el propio
+plan lista: reforzar el asta de la P, cerrar mejor la contraforma superior
+derecha y corregir ópticamente grosores y ángulos. Al llegar, se sustituyen los
+dos `path` del componente y toda la aplicación lo hereda.
+
+`referencias/` — el tablero de marca y seis mockups de rótulo luminoso. Son
+material de presentación, **no activos**: llevan fondo gris incrustado y halo
+azul de neón, que el plan prohíbe (§16-17). Aviso: el tablero arrastra dos
+erratas de generación ("direniión", "diecisiones") — no copiarlas a documentos.
+
+Pendiente: `app-icon.png` (1024×1024) y los favicon de 16/32 px, que conviene
+retocar a mano en el tamaño pequeño.

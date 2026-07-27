@@ -130,19 +130,53 @@ export function PortCodexLogo({
   );
 }
 
+/** Tinta del símbolo. En las versiones a color manda siempre el azul de marca;
+ *  en las monocromáticas, una sola tinta sin depender del acento. */
+const SYMBOL_INK: Record<LogoTone, string> = {
+  "sobre-oscuro": "#2F6BFF",
+  "sobre-claro": "#2F6BFF",
+  "mono-claro": "#F3F6FA",
+  "mono-oscuro": "#070B12",
+  azul: "#2F6BFF",
+};
+
+/** Por debajo de este tamaño el acento cian ensucia más de lo que aporta. */
+const ACCENT_MIN_PX = 20;
+
 /**
- * Open Ledger Monogram. Debe leerse de tres maneras a la vez: registro abierto,
- * P interior y C formada por la apertura exterior.
+ * Open Ledger Monogram. Se lee de tres maneras a la vez: registro abierto, C en
+ * la hoja izquierda y P en la derecha.
  *
- * PENDIENTE DEL VECTOR DEFINITIVO. Mientras no exista, no se dibuja nada: es
- * preferible que la marca aparezca solo con su nombre —permitido y sobrio— a
- * usar una aproximación que acabaría colándose en producción. Para activarlo,
- * sustituye el cuerpo por el SVG de public/brand/logo/portcodex-symbol.svg.
+ * Cada hoja es UN trazo continuo — por tramos quedaban muescas donde se
+ * encontraban. Fuente de verdad: public/brand/logo/portcodex-symbol.svg; va
+ * en línea (no como <img>) para poder entintarlo por variante.
  *
- * Al montarlo, recuerda: el acento cian solo si mantiene legibilidad, y NUNCA
- * por debajo de 16 px (a ese tamaño, símbolo entero en azul).
+ * PROVISIONAL: dibujado a partir del mockup para desbloquear el producto. Al
+ * llegar el redibujo profesional se sustituyen estos dos `path` y toda la
+ * aplicación lo hereda.
  */
-function Symbol({ size }: { tone: LogoTone; size: number; className?: string }) {
-  void size;
-  return null;
+function Symbol({ tone, size }: { tone: LogoTone; size: number; className?: string }) {
+  const withAccent = size >= ACCENT_MIN_PX && tone !== "mono-claro" && tone !== "mono-oscuro";
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 96 96"
+      fill="none"
+      aria-hidden="true"
+      style={{ color: SYMBOL_INK[tone], flexShrink: 0, display: "block" }}
+    >
+      <g
+        stroke="currentColor"
+        strokeWidth="8.5"
+        strokeLinecap="butt"
+        strokeLinejoin="miter"
+        strokeMiterlimit="2.2"
+      >
+        <path d="M44 30.5 L15 17.5 L15 69.5 L44 82.5" />
+        <path d="M63 54.5 L83 44.5 L83 18 L54 31 L54 82.5 L70 75.5" />
+      </g>
+      {withAccent ? <path d="M73.5 66.5 L82 62.8 L82 74 L73.5 77.7 Z" fill="#18BFD0" /> : null}
+    </svg>
+  );
 }
