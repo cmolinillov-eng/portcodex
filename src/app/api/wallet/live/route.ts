@@ -46,12 +46,14 @@ export async function GET(request: NextRequest) {
     // todos sin sesión de operador.
     const cronSecret = process.env.CRON_SECRET;
     const isCron = Boolean(cronSecret) && request.headers.get("x-cron-secret") === cronSecret;
+    let viewerId: string | null = null;
     if (!isCron) {
       const access = await getViewerAccess();
       const accessCheck = ensurePortfolioAccess(access, portfolioId, false);
       if (!accessCheck.ok) {
         return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
       }
+      viewerId = access.userId ?? null;
     }
 
     // Snapshot instantáneo (sin tocar blockchain) salvo refresh explícito.
@@ -74,7 +76,9 @@ export async function GET(request: NextRequest) {
 
     const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
     const rateLimit = checkRateLimit(
-      `wallet-live:${access.userId ?? "anon"}:${portfolioId}:${clientIp}`,
+      // El cron comparte cubo propio por portfolio: refrescar N clientes
+      // seguidos no debe agotar el límite de nadie.
+      `wallet-live:${isCron ? "cron" : viewerId ?? "anon"}:${portfolioId}:${clientIp}`,
       { limit: 20, windowMs: 60_000 },
     );
     if (!rateLimit.allowed) {
