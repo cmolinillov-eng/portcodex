@@ -46,3 +46,23 @@ public/brand/
   parte inseparable del logo: fuera de barra lateral, favicon y navegación.
 - Área de seguridad alrededor equivalente a la altura de la "P".
 - Por debajo de 120 px de ancho, solo el símbolo.
+
+## Cómo se pinta la marca en la aplicación
+
+Siempre desde `src/components/brand/portcodex-logo.tsx`. Ninguna página compone
+el nombre a mano — así el kerning, la caja y el color viajan juntos y no vuelve
+a colarse un "PORTCODEX" o un "Portcodex".
+
+```tsx
+<PortCodexLogo variant="principal" tone="sobre-oscuro" size={22} />
+```
+
+**Variantes** (por orden de preferencia): `principal` (símbolo + nombre, sin
+descriptor) · `simbolo` (cuando la marca ya se reconoce) · `corporativo`
+(+ descriptor, solo en material explicativo).
+
+**Tintas:** `sobre-oscuro` · `sobre-claro` · `mono-claro` · `mono-oscuro` ·
+`azul`. La monocromática no depende del acento cian.
+
+Cuando exista `logo/portcodex-symbol.svg`, basta con rellenar el componente
+`Symbol` de ese archivo: toda la aplicación lo hereda de golpe.

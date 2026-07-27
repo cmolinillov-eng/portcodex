@@ -14,6 +14,8 @@
  * breves. Nada de fondo decorativo — el fondo es plano.
  */
 
+import { PortCodexLogo, DESCRIPTOR } from "@/components/brand/portcodex-logo";
+
 interface LandingHeroProps {
   onLoginClick: () => void;
 }
@@ -29,14 +31,7 @@ export function LandingHero({ onLoginClick }: LandingHeroProps) {
     <div className="relative flex min-h-screen w-full flex-col bg-[var(--void-deep)]">
       {/* Cabecera */}
       <header className="mx-auto flex w-full max-w-[1200px] items-center justify-between px-8 py-7">
-        <div className="flex items-center gap-3 select-none">
-          {/* Marcador provisional del símbolo: hasta que exista el SVG
-              vectorial definitivo (ver public/brand/README.md) no se coloca
-              ningún logo de imagen. */}
-          <span className="text-[17px] tracking-[-0.015em] text-[var(--foreground)]">
-            Port<span className="font-semibold">Codex</span>
-          </span>
-        </div>
+        <PortCodexLogo variant="principal" tone="sobre-oscuro" size={22} />
 
         <button
           onClick={onLoginClick}
@@ -74,9 +69,7 @@ export function LandingHero({ onLoginClick }: LandingHeroProps) {
             >
               Acceder
             </button>
-            <span className="text-[14px] text-[var(--faint)]">
-              Inteligencia patrimonial para activos digitales
-            </span>
+            <span className="text-[14px] text-[var(--faint)]">{DESCRIPTOR}</span>
           </div>
         </div>
       </main>
