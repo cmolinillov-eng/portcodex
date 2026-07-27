@@ -5,6 +5,12 @@ export type PortfolioSummary = {
   pnlPercent: number;
   totalHarvestUsd: number;
   totalRealizedPnl: number;
+  /** Rendimiento OCIOSO: generado pero todavía sin redesplegar. Ya cuenta en
+   *  totalValueUsd (son fondos reales); se expone aparte para verlo de un
+   *  vistazo. `unclaimed` sigue dentro del protocolo; `pending` ya se cobró
+   *  pero no se ha reinvertido. */
+  totalUnclaimedUsd: number;
+  totalPendingHarvestUsd: number;
 };
 
 export type DashboardCategoryKey = "wallet" | "lending" | "liquidity_pools" | "staking";

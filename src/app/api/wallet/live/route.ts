@@ -39,10 +39,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Falta portfolioId." }, { status: 400 });
     }
 
-    const access = await getViewerAccess();
-    const accessCheck = ensurePortfolioAccess(access, portfolioId, false);
-    if (!accessCheck.ok) {
-      return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
+    // Bypass de SERVICIO (worker/cron): el snapshot on-chain solo se escribía
+    // al abrir el panel, así que el patrimonio de los portfolios que nadie
+    // visitaba se quedaba congelado durante semanas (se vieron snapshots de
+    // más de 20 días). Con el secreto compartido, el cron puede refrescarlos
+    // todos sin sesión de operador.
+    const cronSecret = process.env.CRON_SECRET;
+    const isCron = Boolean(cronSecret) && request.headers.get("x-cron-secret") === cronSecret;
+    if (!isCron) {
+      const access = await getViewerAccess();
+      const accessCheck = ensurePortfolioAccess(access, portfolioId, false);
+      if (!accessCheck.ok) {
+        return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
+      }
     }
 
     // Snapshot instantáneo (sin tocar blockchain) salvo refresh explícito.

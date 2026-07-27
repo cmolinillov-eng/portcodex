@@ -541,6 +541,23 @@ export function DashboardHeader({
               <p className="mt-0.5 text-xl font-semibold leading-tight text-[#6FAE8F] tabular-nums">
                 {currencyCompact(summary.totalHarvestUsd)}
               </p>
+              {/* Rendimiento OCIOSO: ya cuenta en el patrimonio, pero sigue sin
+                  trabajar. "Sin reclamar" está dentro del protocolo; "sin usar"
+                  ya se cobró y espera en la wallet. */}
+              {summary.totalUnclaimedUsd > 0 || summary.totalPendingHarvestUsd > 0 ? (
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] font-mono text-[var(--muted)] leading-tight">
+                  {summary.totalUnclaimedUsd > 0 ? (
+                    <span title="Comisiones y recompensas generadas que siguen dentro del protocolo, sin cobrar. Ya suman al patrimonio.">
+                      {currencyCompact(summary.totalUnclaimedUsd)} sin reclamar
+                    </span>
+                  ) : null}
+                  {summary.totalPendingHarvestUsd > 0 ? (
+                    <span title="Rendimiento ya cobrado que aún no se ha reinvertido. Está en la wallet, parado.">
+                      {currencyCompact(summary.totalPendingHarvestUsd)} sin usar
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {/* Realized P&L (conditional) */}

@@ -2010,6 +2010,12 @@ export async function getDashboardData(options?: {
   // y por tanto ya está dentro de las posiciones). Si no hay snapshot (aún no
   // se ha leído on-chain), se cae a la cifra contable.
   let onchainTotalValueUsd: number | null = null;
+  // Rendimiento generado que TODAVÍA no se ha movido, en dos estados:
+  //  - sin reclamar: sigue dentro del protocolo (comisiones/recompensas vivas);
+  //  - cobrado sin reinvertir: ya está en la wallet pero no se ha redesplegado.
+  // Ambos YA cuentan en el patrimonio (el primero se suma aquí; el segundo son
+  // tokens reales en la wallet), pero conviene verlos aparte: es dinero ocioso.
+  let totalUnclaimedUsd = 0;
   try {
     const snapClient = getSupabaseServiceClient() ?? getSupabaseServerClient();
     const { data: snapRows } = await snapClient
@@ -2023,13 +2029,16 @@ export async function getDashboardData(options?: {
       const positions = (row.positions as { positions?: Array<{ valueUsd?: number | null; unclaimedUsd?: number | null }> })?.positions ?? [];
       for (const p of positions) {
         hasAny = true;
-        sum += Number(p.valueUsd ?? 0) + Number(p.unclaimedUsd ?? 0);
+        const unclaimed = Number(p.unclaimedUsd ?? 0);
+        sum += Number(p.valueUsd ?? 0) + unclaimed;
+        if (Number.isFinite(unclaimed) && unclaimed > 0) totalUnclaimedUsd += unclaimed;
       }
     }
     if (hasAny) onchainTotalValueUsd = sum;
   } catch {
     /* sin snapshot: usar la cifra contable */
   }
+  // "Cobrado y sin reinvertir" ya está calculado arriba: totalPendingHarvestUsd.
 
   const adjustedTotalValueUsd = onchainTotalValueUsd ?? accountingTotalValueUsd;
 
@@ -2080,6 +2089,8 @@ export async function getDashboardData(options?: {
     pnlPercent: adjustedPnlPercent,
     totalHarvestUsd,
     totalRealizedPnl,
+    totalUnclaimedUsd,
+    totalPendingHarvestUsd,
   };
 
   const portfolioContextById = portfolioContexts.reduce(
