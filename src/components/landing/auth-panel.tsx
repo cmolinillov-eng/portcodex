@@ -66,22 +66,25 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
               <div
                 className="h-8 w-8 rounded-xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: "linear-gradient(135deg, rgba(111,174,143,0.18), rgba(79,135,112,0.18))",
-                  border: "1px solid rgba(111,174,143,0.22)",
+                  background: "var(--float)",
+                  border: "1px solid var(--line-strong)",
                 }}
                 aria-hidden="true"
               >
                 <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                  <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="#6FAE8F" opacity="0.85" />
-                  <rect x="8" y="10" width="4" height="2" fill="#4F8770" opacity="0.85" />
+                  <path d="M2 2h4v10H2zM8 2h4v6H8z" fill="var(--foreground)" opacity="0.85" />
+                  <rect x="8" y="10" width="4" height="2" fill="var(--muted)" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-[16px] font-[300] bg-gradient-to-r from-[#6FAE8F] to-[#A9D4BF] bg-clip-text text-transparent tracking-tight leading-tight">
-                  Portcodex
+                {/* Nombre oficial: PortCodex, con las dos mayúsculas internas (§2.1).
+                    Sin degradado: la identidad no permite colorear "Port" y
+                    "Codex" de forma distinta (§35). */}
+                <h2 className="text-[16px] font-[500] text-[var(--foreground)] tracking-tight leading-tight">
+                  PortCodex
                 </h2>
-                <p className="text-[11px] font-[200] text-white/35 tracking-[0.06em]">
-                  Tu patrimonio digital, bajo control total.
+                <p className="text-[11px] font-[400] text-[var(--faint)] tracking-[0.06em]">
+                  Inteligencia patrimonial para activos digitales.
                 </p>
               </div>
             </div>

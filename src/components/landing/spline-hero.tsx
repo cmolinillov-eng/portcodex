@@ -104,8 +104,10 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
               <rect x="8" y="10" width="4" height="2" fill="var(--muted)" />
             </svg>
           </div>
-          <span className="font-designer text-[13px] font-[300] tracking-[0.18em] uppercase text-[var(--foreground)]/70">
-            Portcodex
+          {/* §2.1: el nombre se escribe SIEMPRE PortCodex, con las dos
+              mayúsculas internas. Nada de versaditas ni caja alta. */}
+          <span className="font-designer text-[15px] font-[500] tracking-[-0.01em] text-[var(--foreground)]">
+            Port<span className="font-[600]">Codex</span>
           </span>
         </div>
 
@@ -133,8 +135,8 @@ export function SplineHero({ onLoginClick }: SplineHeroProps) {
           className="hero-tagline mt-6 max-w-[52ch] text-center leading-relaxed text-[var(--muted)] select-none"
           style={{ fontSize: "clamp(0.92rem, 1.4vw, 1.05rem)", fontWeight: 300 }}
         >
-          Portcodex lee tus posiciones en la cadena, mantiene la contabilidad al día
-          y deja el fiscal listo. Sin apuntar nada a mano.
+          PortCodex consolida tus posiciones on-chain, mantiene la contabilidad al día
+          y anticipa el impacto fiscal de cada operación.
         </p>
 
         <div className="hero-cta-reveal mt-11 pointer-events-auto">

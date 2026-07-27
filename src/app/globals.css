@@ -9,45 +9,56 @@
    ===================================================================== */
 
 :root {
-  /* Superficies — 3 elevaciones por luminancia */
-  --void-deep: #101318;      /* lienzo de página */
-  --void-surface: #14171c;   /* superficie base */
-  --void-elevated: #191d23;  /* panel */
-  --float: #20252c;          /* elemento flotante */
+  /* Superficies — 5 niveles, jerarquía por luminancia (identidad §40).
+     Los nombres de variable se conservan (los usa toda la aplicación); lo que
+     cambia es el valor: de carbón neutro a azul casi negro. */
+  --void-deep: #070B12;      /* nivel 0 — PortCodex Obsidian, fondo general */
+  --void-surface: #0C1420;   /* nivel 1 — Deep Navy: barra lateral, cabecera */
+  --void-elevated: #111C2B;  /* nivel 2 — Elevated Navy: tarjetas principales */
+  --float: #162232;          /* nivel 3 — Surface: controles, campos */
+  --surface-hover: #1B2B3E;  /* nivel 4 — hover y seleccionado */
+  --surface-deep: #0D1724;   /* tarjetas interiores sobre contenedor */
 
-  --glass-border: rgb(255 255 255 / 0.07);
-  --glass-border-strong: rgb(255 255 255 / 0.10);
-  --glass-bg: #191d23;
-  --glass-bg-hover: #1d222a;
+  --glass-border: rgb(148 163 184 / 0.12);
+  --glass-border-strong: #26364A;
+  --glass-bg: #111C2B;
+  --glass-bg-hover: #1B2B3E;
 
-  /* Acento — verde institucional (el ÚNICO color de marca) */
-  --accent-primary: #6fae8f;
-  --accent-hover: #8fc7ac;
-  --accent-press: #4f8770;
-  --accent-secondary: #4f8770;
-  --accent-glow: rgb(111 174 143 / 0.12);
-  --accent-glow-strong: rgb(111 174 143 / 0.18);
+  /* Marca — PortCodex Blue. NUNCA representa rentabilidad positiva (§20). */
+  --accent-primary: #2F6BFF;
+  --accent-hover: #4B7DFF;
+  --accent-press: #1D46B8;
+  --accent-secondary: #18BFD0; /* Codex Cyan: sincronización, datos en vivo */
+  --accent-soft: #172A52;      /* fondo de navegación activa, chips */
+  --accent-glow: rgb(47 107 255 / 0.12);
+  --accent-glow-strong: rgb(47 107 255 / 0.18);
   --accent: var(--accent-primary);
 
-  /* Semánticos desaturados */
-  --profit: #8fbfa4;
-  --loss: #ce8b82;
-  --warn: #c9a45e;
-  --info: #8ca0b3;
-  --loss-soft: rgb(206 139 130 / 0.12);
-  --warn-soft: rgb(201 164 94 / 0.13);
+  /* Semánticos — comunican ESTADO, nunca decoran (§21) */
+  --profit: #19B77A;
+  --loss: #F0646F;
+  --warn: #F0A43C;   /* advertencia fiscal */
+  --info: #18BFD0;
+  --advanced: #8B78FF; /* inteligencia avanzada, presencia limitada */
+  --profit-soft: #123D31;
+  --loss-soft: #442027;
+  --warn-soft: #493317;
 
-  /* Tinta */
+  /* Tinta — blanco roto, nunca blanco puro (§22) */
   --background: var(--void-deep);
-  --foreground: #edf0f3;
-  --ink-2: #b4bcc6;
-  --muted: #8a94a0; /* AA sobre paneles */
-  --faint: #5e6873;
+  --foreground: #F3F6FA;
+  --ink-2: #A5B1C2;
+  --muted: #A5B1C2;  /* secundario: descripciones, etiquetas */
+  --faint: #718096;  /* terciario: metadatos, fechas */
+  --disabled: #4D5B6D;
   --surface: var(--void-surface);
   --surface-2: var(--void-elevated);
   --brand: var(--accent-primary);
-  --brand-soft: #a9d4bf;
-  --line: rgb(255 255 255 / 0.07);
+  /* Azul CLARO para texto sobre fondo oscuro: #2F6BFF como tinta se queda en
+     ~4,4:1 contra la obsidiana, por debajo del AA. Este es el de §69. */
+  --brand-soft: #8AA8FF;
+  --line: rgb(148 163 184 / 0.12);
+  --line-strong: #26364A;
   --token-accent: var(--foreground);
   --value-accent: var(--foreground);
 
@@ -66,17 +77,19 @@
   --dur: 200ms;
   --dur-slow: 250ms;
 
-  /* Composición por sección — verde solo para LP; el resto, neutros */
-  --section-wallet: rgb(140 160 179 / 0.9);
-  --section-staking: rgb(201 164 94 / 0.9);
-  --section-lending: rgb(126 136 148 / 0.9);
-  --section-lp: rgb(111 174 143 / 0.9);
+  /* Composición por sección — paleta de series de la identidad (§51), para
+     que categorías y gráficos hablen el mismo idioma cromático. */
+  --section-wallet: #718096;   /* neutra */
+  --section-staking: #8B78FF;  /* terciaria */
+  --section-lending: #18BFD0;  /* secundaria */
+  --section-lp: #2F6BFF;       /* principal */
 
-  /* Radios */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  /* Radios (§43) */
+  --radius-sm: 6px;   /* controles pequeños */
+  --radius-md: 8px;   /* botones */
+  --radius-lg: 10px;  /* tarjetas */
+  --radius-xl: 12px;  /* paneles principales */
+  --radius-modal: 14px;
 }
 
 @theme inline {
@@ -90,19 +103,22 @@
 /* Paleta Tailwind remapeada al sistema: todas las utilidades emerald/rose/
    amber/red que usan los componentes pasan a los semánticos desaturados. */
 @theme {
-  --color-emerald-300: #a5cdb7;
-  --color-emerald-400: #8fbfa4;
-  --color-emerald-500: #6fae8f;
-  --color-rose-300: #dba8a1;
-  --color-rose-400: #ce8b82;
-  --color-rose-500: #c07b71;
-  --color-red-300: #dba8a1;
-  --color-red-400: #ce8b82;
-  --color-red-500: #c07b71;
-  --color-amber-300: #d6b577;
-  --color-amber-400: #c9a45e;
-  --color-violet-300: #9fb0c1;
-  --color-indigo-300: #9fb0c1;
+  --color-emerald-300: #3FCB92;
+  --color-emerald-400: #19B77A;
+  --color-emerald-500: #19B77A;
+  --color-rose-300: #F58C94;
+  --color-rose-400: #F0646F;
+  --color-rose-500: #F0646F;
+  --color-red-300: #F58C94;
+  --color-red-400: #F0646F;
+  --color-red-500: #F0646F;
+  --color-amber-300: #F5B865;
+  --color-amber-400: #F0A43C;
+  --color-violet-300: #8B78FF;
+  --color-indigo-300: #8AA8FF;
+  --color-blue-400: #4B7DFF;
+  --color-blue-500: #2F6BFF;
+  --color-cyan-400: #18BFD0;
 }
 
 body {
@@ -112,8 +128,8 @@ body {
   letter-spacing: 0.005em;
   /* Luz fría desde arriba-izquierda, casi subliminal. Sin retículas. */
   background-image:
-    radial-gradient(1200px 520px at 30% -14%, rgb(111 174 143 / 0.035), transparent 60%),
-    radial-gradient(900px 620px at 92% 112%, rgb(140 160 179 / 0.025), transparent 60%);
+    radial-gradient(1200px 520px at 30% -14%, rgb(47 107 255 / 0.05), transparent 60%),
+    radial-gradient(900px 620px at 92% 112%, rgb(24 191 208 / 0.028), transparent 60%);
   background-attachment: fixed;
 }
 
@@ -778,12 +794,12 @@ button, a {
   width: 100%;
   background: linear-gradient(
     90deg,
-    #6fae8f 0%,
-    #4f8770 30%,
-    #33594a 50%,
-    #6fae8f 70%,
-    #a9d4bf 90%,
-    #4f8770 100%
+    #2F6BFF 0%,
+    #1D46B8 30%,
+    #172A52 50%,
+    #2F6BFF 70%,
+    #18BFD0 90%,
+    #1D46B8 100%
   );
   background-size: 200% auto;
   animation: ola-shimmer 4s linear infinite;
