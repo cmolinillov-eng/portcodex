@@ -1,11 +1,26 @@
 @import "tailwindcss";
 
 /* =====================================================================
-   PORTCODEX «INSTRUMENTO» — design system v1.0 (Claude Design)
-   "La caja fuerte que respira": azul-carbón acero pavonado, UN acento
-   verde institucional usado con avaricia, tipografía como estructura.
-   Tres elevaciones por luminancia, no por bordes. Semánticos desaturados.
-   Voces: Archivo (display) · Spline Sans Mono (datos) · Public Sans (UI).
+   PORTCODEX — «INSTITUTIONAL EDITORIAL»
+   Identidad oficial. 65 % institución financiera · 20 % composición
+   editorial · 15 % producto tecnológico.
+
+   Principio rector — TECNOLOGÍA INVISIBLE: la tecnología se percibe por la
+   calidad de la información y de la interfaz, nunca por una estética
+   tecnológica evidente. La sofisticación procede del orden, el espacio y la
+   tipografía; no de los efectos.
+
+   Tipografía: Public Sans para TODO (marca y producto). IBM Plex Mono es
+   auxiliar y solo funcional: wallets, hashes e identificadores — nunca
+   titulares, claims, navegación, botones ni cifras.
+
+   Color: Obsidian #070B12 de fondo, Institutional Blue #2F6BFF como único
+   color de marca (8 %), Codex Cyan #18BFD0 como acento excepcional (2 %).
+   El verde queda RESERVADO a resultados positivos.
+
+   PROHIBIDO: ondas, partículas, nodos, rejillas, resplandores azules, neón,
+   hologramas, degradados azul-cian, monoespaciada decorativa, estética de IA
+   o Web3 genérica.
    ===================================================================== */
 
 :root {
@@ -127,22 +142,59 @@ body {
   background-color: var(--void-deep);
   color: var(--foreground);
   font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: 0;
+  font-weight: 400;
+  letter-spacing: -0.005em;
   /* Fondo PLANO. La identidad «Institutional Editorial» (§11–12) prohíbe los
      resplandores azules y los degradados decorativos: la profundidad se
      construye con superficies, espacio y jerarquía, no con luz. */
 }
 
-/* Los números son el producto — mono tabular en todo dato */
-.tabular-nums {
-  font-family: var(--font-mono), ui-monospace, monospace;
+/* ── ESCALA TIPOGRÁFICA (§6) ────────────────────────────────────────────────
+   Pocos tamaños, espaciado compacto, interlineado controlado. Los titulares
+   NO van en mayúsculas ni con tracking abierto: la jerarquía la da la escala,
+   no el adorno. */
+h1 {
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+}
+h2 {
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+h3 {
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+}
+button,
+nav,
+label {
+  font-weight: 500;
   letter-spacing: -0.01em;
+}
+
+/* Las cifras son el producto: protagonistas por ESCALA y posición, nunca por
+   efectos. Van en la tipografía de marca con números tabulares — la
+   monoespaciada ya no es lenguaje de marca (§5) y afeaba cada importe. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+}
+
+/* Dato TÉCNICO: el único territorio de la monoespaciada. */
+.technical,
+.wallet-address,
+.transaction-hash {
+  font-family: var(--font-mono), ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
 ::selection {
-  background: rgb(111 174 143 / 0.85);
-  color: #0d1410;
+  background: rgb(47 107 255 / 0.85);
+  color: #F3F6FA;
 }
 
 /* Scrollbar técnico discreto */
@@ -245,7 +297,8 @@ button, a {
 }
 
 .text-metric {
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
   font-weight: 500;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
@@ -300,7 +353,8 @@ button, a {
 
 .card-premium table th {
   color: var(--muted) !important;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
   font-weight: 500 !important;
   letter-spacing: 0.12em !important;
   text-transform: uppercase;
@@ -315,7 +369,8 @@ button, a {
 .value-emphasis {
   color: var(--value-accent);
   font-weight: 600;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
   font-variant-numeric: tabular-nums;
 }
 
@@ -605,7 +660,8 @@ button, a {
   display: inline-flex;
   align-items: center;
   gap: 0.4em;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
   font-size: 0.62rem;
   font-weight: 500;
   letter-spacing: 0.09em;
@@ -811,7 +867,8 @@ button, a {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
+  font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
+  font-variant-numeric: tabular-nums lining-nums;
   font-size: 0.65rem;
   font-weight: 400;
   letter-spacing: 0.1em;

@@ -20,7 +20,7 @@ public/brand/
 │   ├── app-icon.svg                   icono de aplicación
 │   └── favicon.svg
 └── fonts/
-    └── (Söhne, cuando se licencie — ver abajo)
+    └── (vacía: Public Sans e IBM Plex Mono vienen de Google Fonts)
 ```
 
 ## Pendiente de aportar
@@ -31,10 +31,10 @@ public/brand/
    deberá redibujarse vectorialmente; la imagen generada representa una
    dirección conceptual, no debe utilizarse como archivo final de marca."*
    Hasta que existan los vectores, la aplicación no usa ningún logo de imagen.
-3. **Söhne** (Klim Type Foundry, licencia comercial). No está en Google Fonts
-   y no puede instalarse sin licencia. Cuando la tengas, deja los `.woff2` en
-   `fonts/` y actívala en `src/app/layout.tsx`, donde queda el punto de enganche
-   documentado. Mientras tanto, titulares e interfaz van en **Inter**.
+3. **Tipografías**: nada pendiente. Public Sans (marca y producto) e IBM Plex
+   Mono (solo datos técnicos) se cargan desde Google Fonts en
+   `src/app/layout.tsx`. La carpeta `fonts/` queda por si algún día entra una
+   fuente con licencia propia.
 
 ## Reglas que no se negocian
 

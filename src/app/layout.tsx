@@ -1,23 +1,22 @@
 import type { Metadata } from "next";
-import { Inter, IBM_Plex_Mono } from "next/font/google";
+import { Public_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
-// Identidad PortCodex «Institutional Editorial».
+// Identidad PortCodex «Institutional Editorial» — UNA sola familia.
 //
-// Geist queda DESCARTADA a propósito: su uso masivo en herramientas de IA y
-// productos SaaS hacía que la marca se leyera como tecnológica genérica.
+// Public Sans es la tipografía oficial de marca Y de producto: institucional,
+// neutra, muy legible y —esto es lo que la hace idónea aquí— ajena a la
+// estética habitual de IA y SaaS. Es libre y de licencia abierta.
+// Descartadas por el camino: Geist (se lee como marca de IA) y Söhne (de pago).
 //
-//  --font-ui        Inter — toda la interfaz de producto.
-//  --font-designer  SÖHNE — marca y titulares. Es de pago (Klim Type Foundry)
-//                   y no está en Google Fonts, así que HOY cae en Inter. Para
-//                   activarla: deja los .woff2 en public/brand/fonts/ y
-//                   sustituye esta constante por un localFont (ver más abajo).
-//  --font-mono      IBM Plex Mono — SOLO función: wallets, hashes,
-//                   identificadores. No es lenguaje de marca (§5).
-const uiFont = Inter({
+//  --font-ui / --font-designer  Public Sans — todo: titulares, interfaz, cifras.
+//  --font-mono                  IBM Plex Mono — SOLO función: wallets, hashes,
+//                               identificadores. Nunca titulares, claims,
+//                               navegación, botones ni cifras grandes.
+const uiFont = Public_Sans({
   variable: "--font-ui",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600"],
   display: "swap",
 });
 
@@ -28,26 +27,9 @@ const monoFont = IBM_Plex_Mono({
   display: "swap",
 });
 
-// PUNTO DE ENGANCHE PARA SÖHNE. Cuando exista la licencia:
-//
-//   import localFont from "next/font/local";
-//   const designerFont = localFont({
-//     variable: "--font-designer",
-//     display: "swap",
-//     src: [
-//       { path: "../../public/brand/fonts/soehne-buch.woff2",    weight: "400" },
-//       { path: "../../public/brand/fonts/soehne-kraftig.woff2", weight: "600" },
-//     ],
-//   });
-//
-// Hasta entonces, titulares en Inter: sobrio y correcto, aunque sin el carácter
-// editorial que aporta Söhne.
-const designerFont = Inter({
-  variable: "--font-designer",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  display: "swap",
-});
+// Misma familia: --font-designer se conserva porque lo usan los componentes,
+// pero la identidad ya no distingue voz de marca y voz de producto.
+const designerFont = uiFont;
 
 export const metadata: Metadata = {
   title: "PortCodex | Claridad y Control",
