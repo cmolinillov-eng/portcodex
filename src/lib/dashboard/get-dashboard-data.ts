@@ -1617,6 +1617,10 @@ export async function getDashboardData(options?: {
     date: string | null;
   }> = [];
   const holdKeysBySymbol = new Map<string, { full: string; fallback: string }>();
+  // Parte del depositado que viene de la ADOPCIÓN (saldo inicial declarado al
+  // dar de alta la posición). Es justo lo que un override corrige, así que
+  // permite aplicarlo sin borrar los movimientos reales posteriores.
+  const adoptedByPosition = new Map<string, number>();
   const addDeposited = (fullKey: string, fallbackKey: string, delta: number, txDate: string | null) => {
     depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
     depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
@@ -1740,6 +1744,12 @@ export async function getDashboardData(options?: {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
         addDeposited(fullKey, fallbackKey, inAmount * spotPrice, tx.transaction_date);
+        // Saldo inicial declarado al adoptar: lo que un override corrige.
+        if (source === "onchain_adopt") {
+          const adoptDelta = inAmount * spotPrice;
+          adoptedByPosition.set(fullKey, (adoptedByPosition.get(fullKey) ?? 0) + adoptDelta);
+          adoptedByPosition.set(fallbackKey, (adoptedByPosition.get(fallbackKey) ?? 0) + adoptDelta);
+        }
       }
       if (!skipCapitalIn) {
         totalDepositedUsd += inAmount * spotPrice;
@@ -1875,10 +1885,24 @@ export async function getDashboardData(options?: {
       if (!livePositionKeys.has(key)) continue;
       const fallbackKey = positionCompositeKey("", row.protocol ?? "Wallet", row.position_id ?? "");
       const derived = depositedByPosition.get(key) ?? depositedByPosition.get(fallbackKey) ?? 0;
-      // El override manda SOBRE LA BASE en el momento en que se fijó; los
-      // flujos posteriores (aportes/retiradas tras esa fecha) siguen sumando.
-      const flowsAfter = depositedAfterOverride.get(key) ?? depositedAfterOverride.get(fallbackKey) ?? 0;
-      const effective = Math.max(0, override + flowsAfter);
+      // El override corrige el SALDO INICIAL declarado al adoptar la posición,
+      // no toda su historia: los movimientos reales que la app ha registrado
+      // después siguen contando encima. Antes se comparaba contra la fecha en
+      // que se fijó el override, así que una operación REAL con fecha anterior
+      // —pero descubierta después, como el cierre de un pool detectado luego en
+      // la cadena— quedaba enmascarada y el depositado se inflaba (el cierre de
+      // Orca de M Fita: la posición seguía marcando 2.500 $ ya cerrada).
+      const adopted = adoptedByPosition.get(key) ?? adoptedByPosition.get(fallbackKey);
+      let effective: number;
+      if (adopted !== undefined) {
+        // derived − adopted = todo lo ocurrido DESPUÉS del saldo inicial.
+        effective = Math.max(0, override + (derived - adopted));
+      } else {
+        // Sin adopción, el override sustituye la base entera: solo se le suman
+        // los flujos posteriores a fijarlo.
+        const flowsAfter = depositedAfterOverride.get(key) ?? depositedAfterOverride.get(fallbackKey) ?? 0;
+        effective = Math.max(0, override + flowsAfter);
+      }
       totalDepositedUsd += effective - derived;
       depositedByPosition.set(key, effective);
       depositedByPosition.set(fallbackKey, effective);
