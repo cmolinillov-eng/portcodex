@@ -192,9 +192,22 @@ async function performIngest(
     for (const t of sold) {
       const link = links.get(refId(t.holdRef!));
       if (!link) {
-        // Vender un token sin posición contable = historia incompleta (no hay
-        // lotes que consumir). Mejor pendiente que una venta sin base.
-        return { ok: false, error: `Permuta: el token vendido (${t.symbol}) no tiene posición enlazada — regístrala a mano.`, status: 400 };
+        // Vender un token sin posición contable propia. Caso típico: las
+        // RECOMPENSAS cobradas de un pool (JTO, PYUSD…) que se venden desde la
+        // wallet sin haber tenido nunca hold propio.
+        //
+        // NO basta con crearle un hold implícito (como se hace con el token
+        // comprado): esos tokens están contabilizados como "harvest pendiente"
+        // de la posición que los generó, así que un hold nuevo nacería con
+        // saldo NEGATIVO y el pendiente del pool nunca se descargaría.
+        // Y tampoco vale reutilizar `rebalance_harvest_out` —que sí descarga el
+        // pendiente— porque el motor fiscal lo trata como movimiento interno NO
+        // imponible, y esto es una permuta REAL que tributa (art. 37.1.h LIRPF).
+        //
+        // Necesita una vía propia: descargar el pendiente del harvest Y tributar
+        // como permuta. Hasta entonces se queda en la bandeja: mejor pendiente
+        // que una posición fantasma o una venta sin declarar.
+        return { ok: false, error: `Permuta: el token vendido (${t.symbol}) no tiene posición contable propia — regístrala a mano.`, status: 400 };
       }
       rows.push({
         portfolio_id: portfolioId,

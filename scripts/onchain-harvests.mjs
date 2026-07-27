@@ -951,6 +951,16 @@ const SOL_MINTS = {
   orcaEKTdK7LKz57vaAYr9QeNsVEPfiu6QeMU1kektZE: "ORCA",
   "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo": "PYUSD",
   USDSwr9ApdHk5bvJKMjzff41FfuX8bSxdKcR81vTwcA: "USDS",
+  // Tokens de RECOMPENSA de pools de Solana: sin ellos el símbolo caía al
+  // atajo del mint ("jtoj…"), que no casa con el libro y bloquea la ingesta.
+  jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL: "JTO",
+  bSo13r4TkiE4KumL71LsHTPpL2euBYLFx6h9HP3piy1: "BSOL",
+  "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj": "STSOL",
+  jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v: "JUPSOL",
+  hntyVP6YFm1Hg25TN9WGLqM12b8TQmcknKrdu1oxWux: "HNT",
+  DriFtupJYLTosbwoN8koMbEYSx54aFAVLddWsbksjwg7: "DRIFT",
+  KMNo3nJsFXfY1YZ8QQcCeaCUZmMH8AGkfoQ1qAbCPzC: "KMNO",
+  MEFNBXixkEbait3xn9bkm8WsJzXtVsaJEn4c8Sam21u: "MET",
 };
 const WHIRLPOOL_PROGRAM = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
 const KAMINO_LIQUIDITY_PROGRAM = "6LtLpnUFNByNXLyCoK9wA2MykKAmQNZKBdY8s47dehDc";
