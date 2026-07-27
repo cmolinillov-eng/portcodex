@@ -78,19 +78,44 @@ async function getLinks(portfolioId: string): Promise<Map<string, LinkInfo>> {
   return out;
 }
 
-// NOTA (pendiente, ver bandeja): los eventos de RETIRADA que CIERRAN una
-// posición llegan sin position_ref — el escáner de transacciones casa contra
-// posiciones VIVAS y, al cerrarse, la posición ya no está. Se puede recuperar
-// el enlace por (cadena, protocolo, etiqueta), pero NO basta con eso para
-// auto-ingerirlos: performIngest solo escribe la pata de la posición
-// (lp_withdraw) y el escáner de Solana, a diferencia del worker, no emite la
-// llegada del dinero al hold. Auto-registrarlos restaría el capital del pool
-// sin devolverlo a la wallet → el Total Depositado perdería ese importe. Antes
-// de resolverlos automáticamente hay que emitir la llegada al hold (como hace
-// emitHoldArrivals en el worker para Kamino/Meteora).
+/**
+ * Enlace de un evento SIN position_ref. El escáner de transacciones casa cada
+ * evento contra las posiciones VIVAS; la retirada que CIERRA una posición nunca
+ * casa (al leerla ya no existe), así que llegaba huérfana y se quedaba en la
+ * bandeja para siempre aunque su posición estuviera enlazada.
+ *
+ * Se recupera por (cadena, protocolo, etiqueta): el onchain_id del enlace
+ * empieza por `cadena:protocolo:` y su position_id por la etiqueta del evento
+ * ("SOL/USDC-…"). Solo si la coincidencia es ÚNICA — con dos posiciones del
+ * mismo par y protocolo se deja en la bandeja antes que adivinar.
+ *
+ * Es seguro auto-ingerirlos porque performIngest abona la vuelta del capital al
+ * hold (ver "VUELTA DEL CAPITAL AL HOLD"): el cierre no evapora el depositado.
+ */
+function resolveLinkByLabel(
+  links: Map<string, LinkInfo>,
+  ev: { chain: string; protocol: string; label: string | null },
+): { onchainId: string; link: LinkInfo } | null {
+  const label = (ev.label ?? "").trim();
+  if (!label) return null;
+  const chain = (ev.chain ?? "").trim().toLowerCase();
+  const proto = (ev.protocol ?? "").trim().toLowerCase();
+  if (!chain || !proto) return null;
+  // "Kamino (ORCA)" → en el onchain_id va el protocolo base ("kamino").
+  const protoBase = proto.split("(")[0].trim().replace(/\s+/g, "-");
+  const hits: Array<{ onchainId: string; link: LinkInfo }> = [];
+  for (const [onchainId, link] of links) {
+    if (!onchainId.toLowerCase().startsWith(`${chain}:${protoBase}:`)) continue;
+    const pid = (link.position_id ?? "").trim();
+    if (pid === label || pid.startsWith(`${label}-`)) hits.push({ onchainId, link });
+  }
+  return hits.length === 1 ? hits[0] : null;
+}
 
 type PendingEvent = {
   id: string;
+  /** Clave del evento: sirve para localizar sus llegadas al hold (`…:in:SÍMBOLO`). */
+  event_key?: string | null;
   portfolio_id?: string;
   kind?: string | null;
   chain: string;
@@ -447,6 +472,65 @@ async function performIngest(
     return { ok: false, error: "La reinversión no generó filas contables; regístralo a mano.", status: 400 };
   }
 
+  // ─── VUELTA DEL CAPITAL AL HOLD en una retirada/cierre ───────────────────
+  // Retirar de un pool NO destruye el capital: vuelve a la wallet. El worker ya
+  // emite esa llegada (emitHoldArrivals → eventos `${clave}:in:SÍMBOLO`), pero
+  // el escáner de transacciones de Solana no, así que un cierre restaba del
+  // pool sin abonar la wallet y el Total Depositado perdía ese importe.
+  // Aquí se abona en la MISMA operación (mismo operation_group_id → deshacer en
+  // bloque) solo si nadie más emitió la llegada. Total neutro: el capital
+  // cambia de sitio, no desaparece.
+  if (kind === "withdraw" && ev.event_key) {
+    const { data: siblings } = await client
+      .from("onchain_events")
+      .select("id")
+      .eq("portfolio_id", portfolioId)
+      .like("event_key", `${ev.event_key}:in:%`)
+      .limit(1);
+    if (!siblings || siblings.length === 0) {
+      const holdBySymbol = new Map<string, LinkInfo>();
+      for (const l of (await getLinks(portfolioId)).values()) {
+        const pid = (l.position_id ?? "").trim().toUpperCase();
+        const sym = pid.includes("-") ? pid.slice(0, pid.indexOf("-")) : pid;
+        if ((l.position_type ?? "") === "Hold" && sym && !holdBySymbol.has(sym)) holdBySymbol.set(sym, l);
+      }
+      for (const t of usable) {
+        const sym = t.symbol.toUpperCase();
+        const hold = holdBySymbol.get(sym);
+        // Sin hold contable para ese token no se inventa destino: queda como
+        // hoy (el gestor lo adopta desde el panel) en vez de crear una
+        // posición fantasma con una base que nadie ha comprobado.
+        if (!hold) continue;
+        rows.push({
+          portfolio_id: portfolioId,
+          type: "deposit",
+          operation_group_id: operationGroupId,
+          token_in_symbol: sym,
+          token_in_amount: t.amount,
+          token_out_symbol: null,
+          token_out_amount: null,
+          spot_price: Number(t.priceUsd),
+          fee_amount: 0,
+          notes: `Vuelta a la wallet por ${ev.label ?? "retirada"} (on-chain)`,
+          transaction_date: timestamp,
+          protocol: hold.protocol,
+          position_id: hold.position_id,
+          position_type: hold.position_type || "Hold",
+          metadata: {
+            source: "onchain_ingest",
+            onchainIngest: true,
+            eventId: ev.id,
+            txHash: ev.tx_hash,
+            chain: ev.chain,
+            nftId: ev.position_ref,
+            // Traza: de qué retirada es esta llegada (auditoría/depuración).
+            holdArrivalOf: ev.event_key,
+          },
+        } as unknown as ReturnType<typeof buildRow>);
+      }
+    }
+  }
+
   // Idempotencia dura: si ya existen transacciones vivas para este eventId (un
   // run anterior insertó pero falló al marcar el evento como ingerido, y este
   // se re-procesó), no volver a insertar → cero duplicados. Solo se re-marca
@@ -509,7 +593,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await getClient()
     .from("onchain_events")
-    .select("id, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, includes_principal, position_ref, status")
+    .select("id, event_key, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, includes_principal, position_ref, status")
     .eq("portfolio_id", portfolioId)
     .eq("status", "pending")
     .order("block_time", { ascending: false });
@@ -519,22 +603,55 @@ export async function GET(request: NextRequest) {
   }
 
   const links = await getLinks(portfolioId);
+  // LÍNEA BASE de cada posición: todo lo POSTERIOR se contabiliza solo.
+  // Antes se usaba la fecha del ENLACE, lo que dejaba atascadas para siempre
+  // operaciones reales anteriores a él (p.ej. una permuta de la mañana en una
+  // wallet que se enlazó por la tarde). Lo correcto es la fecha de ADOPCIÓN:
+  // lo anterior ya está dentro del saldo inicial adoptado; lo posterior, no.
+  // Sin adopción propia se usa la del portfolio; si tampoco, el enlace.
+  const adoptionByPosition = new Map<string, number>();
+  let portfolioBaselineMs: number | null = null;
+  {
+    const { data: adopts } = await getClient()
+      .from("transactions")
+      .select("position_id, transaction_date")
+      .eq("portfolio_id", portfolioId)
+      .is("deleted_at", null)
+      .contains("metadata", { source: "onchain_adopt" });
+    for (const a of adopts ?? []) {
+      const ts = Date.parse((a.transaction_date as string) ?? "");
+      if (!Number.isFinite(ts)) continue;
+      const pid = (a.position_id as string) ?? "";
+      // Una posición re-adoptada (base corregida) conserva la fecha ORIGINAL:
+      // la más antigua es la que marca desde cuándo el libro está completo.
+      if (pid && (!adoptionByPosition.has(pid) || ts < adoptionByPosition.get(pid)!)) {
+        adoptionByPosition.set(pid, ts);
+      }
+      if (portfolioBaselineMs === null || ts < portfolioBaselineMs) portfolioBaselineMs = ts;
+    }
+  }
   const events: Array<EventRow & { kind?: string | null; link: LinkInfo | null }> = [];
   let autoIngested = 0;
   // canWrite ya resuelto arriba (operador con sesión, o servicio con secreto).
   const client = getClient();
 
   for (const raw of (data ?? []) as Array<EventRow & { kind?: string | null }>) {
-    const oid = eventOnchainId(raw as { chain: string; protocol: string; position_ref: string | null });
-    const link = oid ? links.get(oid) ?? null : null;
+    let link = (() => {
+      const oid = eventOnchainId(raw as { chain: string; protocol: string; position_ref: string | null });
+      return oid ? links.get(oid) ?? null : null;
+    })();
+    // Sin position_ref (retirada que cerró la posición) → recuperar por etiqueta.
+    if (!link && !raw.position_ref) link = resolveLinkByLabel(links, raw)?.link ?? null;
 
-    // INGESTA AUTOMÁTICA: posición ya enlazada con auto_ingest y evento
-    // posterior a la creación del enlace (lo anterior al enlace suele estar
-    // ya contabilizado a mano → queda en la bandeja para revisión).
-    const isNewer =
-      link?.created_at && raw.block_time
-        ? new Date(raw.block_time).getTime() > new Date(link.created_at).getTime()
-        : false;
+    // INGESTA AUTOMÁTICA: posición enlazada con auto_ingest y evento posterior
+    // a su LÍNEA BASE (adopción de la posición → del portfolio → enlace).
+    const blockMs = raw.block_time ? Date.parse(raw.block_time) : NaN;
+    const baselineMs = link
+      ? adoptionByPosition.get(link.position_id) ??
+        portfolioBaselineMs ??
+        (link.created_at ? Date.parse(link.created_at) : NaN)
+      : NaN;
+    const isNewer = Number.isFinite(blockMs) && Number.isFinite(baselineMs) && blockMs > baselineMs;
     if (canWrite && link && link.auto_ingest && isNewer) {
       // NO RESUCITAR lo deshecho/borrado a propósito: si existe una transacción
       // BORRADA para este evento, el gestor lo quitó queriendo (deshacer deja
@@ -587,7 +704,7 @@ export async function GET(request: NextRequest) {
       const since = new Date(Date.now() - 48 * 3600_000).toISOString();
       const { data: recent } = await client
         .from("onchain_events")
-        .select("id, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, includes_principal, position_ref, status")
+        .select("id, event_key, kind, chain, protocol, label, tokens, value_usd, block_time, tx_hash, includes_principal, position_ref, status")
         .eq("portfolio_id", portfolioId)
         .eq("status", "ingested")
         .gte("ingested_at", since);
