@@ -77,12 +77,14 @@
   --dur: 200ms;
   --dur-slow: 250ms;
 
-  /* Composición por sección — paleta de series de la identidad (§51), para
-     que categorías y gráficos hablen el mismo idioma cromático. */
+  /* Composición por sección. El CIAN no aparece aquí a propósito: baja a
+     acento excepcional (2 %) reservado a sincronización y datos en vivo, no a
+     marcar categorías. */
   --section-wallet: #718096;   /* neutra */
-  --section-staking: #8B78FF;  /* terciaria */
-  --section-lending: #18BFD0;  /* secundaria */
+  --section-staking: #475467;  /* slate */
+  --section-lending: #8B78FF;  /* terciaria */
   --section-lp: #2F6BFF;       /* principal */
+  --slate: #475467;
 
   /* Radios (§43) */
   --radius-sm: 6px;   /* controles pequeños */
@@ -125,12 +127,10 @@ body {
   background-color: var(--void-deep);
   color: var(--foreground);
   font-family: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
-  letter-spacing: 0.005em;
-  /* Luz fría desde arriba-izquierda, casi subliminal. Sin retículas. */
-  background-image:
-    radial-gradient(1200px 520px at 30% -14%, rgb(47 107 255 / 0.05), transparent 60%),
-    radial-gradient(900px 620px at 92% 112%, rgb(24 191 208 / 0.028), transparent 60%);
-  background-attachment: fixed;
+  letter-spacing: 0;
+  /* Fondo PLANO. La identidad «Institutional Editorial» (§11–12) prohíbe los
+     resplandores azules y los degradados decorativos: la profundidad se
+     construye con superficies, espacio y jerarquía, no con luz. */
 }
 
 /* Los números son el producto — mono tabular en todo dato */

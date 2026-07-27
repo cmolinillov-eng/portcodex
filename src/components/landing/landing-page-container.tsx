@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { SplineHero } from "./spline-hero";
+import { LandingHero } from "./landing-hero";
 import { AuthPanel, type AuthPanelView } from "./auth-panel";
 
 export function LandingPageContainer() {
@@ -9,7 +9,7 @@ export function LandingPageContainer() {
 
   return (
     <>
-      <SplineHero
+      <LandingHero
         onLoginClick={() => setAuthView("login")}
       />
       <AuthPanel
