@@ -112,6 +112,45 @@ function resolveLinkByLabel(
   return hits.length === 1 ? hits[0] : null;
 }
 
+/**
+ * Posición que COBRÓ un token como recompensa. Las recompensas (JTO, PYUSD…) se
+ * cobran de un pool y se venden desde la wallet sin haber tenido nunca hold
+ * propio: contablemente viven como "harvest pendiente" de la posición que las
+ * generó, así que su venta debe imputarse ahí.
+ *
+ * Solo resuelve si UNA sola posición cobró ese token: si dos pools reparten la
+ * misma recompensa no se puede saber de cuál salió lo vendido, y adivinar
+ * descargaría el pendiente equivocado.
+ */
+async function findHarvestOrigin(
+  client: ReturnType<typeof getClient>,
+  portfolioId: string,
+  symbol: string,
+): Promise<LinkInfo | null> {
+  const sym = (symbol ?? "").trim().toUpperCase();
+  // Un símbolo sin resolver ("jtoj…" = atajo del mint) no casa con el libro.
+  if (!sym || sym.includes("…") || sym.includes("...")) return null;
+  const { data } = await client
+    .from("transactions")
+    .select("position_id, protocol, position_type")
+    .eq("portfolio_id", portfolioId)
+    .is("deleted_at", null)
+    .eq("type", "harvest")
+    .eq("token_in_symbol", sym);
+  const unique = new Map<string, LinkInfo>();
+  for (const r of data ?? []) {
+    const pid = (r.position_id as string) ?? "";
+    if (!pid) continue;
+    unique.set(pid, {
+      protocol: (r.protocol as string) ?? "Wallet",
+      position_id: pid,
+      position_type: (r.position_type as string) ?? "Liquidity Pool",
+      auto_ingest: true,
+    });
+  }
+  return unique.size === 1 ? [...unique.values()][0] : null;
+}
+
 type PendingEvent = {
   id: string;
   /** Clave del evento: sirve para localizar sus llegadas al hold (`…:in:SÍMBOLO`). */
@@ -189,26 +228,38 @@ async function performIngest(
     const noteTail = `on-chain permuta (${ev.label ?? ""}) tx ${ev.tx_hash ?? ""}`.trim();
     const rows: Array<Record<string, unknown>> = [];
 
+    // ── ORIGEN de cada pata VENDIDA: hold propio o recompensa cobrada ───────
+    // Vender un token sin hold propio es el caso normal de las RECOMPENSAS
+    // (JTO, PYUSD…): se cobran de un pool y se venden desde la wallet sin haber
+    // tenido nunca posición. Están contabilizadas como "harvest pendiente" de
+    // la posición que las generó, así que la venta se imputa AHÍ (descargando
+    // ese pendiente) en vez de inventar un hold que nacería en negativo.
+    const soldOrigins: Array<{ t: EventToken; link: LinkInfo; fromHarvest: boolean }> = [];
     for (const t of sold) {
       const link = links.get(refId(t.holdRef!));
-      if (!link) {
-        // Vender un token sin posición contable propia. Caso típico: las
-        // RECOMPENSAS cobradas de un pool (JTO, PYUSD…) que se venden desde la
-        // wallet sin haber tenido nunca hold propio.
-        //
-        // NO basta con crearle un hold implícito (como se hace con el token
-        // comprado): esos tokens están contabilizados como "harvest pendiente"
-        // de la posición que los generó, así que un hold nuevo nacería con
-        // saldo NEGATIVO y el pendiente del pool nunca se descargaría.
-        // Y tampoco vale reutilizar `rebalance_harvest_out` —que sí descarga el
-        // pendiente— porque el motor fiscal lo trata como movimiento interno NO
-        // imponible, y esto es una permuta REAL que tributa (art. 37.1.h LIRPF).
-        //
-        // Necesita una vía propia: descargar el pendiente del harvest Y tributar
-        // como permuta. Hasta entonces se queda en la bandeja: mejor pendiente
-        // que una posición fantasma o una venta sin declarar.
-        return { ok: false, error: `Permuta: el token vendido (${t.symbol}) no tiene posición contable propia — regístrala a mano.`, status: 400 };
+      if (link) {
+        soldOrigins.push({ t, link, fromHarvest: false });
+        continue;
       }
+      const harvestOrigin = await findHarvestOrigin(client, portfolioId, t.symbol);
+      if (!harvestOrigin) {
+        return {
+          ok: false,
+          error: `Permuta: el token vendido (${t.symbol}) no tiene posición propia ni recompensas cobradas que lo justifiquen — regístrala a mano.`,
+          status: 400,
+        };
+      }
+      soldOrigins.push({ t, link: harvestOrigin, fromHarvest: true });
+    }
+    // Venta de recompensas: NO mueve el Total Depositado (ese valor ya se contó
+    // como rendimiento al cobrarlo; sumarlo otra vez como capital lo anularía),
+    // pero SÍ tributa como permuta — el motor fiscal sigue viéndola por
+    // `source: onchain_swap`, y `reason: harvest_sold` solo le dice al dashboard
+    // que es movimiento interno y que descargue el pendiente del origen.
+    const isHarvestSale = soldOrigins.some((o) => o.fromHarvest);
+    const harvestSaleMeta = isHarvestSale ? { reason: "harvest_sold" } : {};
+
+    for (const { t, link } of soldOrigins) {
       rows.push({
         portfolio_id: portfolioId,
         type: "withdrawal",
@@ -225,7 +276,7 @@ async function performIngest(
         protocol: link.protocol,
         position_id: link.position_id,
         position_type: link.position_type || "Hold",
-        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel },
+        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel, ...harvestSaleMeta },
       });
     }
     for (const t of bought) {
@@ -254,7 +305,7 @@ async function performIngest(
         protocol: link.protocol,
         position_id: link.position_id,
         position_type: link.position_type || "Hold",
-        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel },
+        metadata: { source: "onchain_swap", eventId: ev.id, swapBought: boughtLabel, swapSold: soldLabel, ...harvestSaleMeta },
       });
     }
 
@@ -665,7 +716,18 @@ export async function GET(request: NextRequest) {
         (link.created_at ? Date.parse(link.created_at) : NaN)
       : NaN;
     const isNewer = Number.isFinite(blockMs) && Number.isFinite(baselineMs) && blockMs > baselineMs;
-    if (canWrite && link && link.auto_ingest && isNewer) {
+    // PERMUTAS sin enlace: el token vendido puede no tener hold propio (es el
+    // caso de las RECOMPENSAS cobradas de un pool y vendidas desde la wallet).
+    // No hace falta enlace previo: la rama de permuta resuelve cada pata por su
+    // cuenta —hold propio o posición que cobró la recompensa— y rechaza si no
+    // encuentra origen. Basta con que sea posterior a la línea base.
+    const swapNoLink =
+      (raw.kind ?? "") === "swap" &&
+      !link &&
+      Number.isFinite(blockMs) &&
+      portfolioBaselineMs !== null &&
+      blockMs > portfolioBaselineMs;
+    if (canWrite && ((link && link.auto_ingest && isNewer) || swapNoLink)) {
       // NO RESUCITAR lo deshecho/borrado a propósito: si existe una transacción
       // BORRADA para este evento, el gestor lo quitó queriendo (deshacer deja
       // el evento en 'pending', pero la idempotencia de performIngest solo mira
@@ -695,7 +757,15 @@ export async function GET(request: NextRequest) {
         .select("id");
       if (!claimed || claimed.length === 0) continue; // otro proceso lo tomó
 
-      const result = await performIngest(raw as PendingEvent, portfolioId, link.position_id, link.protocol, link.position_type);
+      // En permutas sin enlace estos tres parámetros no se usan: la rama de
+      // permuta de performIngest resuelve el origen y el destino de cada pata.
+      const result = await performIngest(
+        raw as PendingEvent,
+        portfolioId,
+        link?.position_id ?? "",
+        link?.protocol ?? "Wallet",
+        link?.position_type ?? "Hold",
+      );
       if (result.ok) {
         autoIngested++;
         continue; // ya contabilizado: fuera de la bandeja

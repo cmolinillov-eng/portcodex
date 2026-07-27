@@ -1660,7 +1660,14 @@ export async function getDashboardData(options?: {
     // así que su salida tampoco debe restar al Total Depositado ni al cost basis
     // de la posición origen. Se trata como movimiento interno.
     const isRebalanceHarvestOut = reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
-    const isInternalMovement = isHarvestReinvestInternal || isRebalanceTransfer || isRebalanceHarvestOut;
+    // VENTA DE RECOMPENSAS (harvest_sold): vender lo cobrado de un pool no es
+    // capital que entra ni sale — ese valor ya se contó como rendimiento al
+    // cobrarlo, así que sumarlo o restarlo del Depositado lo anularía. Es
+    // interno para el capital, pero SÍ tributa como permuta (eso lo decide el
+    // motor fiscal por `source: onchain_swap`, no esta bandera).
+    const isHarvestSold = reason === "harvest_sold" || source === "harvest_sold";
+    const isInternalMovement =
+      isHarvestReinvestInternal || isRebalanceTransfer || isRebalanceHarvestOut || isHarvestSold;
     // ROTACIÓN de capital hold→posición: un depósito de LP/staking/lending
     // AUTO-INGERIDO (onchain_ingest) mueve fondos que YA entraron por un hold y
     // que ya cuentan en el Total Depositado; contarlo otra vez inflaría el total
@@ -1813,7 +1820,11 @@ export async function getDashboardData(options?: {
       // origen — su valor pasa a formar parte de la posición destino. Sin
       // este descuento se contaría DOBLE en totalValueUsd (valor en destino
       // + pending vivo en origen).
-      if (isRebalanceHarvestOut && portfolioId && positionId) {
+      // Idem cuando la recompensa se VENDE (harvest_sold): la salida se imputa
+      // a la posición que la cobró, así que su pendiente debe descargarse — si
+      // no, el pool seguiría mostrando eternamente como "por reinvertir" unos
+      // tokens que ya no existen.
+      if ((isRebalanceHarvestOut || isHarvestSold) && portfolioId && positionId) {
         const outSymbol = (tx.token_out_symbol ?? "").toUpperCase();
         if (outSymbol && outAmount > 0) {
           if (!harvestByPositionAcc[positionKey]) {
