@@ -1607,6 +1607,16 @@ export async function getDashboardData(options?: {
     overrideSetAtMs.set(positionCompositeKey(row.portfolio_id, row.protocol ?? "Wallet", row.position_id ?? ""), ts);
     overrideSetAtMs.set(positionCompositeKey("", row.protocol ?? "Wallet", row.position_id ?? ""), ts);
   }
+  // ROTACIONES hold→posición pendientes de imputar al hold de ORIGEN, y el
+  // índice de holds por (portfolio, símbolo) que las resuelve. Ver el bloque
+  // que las aplica tras el bucle.
+  const pendingRotations: Array<{
+    portfolioId: string;
+    symbol: string;
+    valueUsd: number;
+    date: string | null;
+  }> = [];
+  const holdKeysBySymbol = new Map<string, { full: string; fallback: string }>();
   const addDeposited = (fullKey: string, fallbackKey: string, delta: number, txDate: string | null) => {
     depositedByPosition.set(fullKey, (depositedByPosition.get(fullKey) ?? 0) + delta);
     depositedByPosition.set(fallbackKey, (depositedByPosition.get(fallbackKey) ?? 0) + delta);
@@ -1663,6 +1673,21 @@ export async function getDashboardData(options?: {
       source === "onchain_ingest" &&
       (txType === "lp_deposit" || txType === "staking_deposit" || txType === "lending_supply");
 
+    // Índice de holds por símbolo: el hold es el ORIGEN natural del capital que
+    // rota a un pool/staking/lending de la misma wallet.
+    if ((tx.position_type ?? "") === "Hold" && positionId) {
+      const holdSymbol = (inSymbol || (tx.token_out_symbol ?? "").toUpperCase()).trim();
+      if (holdSymbol) {
+        const idx = `${portfolioId}|${holdSymbol}`;
+        if (!holdKeysBySymbol.has(idx)) {
+          holdKeysBySymbol.set(idx, {
+            full: positionCompositeKey(portfolioId, protocol, positionId),
+            fallback: positionCompositeKey("", protocol, positionId),
+          });
+        }
+      }
+    }
+
     if (txType === "harvest") {
       totalHarvestUsd += inAmount * spotPrice;
       if (portfolioId && positionId) {
@@ -1703,7 +1728,7 @@ export async function getDashboardData(options?: {
     }
 
     if (capitalInTypes.has(txType)) {
-      const skipCapitalIn = isInternalMovement || isRotationDeposit;
+      const skipCapitalIn = isInternalMovement;
       if (!skipCapitalIn && positionId) {
         const fullKey = positionCompositeKey(portfolioId, protocol, positionId);
         const fallbackKey = positionCompositeKey("", protocol, positionId);
@@ -1711,6 +1736,19 @@ export async function getDashboardData(options?: {
       }
       if (!skipCapitalIn) {
         totalDepositedUsd += inAmount * spotPrice;
+      }
+      // ROTACIÓN hold→posición: el capital SÍ se acredita al destino (arriba) —
+      // antes se descartaba entero y la base se quedaba en el hold, dejando al
+      // pool con un depositado corto y un ROI ficticio (un pool de stables
+      // marcaba +155%). Para no inflar el total, se anota para DEBITARLO del
+      // hold de origen tras el bucle: la base viaja, el total no cambia.
+      if (isRotationDeposit && positionId && inSymbol) {
+        pendingRotations.push({
+          portfolioId,
+          symbol: inSymbol,
+          valueUsd: inAmount * spotPrice,
+          date: tx.transaction_date,
+        });
       }
       // Rebalance hereda el cost basis del origen sin afectar al total global.
       if (isRebalanceTransfer && positionId) {
@@ -1795,6 +1833,18 @@ export async function getDashboardData(options?: {
       // el pending (el descuento se hace al registrar el depósito de reinversión).
       // Las filas legacy con ese reason serán eliminadas por migración SQL.
     }
+  }
+
+  // Contrapartida de las ROTACIONES hold→posición. El depósito de destino ya
+  // sumó al total; aquí se resta del hold de ORIGEN (mismo portfolio y símbolo)
+  // para que el total quede NEUTRO: la base solo cambia de sitio. Si no existe
+  // hold de ese símbolo, el capital entró de fuera directamente a la posición y
+  // debe seguir sumando al total (no se debita nada).
+  for (const rot of pendingRotations) {
+    const hold = holdKeysBySymbol.get(`${rot.portfolioId}|${rot.symbol}`);
+    if (!hold) continue;
+    addDeposited(hold.full, hold.fallback, -rot.valueUsd, rot.date);
+    totalDepositedUsd -= rot.valueUsd;
   }
 
   // Overrides manuales del depositado: sustituyen la base derivada de la

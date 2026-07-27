@@ -78,6 +78,17 @@ async function getLinks(portfolioId: string): Promise<Map<string, LinkInfo>> {
   return out;
 }
 
+// NOTA (pendiente, ver bandeja): los eventos de RETIRADA que CIERRAN una
+// posición llegan sin position_ref — el escáner de transacciones casa contra
+// posiciones VIVAS y, al cerrarse, la posición ya no está. Se puede recuperar
+// el enlace por (cadena, protocolo, etiqueta), pero NO basta con eso para
+// auto-ingerirlos: performIngest solo escribe la pata de la posición
+// (lp_withdraw) y el escáner de Solana, a diferencia del worker, no emite la
+// llegada del dinero al hold. Auto-registrarlos restaría el capital del pool
+// sin devolverlo a la wallet → el Total Depositado perdería ese importe. Antes
+// de resolverlos automáticamente hay que emitir la llegada al hold (como hace
+// emitHoldArrivals en el worker para Kamino/Meteora).
+
 type PendingEvent = {
   id: string;
   portfolio_id?: string;
