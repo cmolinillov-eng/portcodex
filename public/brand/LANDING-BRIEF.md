@@ -359,3 +359,122 @@ Coinbase. Si dudas entre impresionar y explicar, **explica**.
 - Alineación a la izquierda salvo en la apertura y el cierre.
 - Separadores finos (1 px) en lugar de cajas.
 - Un solo acento por pantalla: si hay dos azules compitiendo, sobra uno.
+
+---
+
+# PARTE 7 — CÓMO NO PARECER HECHO POR UNA IA
+
+Esta parte es la más importante para el resultado final. El color y la
+tipografía ya están resueltos; lo que delata a un diseño generado no es la
+paleta, es **la composición**. Estas ocho reglas van en contra de lo que
+cualquier modelo hace por defecto.
+
+## 1. Prohibida la rejilla de tres iconos
+
+El patrón *icono arriba · título · párrafo · repetido en tres columnas* es la
+firma del diseño generado. **No aparece ni una vez en esta página.**
+
+En su lugar:
+- **Lista editorial**: los puntos en columna, alineados a la izquierda, con una
+  línea fina entre ellos y numeración discreta.
+- **Composición asimétrica**: un bloque grande a la izquierda y dos menores
+  apilados a la derecha, con pesos distintos.
+- **Texto corrido con destacados**: un párrafo donde las ideas clave van en
+  otro peso, en lugar de trocearlo en cajas.
+
+Si una sección pide tres elementos, que tengan **tamaños diferentes**. Nunca
+tres cajas idénticas.
+
+## 2. Los iconos no decoran
+
+La identidad ya lo dice y aquí se aplica sin excepción: un icono aparece
+**solo** si sustituye a una palabra o marca un estado. Un icono junto a un
+título que ya se explica solo es ruido.
+
+Regla práctica: **si al taparlo no se pierde información, sobra.**
+
+## 3. Las secciones no miden lo mismo
+
+Un diseño generado da a todas las secciones la misma altura y la misma densidad.
+Una página editorial **respira de forma irregular**:
+
+- La apertura, muy vacía.
+- La sección de contabilidad (5), **densa**: es el argumento.
+- Lo fiscal (6), otra vez calmado, casi un documento.
+- El cierre, **vacío del todo**: un titular y un botón.
+
+Ese contraste de densidad es la mitad del carácter editorial.
+
+## 4. Nada de datos inventados bonitos
+
+Los números redondos y simétricos (1.234,56 · +12,5 % · 45 %) delatan una
+maqueta. Usa cifras **reales o verosímiles**, con su desorden natural:
+
+```
+11.188,67 US$      no  12.500,00 US$
+−6,34 %            no  +12,5 %
+7.960,28 US$       no  8.000 US$
+```
+
+Y que convivan positivos y negativos. Una cartera con todo en verde no es
+creíble para nadie que gestione dinero de verdad.
+
+## 5. Alineación a la izquierda, composición asimétrica
+
+Centrar todo es el reflejo por defecto. Aquí:
+- Solo se centran la **apertura** y el **cierre**.
+- Todo lo demás va **alineado a la izquierda**.
+- La retícula puede **romperse a propósito**: un titular que ocupa 7 de 12
+  columnas y un texto que arranca en la 3 tienen más carácter que dos bloques
+  centrados.
+
+## 6. Los titulares tienen ritmos distintos
+
+Un modelo genera títulos de longitud parecida y estructura paralela. Que
+convivan longitudes muy distintas:
+
+> «Tu patrimonio digital, bien explicado.» *(largo)*
+> «Solo lectura. Siempre.» *(corto y seco)*
+> «El patrimonio está repartido. La información, también.» *(dos tiempos)*
+
+Alguno debe ser **incómodamente corto**. Es lo que da voz.
+
+## 7. Menos cajas, más filos
+
+- No todas las agrupaciones necesitan tarjeta. La mayoría se resuelven con
+  **espacio** y un **filo de 1 px**.
+- Si dos tarjetas van seguidas, que **no tengan el mismo tamaño**.
+- Nada de sombras difusas bajo cada bloque.
+
+## 8. El acento, con avaricia
+
+Un acento por pantalla. Si el botón es azul, los iconos de esa sección **no** lo
+son. El azul debe notarse **porque escasea**.
+
+Un truco fiable: quítalo de todas partes y devuélvelo **solo** donde haya una
+acción o un dato que exija la mirada.
+
+---
+
+## Contraste tipográfico: que sea grande
+
+Un modelo pone los titulares al doble que el cuerpo. Lo editorial va mucho más
+lejos: **56 px de titular frente a 15 px de cuerpo** es casi 4×. Ese salto es lo
+que se lee como "publicación", no como "web de plantilla".
+
+Dentro de una sección, pocos tamaños y bien diferenciados. Si dos textos se
+parecen en tamaño, o se separan o se igualan.
+
+---
+
+## Cómo pedirlo
+
+**No pidas la página entera de una vez.** Un modelo al que se le pide "una
+landing completa" cae en sus patrones por defecto para rellenar. Ve **sección a
+sección**, revisando cada una. Salen mejores y se controla el resultado.
+
+Y en cada petición, incluye esta frase:
+
+> Nada de rejillas de tres columnas con icono, título y párrafo. Composición
+> editorial asimétrica, alineada a la izquierda, con densidades distintas entre
+> secciones.
