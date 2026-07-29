@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="./doc-page.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+doc-page:not(:defined){visibility:hidden}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@keyframes pcxPulse{0%,100%{opacity:1}50%{opacity:.35}}
+@media print{*{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}}
+body{margin:0;background:#070B12;color:#F3F6FA;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#A5B1C2;text-decoration:none}
+a:hover{color:#F3F6FA}
+button{font-family:inherit;font-variant-numeric:tabular-nums}
+</style>
+</helmet>
+<doc-page size="letter" content-width="1240px" content-height="1800px" margin="0">
+<div style="background:#070B12;padding-bottom:44px">
+
+  <div style="display:flex;align-items:center;gap:40px;padding:0 64px;height:56px;border-bottom:1px solid rgba(148,163,184,0.12)">
+    <div style="display:flex;align-items:baseline;gap:9px">
+      <div style="display:flex;align-items:center;gap:9px">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" style="display:block;flex:none">
+        <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round"></path>
+        <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0"></rect>
+      </svg>
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA">PortCodex</span>
+    </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:26px;height:100%">
+      <span style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:500;color:#F3F6FA;box-shadow:inset 0 -2px 0 #2F6BFF">Resumen</span>
+      <a href="#" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Cartera</a>
+      <a href="#" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Movimientos</a>
+      <a href="#" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Fiscalidad</a>
+      <a href="#" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Informes</a>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:20px">
+      <div style="display:flex;align-items:center;gap:9px;padding:5px 11px 5px 10px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+        <span style="width:5px;height:5px;border-radius:50%;background:#19B77A"></span>
+        <span style="font-size:12px;font-weight:500;color:#F3F6FA">M Fita</span>
+        <span style="font-size:10px;color:#7D8B9E">▾</span>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">EUR · US$</span>
+    </div>
+  </div>
+
+  <div style="max-width:1240px;padding:0 64px">
+
+    <div style="padding:56px 0 0">
+      <div style="display:flex;align-items:flex-start;gap:64px">
+        <div>
+          <div style="font-size:13px;font-weight:400;color:#7D8B9E;margin-bottom:14px">Patrimonio total</div>
+          <div style="display:flex;align-items:flex-end;gap:28px;white-space:nowrap">
+            <div style="font-size:60px;font-weight:600;line-height:0.92;letter-spacing:-0.028em;color:#F3F6FA">11.191,30 <span style="font-size:26px;font-weight:400;letter-spacing:-0.01em;color:#A5B1C2">US$</span></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:14px;margin-top:18px">
+            <span style="font-size:18px;font-weight:500;color:#F0646F">−754,89 US$</span>
+            <span style="width:1px;height:14px;background:rgba(148,163,184,0.12)"></span>
+            <span style="font-size:18px;font-weight:500;color:#F0646F">−6,32 %</span>
+            <span style="font-size:12px;font-weight:400;color:#7D8B9E;margin-left:6px">frente al total depositado</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:10px;margin-top:14px">
+            <span style="font-size:12px;font-weight:400;color:#7D8B9E">Precios actualizados hace 8 minutos</span>
+            <a href="#" style="font-size:12px;font-weight:400;color:#A5B1C2">Actualizar precios</a>
+          </div>
+        </div>
+        <div style="margin-left:auto;text-align:right">
+          <div style="display:flex;align-items:center;justify-content:flex-end;gap:8px">
+            <span style="width:6px;height:6px;border-radius:50%;background:#18BFD0;animation:pcxPulse 2.6s ease-in-out infinite"></span>
+            <span style="font-size:13px;font-weight:400;color:#A5B1C2">Lectura automática</span>
+          </div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:7px">4 wallets · 4 redes</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Sincronizado hace 8 min</div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:baseline;gap:44px;margin-top:40px;padding-top:16px;border-top:1px solid rgba(148,163,184,0.12)">
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font-size:12px;color:#7D8B9E">Depositado</span>
+          <span style="font-size:14px;font-weight:500;color:#A5B1C2">11.946 US$</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font-size:12px;color:#7D8B9E">Rendimiento</span>
+          <span style="font-size:14px;font-weight:500;color:#A5B1C2">432 US$</span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:9px">
+          <span style="font-size:12px;color:#7D8B9E">P&amp;L</span>
+          <span style="font-size:14px;font-weight:500;color:#A5B1C2">−755 US$</span>
+          <span style="font-size:12px;font-weight:400;color:#7D8B9E">(−6,32 %)</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:52px 0 0">
+      <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:22px">
+        <h2 style="margin:0;font-size:15px;font-weight:600;color:#F3F6FA">Composición de la cartera</h2>
+        <span style="font-size:12px;color:#7D8B9E">2 estrategias activas · Staking y Lending sin posiciones</span>
+      </div>
+
+      <div style="display:flex;gap:2px;height:10px;border-radius:3px;overflow:hidden">
+        <div style="width:49.35%;background:#DCE3EC;border-radius:3px 0 0 3px"></div>
+        <div style="width:50.65%;background:#42566E;border-radius:0 3px 3px 0"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;margin-top:22px">
+        <div style="display:flex;align-items:baseline;gap:16px;padding-right:48px">
+          <span style="width:14px;height:2px;background:#DCE3EC;transform:translateY(-4px)"></span>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:500;color:#F3F6FA">Wallet (HODL)</div>
+            <div style="font-size:12px;color:#7D8B9E;margin-top:5px">Custodia propia · sin bloqueo</div>
+          </div>
+          <div style="margin-left:auto;flex:none;text-align:right;white-space:nowrap;padding-left:20px">
+            <div style="font-size:19px;font-weight:500;color:#F3F6FA;letter-spacing:-0.01em">9.156,95 US$</div>
+            <div style="font-size:12px;color:#A5B1C2;margin-top:5px">49,35 %</div>
+          </div>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:16px;padding-left:48px;border-left:1px solid rgba(148,163,184,0.12)">
+          <span style="width:14px;height:2px;background:#42566E;transform:translateY(-4px)"></span>
+          <div style="min-width:0">
+            <div style="font-size:13px;font-weight:500;color:#F3F6FA">Liquidity Pools</div>
+            <div style="font-size:12px;color:#7D8B9E;margin-top:5px">3 posiciones · Kamino, PancakeSwap</div>
+          </div>
+          <div style="margin-left:auto;flex:none;text-align:right;white-space:nowrap;padding-left:20px">
+            <div style="font-size:19px;font-weight:500;color:#F3F6FA;letter-spacing:-0.01em">9.397,48 US$</div>
+            <div style="font-size:12px;color:#A5B1C2;margin-top:5px">50,65 %</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:52px 0 0">
+      <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:6px">
+        <h2 style="margin:0;font-size:15px;font-weight:600;color:#F3F6FA">Evolución del patrimonio</h2>
+        <span style="font-size:12px;color:#7D8B9E">Valor total frente a total depositado</span>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:4px">
+          <sc-for list="{{ ranges }}" as="r" hint-placeholder-count="4">
+            <button onClick="{{ r.onClick }}" style="{{ r.style }}">{{ r.label }}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:40px;align-items:stretch;margin-top:18px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:baseline;gap:12px;height:20px">
+            <sc-if value="{{ hover }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;color:#7D8B9E">{{ hover.date }}</span>
+              <span style="font-size:13px;font-weight:500;color:#F3F6FA">{{ hover.value }}</span>
+              <span style="font-size:12px;color:#A5B1C2">depositado {{ hover.dep }}</span>
+            </sc-if>
+          </div>
+          <div style="display:flex;gap:14px;align-items:flex-start">
+          <div style="flex:1;min-width:0;position:relative">
+          <svg viewBox="0 0 836 250" preserveAspectRatio="none" style="display:block;width:100%;height:250px">
+            <sc-for list="{{ grid }}" as="g" hint-placeholder-count="4">
+              <line x1="0" y1="{{ g.y }}" x2="836" y2="{{ g.y }}" stroke="rgba(148,163,184,0.12)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+            </sc-for>
+            <defs>
+              <linearGradient id="pcxFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2F6BFF" stopOpacity="0.25"></stop>
+                <stop offset="100%" stopColor="#2F6BFF" stopOpacity="0"></stop>
+              </linearGradient>
+            </defs>
+            <path d="{{ areaPath }}" fill="url(#pcxFill)" stroke="none"></path>
+            <path d="{{ depPath }}" fill="none" stroke="#42566E" strokeWidth="1.5" strokeDasharray="4 4" vectorEffect="non-scaling-stroke"></path>
+            <path d="{{ valPath }}" fill="none" stroke="#2F6BFF" strokeWidth="1.75" strokeLinejoin="round" vectorEffect="non-scaling-stroke"></path>
+            <sc-if value="{{ hover }}" hint-placeholder-val="{{ false }}">
+              <g>
+                <line x1="{{ hover.x }}" y1="0" x2="{{ hover.x }}" y2="224" stroke="rgba(148,163,184,0.28)" strokeWidth="1" vectorEffect="non-scaling-stroke"></line>
+                <circle cx="{{ hover.x }}" cy="{{ hover.y }}" r="3.5" fill="#070B12" stroke="#2F6BFF" strokeWidth="1.75" vectorEffect="non-scaling-stroke"></circle>
+              </g>
+            </sc-if>
+            <rect x="0" y="0" width="836" height="250" fill="transparent" onMouseMove="{{ onMove }}" onMouseLeave="{{ onLeave }}"></rect>
+          </svg>
+          <sc-for list="{{ xticks }}" as="t" hint-placeholder-count="5">
+            <span style="{{ t.style }}">{{ t.label }}</span>
+          </sc-for>
+          </div>
+          <div style="width:58px;flex:none;position:relative;height:250px">
+            <sc-for list="{{ grid }}" as="g" hint-placeholder-count="4">
+              <span style="{{ g.style }}">{{ g.label }}</span>
+            </sc-for>
+          </div>
+          </div>
+        </div>
+
+        <div style="width:262px;flex:none;padding-left:36px;border-left:1px solid rgba(148,163,184,0.12);display:flex;flex-direction:column;gap:22px;padding-top:20px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+            <span style="font-size:12px;color:#7D8B9E">TWR</span>
+            <span style="font-size:17px;font-weight:500;white-space:nowrap;color:#19B77A">+45,85 %</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+            <span style="font-size:12px;color:#7D8B9E">Máxima caída</span>
+            <span style="font-size:17px;font-weight:500;white-space:nowrap;color:#F0646F">−10,68 %</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+            <span style="font-size:12px;color:#7D8B9E;white-space:nowrap">P&amp;L acumulado</span>
+            <span style="font-size:17px;font-weight:500;white-space:nowrap;color:#F3F6FA">4.417,62 US$</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-top:20px;border-top:1px solid rgba(148,163,184,0.12)">
+            <span style="font-size:12px;color:#7D8B9E">Snapshots</span>
+            <span style="font-size:14px;font-weight:500;color:#A5B1C2">27</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <sc-if value="{{ showIdle }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;align-items:center;gap:14px;margin-top:48px;padding:14px 0;border-top:1px solid rgba(148,163,184,0.12);border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="width:5px;height:5px;border-radius:50%;background:#F0A43C"></span>
+        <span style="font-size:13px;font-weight:400;color:#A5B1C2">Rendimiento ocioso</span>
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">28,02 US$</span>
+        <span style="font-size:13px;font-weight:400;color:#7D8B9E">generados sin reclamar en 3 posiciones</span>
+        <a href="#" style="margin-left:auto;font-size:13px;font-weight:500;color:#F3F6FA">Reclamar</a>
+      </div>
+    </sc-if>
+
+    <div style="padding:48px 0 0">
+      <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:4px">
+        <h2 style="margin:0;font-size:15px;font-weight:600;color:#F3F6FA">Últimos movimientos</h2>
+        <a href="#" style="margin-left:auto;font-size:13px;font-weight:400;color:#A5B1C2">Ver historial completo →</a>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;font-size:12px;color:#7D8B9E;padding:14px 0 10px;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span>Operación</span>
+        <span style="text-align:right">Cantidad</span>
+        <span>Activo</span>
+        <span>Plataforma</span>
+        <span>Fecha</span>
+        <span style="text-align:right">Importe</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;align-items:baseline;padding:14px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">Harvest rewards</span>
+        <span style="font-size:13px;color:#F3F6FA;text-align:right;white-space:nowrap">18,9292</span>
+        <span style="font-size:13px;color:#A5B1C2">JTO</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;color:#A5B1C2">Kamino (METEORA)</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Solana</div>
+        </div>
+        <span style="font-size:13px;color:#7D8B9E;white-space:nowrap">27 jul · 09:41</span>
+        <span style="font-size:14px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap">+10,05 US$</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;align-items:baseline;padding:14px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">Añadir liquidez</span>
+        <span style="font-size:13px;color:#F3F6FA;text-align:right;white-space:nowrap">4.840,124</span>
+        <span style="font-size:13px;color:#A5B1C2">USDC</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;color:#A5B1C2">Kamino (ORCA)</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Solana</div>
+        </div>
+        <span style="font-size:13px;color:#7D8B9E;white-space:nowrap">26 jul · 17:12</span>
+        <span style="font-size:14px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap">−4.233,84 US$</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;align-items:baseline;padding:14px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">Retirada</span>
+        <span style="font-size:13px;color:#F3F6FA;text-align:right;white-space:nowrap">33,4055</span>
+        <span style="font-size:13px;color:#A5B1C2">SOL</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;color:#A5B1C2">Wallet</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Solana</div>
+        </div>
+        <span style="font-size:13px;color:#7D8B9E;white-space:nowrap">25 jul · 08:03</span>
+        <span style="font-size:14px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap">−2.259,14 US$</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;align-items:baseline;padding:14px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">Depósito</span>
+        <span style="font-size:13px;color:#F3F6FA;text-align:right;white-space:nowrap">19,9578</span>
+        <span style="font-size:13px;color:#A5B1C2">USDC</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;color:#A5B1C2">Wallet</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Solana</div>
+        </div>
+        <span style="font-size:13px;color:#7D8B9E;white-space:nowrap">24 jul · 12:47</span>
+        <span style="font-size:14px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap">+17,46 US$</span>
+      </div>
+      <div style="display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1.05fr) minmax(0,0.65fr) minmax(0,1.5fr) minmax(0,1fr) minmax(0,1.2fr);column-gap:20px;align-items:baseline;padding:14px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+        <span style="font-size:13px;font-weight:500;color:#F3F6FA">Harvest rewards</span>
+        <span style="font-size:13px;color:#F3F6FA;text-align:right;white-space:nowrap">19,8577</span>
+        <span style="font-size:13px;color:#A5B1C2">PYUSD</span>
+        <div style="min-width:0">
+          <div style="font-size:13px;color:#A5B1C2">Kamino (ORCA)</div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:4px">Solana</div>
+        </div>
+        <span style="font-size:13px;color:#7D8B9E;white-space:nowrap">22 jul · 19:25</span>
+        <span style="font-size:14px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap">+17,37 US$</span>
+      </div>
+    </div>
+
+    <div style="padding:52px 0 0">
+      <div style="display:flex;align-items:baseline;gap:16px;margin-bottom:22px">
+        <h2 style="margin:0;font-size:15px;font-weight:600;color:#F3F6FA">Distribución por red</h2>
+        <span style="font-size:12px;color:#7D8B9E">4 redes · 77 % concentrado en Solana</span>
+      </div>
+
+      <div style="display:flex;gap:2px;height:10px;border-radius:3px;overflow:hidden">
+        <div style="width:77.4%;background:#DCE3EC;border-radius:3px 0 0 3px"></div>
+        <div style="width:14.9%;background:#8D9CB0"></div>
+        <div style="width:4.1%;background:#52657D"></div>
+        <div style="width:3.6%;background:#35455A;border-radius:0 3px 3px 0"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin-top:22px">
+        <div style="min-width:0;padding-right:32px">
+          <div style="display:flex;align-items:baseline;gap:11px">
+            <span style="width:14px;height:2px;flex:none;background:#DCE3EC;transform:translateY(-4px)"></span>
+            <span style="font-size:13px;font-weight:500;color:#F3F6FA">Solana</span>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap;margin-top:10px">8.582,56 US$</div>
+          <div style="font-size:12px;color:#A5B1C2;text-align:right;margin-top:5px">77,4 %</div>
+        </div>
+        <div style="min-width:0;padding:0 32px;border-left:1px solid rgba(148,163,184,0.12)">
+          <div style="display:flex;align-items:baseline;gap:11px">
+            <span style="width:14px;height:2px;flex:none;background:#8D9CB0;transform:translateY(-4px)"></span>
+            <span style="font-size:13px;font-weight:500;color:#F3F6FA">Bitcoin</span>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap;margin-top:10px">1.648,79 US$</div>
+          <div style="font-size:12px;color:#A5B1C2;text-align:right;margin-top:5px">14,9 %</div>
+        </div>
+        <div style="min-width:0;padding:0 32px;border-left:1px solid rgba(148,163,184,0.12)">
+          <div style="display:flex;align-items:baseline;gap:11px">
+            <span style="width:14px;height:2px;flex:none;background:#52657D;transform:translateY(-4px)"></span>
+            <span style="font-size:13px;font-weight:500;color:#F3F6FA">HyperEVM</span>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap;margin-top:10px">456,35 US$</div>
+          <div style="font-size:12px;color:#A5B1C2;text-align:right;margin-top:5px">4,1 %</div>
+        </div>
+        <div style="min-width:0;padding-left:32px;border-left:1px solid rgba(148,163,184,0.12)">
+          <div style="display:flex;align-items:baseline;gap:11px">
+            <span style="width:14px;height:2px;flex:none;background:#35455A;transform:translateY(-4px)"></span>
+            <span style="font-size:13px;font-weight:500;color:#F3F6FA">Base</span>
+          </div>
+          <div style="font-size:15px;font-weight:500;color:#F3F6FA;text-align:right;white-space:nowrap;margin-top:10px">397,67 US$</div>
+          <div style="font-size:12px;color:#A5B1C2;text-align:right;margin-top:5px">3,6 %</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:52px;padding-top:14px;border-top:1px solid rgba(148,163,184,0.12);font-size:12px;font-weight:400;color:#7D8B9E">4 wallets conectadas · 14 posiciones leídas · última lectura 28 jul, 13:38</div>
+
+  </div>
+</div>
+</doc-page>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultRange&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;7D&quot;,&quot;30D&quot;,&quot;90D&quot;,&quot;Todo&quot;],&quot;default&quot;:&quot;Todo&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Evolución&quot;},&quot;showDeposited&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Evolución&quot;},&quot;showIdleStrip&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Contenido&quot;}}">
+const VALUES = [4120,4380,4210,4650,5020,6720,7180,6960,7540,8320,8010,8740,9210,9480,10120,9860,10540,10980,11060,11340,11180,11620,12040,12290,12080,11640,11191.30];
+const DEP = [4000,4000,4000,4000,4000,6500,6500,6500,6500,8000,8000,8000,8000,8000,9500,9500,9500,9500,10800,10800,10800,10800,10800,11946,11946,11946,11946];
+const LABELS = ["8 ene","22 ene","5 feb","19 feb","4 mar","18 mar","1 abr","15 abr","29 abr","6 may","13 may","20 may","27 may","3 jun","10 jun","17 jun","24 jun","1 jul","8 jul","11 jul","14 jul","17 jul","20 jul","23 jul","25 jul","27 jul","28 jul"];
+const COUNTS = { "7D": 7, "30D": 14, "90D": 21, "Todo": 27 };
+const W = 836, PR = 0, H = 250, PT = 14, PB = 30;
+const miles = v => Math.round(v).toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+class Component extends DCLogic {
+  state = { range: null, hover: null };
+
+  fmt(v, dec) {
+    return v.toLocaleString("es-ES", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + " US$";
+  }
+
+  geom() {
+    const range = this.state.range || this.props.defaultRange || "Todo";
+    const k = COUNTS[range] || 27;
+    const vals = VALUES.slice(-k), dep = DEP.slice(-k), labels = LABELS.slice(-k);
+    const all = vals.concat(dep);
+    const min = Math.min.apply(null, all), max = Math.max.apply(null, all);
+    const span = max - min || 1;
+    const raw = span / 2.6;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || 10 * mag;
+    const lo = Math.floor((min - span * 0.05) / step) * step;
+    const hi = Math.ceil((max + span * 0.05) / step) * step;
+    const ticks = [];
+    for (let t = hi; t >= lo - 1e-6; t -= step) ticks.push(t);
+    const x = i => (i * (W - PR)) / (k - 1);
+    const y = v => PT + ((hi - v) / (hi - lo)) * (H - PT - PB);
+    return { range, k, vals, dep, labels, lo, hi, ticks, x, y };
+  }
+
+  path(arr, g) {
+    return arr.map((v, i) => (i ? "L" : "M") + g.x(i).toFixed(1) + " " + g.y(v).toFixed(1)).join(" ");
+  }
+
+  renderVals() {
+    const g = this.geom();
+    const showDep = this.props.showDeposited !== false;
+
+    const grid = [];
+    for (let i = 0; i < g.ticks.length; i++) {
+      const v = g.ticks[i];
+      const yy = g.y(v);
+      grid.push({
+        y: yy.toFixed(1),
+        label: miles(v),
+        style: { position: "absolute", top: (yy - 8).toFixed(1) + "px", left: 0, fontSize: 11, color: "#7D8B9E", whiteSpace: "nowrap" }
+      });
+    }
+
+    const tickStyle = (frac, first, last) => ({
+      position: "absolute",
+      top: "224px",
+      left: (frac * 100).toFixed(2) + "%",
+      transform: first ? "none" : last ? "translateX(-100%)" : "translateX(-50%)",
+      fontSize: 11,
+      color: "#7D8B9E",
+      whiteSpace: "nowrap"
+    });
+    const step = Math.max(1, Math.round((g.k - 1) / 4));
+    const xticks = [];
+    for (let i = 0; i < g.k; i += step) {
+      xticks.push({ label: g.labels[i], style: tickStyle(g.x(i) / W, i === 0) });
+    }
+    const last = g.k - 1;
+    if (xticks[xticks.length - 1].label !== g.labels[last]) {
+      xticks.push({ label: g.labels[last], style: tickStyle(1, false, true) });
+    }
+
+    const h = this.state.hover;
+    let hover = null;
+    if (h !== null && h >= 0 && h < g.k) {
+      hover = {
+        x: g.x(h).toFixed(1),
+        y: g.y(g.vals[h]).toFixed(1),
+        date: g.labels[h],
+        value: this.fmt(g.vals[h], 2),
+        dep: this.fmt(g.dep[h], 0)
+      };
+    }
+
+    const ranges = ["7D", "30D", "90D", "Todo"].map(id => {
+      const on = id === g.range;
+      return {
+        label: id,
+        onClick: () => this.setState({ range: id, hover: null }),
+        style: {
+          padding: "5px 11px",
+          border: "1px solid " + (on ? "rgba(148,163,184,0.28)" : "transparent"),
+          borderRadius: 6,
+          background: on ? "#111C2B" : "transparent",
+          color: on ? "#F3F6FA" : "#7D8B9E",
+          fontSize: 12,
+          fontWeight: 500,
+          cursor: "pointer"
+        }
+      };
+    });
+
+    return {
+      showIdle: this.props.showIdleStrip !== false,
+      grid, xticks, hover, ranges,
+      valPath: this.path(g.vals, g),
+      areaPath: this.path(g.vals, g) + " L" + g.x(g.k - 1).toFixed(1) + " " + (H - PB).toFixed(1) + " L0 " + (H - PB).toFixed(1) + " Z",
+      depPath: showDep ? this.path(g.dep, g) : "",
+      onMove: e => {
+        const r = e.currentTarget.getBoundingClientRect();
+        const frac = (e.clientX - r.left) / r.width;
+        const idx = Math.max(0, Math.min(g.k - 1, Math.round(frac * (g.k - 1))));
+        if (idx !== this.state.hover) this.setState({ hover: idx });
+      },
+      onLeave: () => this.setState({ hover: null })
+    };
+  }
+}
+
+</script>
+</body>
+</html>

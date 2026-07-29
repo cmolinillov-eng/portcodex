@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#070B12;color:#F3F6FA;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#A5B1C2;text-decoration:none}
+a:hover{color:#F3F6FA}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#070B12;padding-bottom:80px">
+
+  <div style="display:flex;align-items:center;gap:28px;padding:0 48px;height:56px;border-bottom:1px solid rgba(148,163,184,0.12)">
+    <div style="display:flex;align-items:center;gap:9px">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" style="display:block;flex:none">
+        <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round"></path>
+        <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0"></rect>
+      </svg>
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA">PortCodex</span>
+    </div>
+    <span style="font-size:13px;color:#A5B1C2;padding-left:4px">Administración</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:9px">
+      <span style="font-size:12px;font-weight:500;color:#F3F6FA">Carlos Molinillo</span>
+      <span style="font-size:10px;color:#7D8B9E">▾</span>
+    </div>
+  </div>
+
+  <div style="max-width:1240px;padding:0 48px">
+
+    <div style="display:flex;align-items:flex-end;gap:32px;padding:44px 0 0">
+      <div>
+        <div style="font-size:13px;color:#7D8B9E">Usuarios</div>
+        <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA;margin-top:12px">6 usuarios</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:8px">1 gestor · 5 clientes</div>
+      </div>
+      <button style="margin-left:auto;padding:9px 16px;border:none;border-radius:8px;background:#2F6BFF;color:#F3F6FA;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:#4B7DFF">Crear usuario</button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:24px;margin-top:32px">
+      <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+        <span onClick="{{ t.onClick }}" style="{{ t.style }}">{{ t.label }}</span>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1.6fr) 92px 110px 108px 22px;column-gap:24px;align-items:center;font-size:12px;color:#7D8B9E;margin-top:2px;padding:14px 0 10px;border-bottom:1px solid rgba(148,163,184,0.12)">
+      <span>Usuario</span>
+      <span>Correo</span>
+      <span>Rol</span>
+      <span>Carteras</span>
+      <span style="text-align:right">Alta</span>
+      <span></span>
+    </div>
+
+    <sc-for list="{{ rows }}" as="u" hint-placeholder-count="6">
+      <div onMouseEnter="{{ u.enter }}" onMouseLeave="{{ u.leave }}" style="{{ u.rowStyle }}">
+        <a href="Editar usuario PortCodex.dc.html" style="font-size:13px;font-weight:500;color:#F3F6FA">{{ u.name }}</a>
+        <span style="font-size:13px;color:#A5B1C2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ u.mail }}</span>
+        <span style="font-size:12px;color:#A5B1C2">{{ u.role }}</span>
+        <span style="font-size:12px;color:#A5B1C2;white-space:nowrap">{{ u.portfolios }}</span>
+        <span style="font-size:12px;color:#7D8B9E;text-align:right;white-space:nowrap">{{ u.date }}</span>
+        <span style="{{ u.arrowStyle }}">→</span>
+      </div>
+    </sc-for>
+
+    <div style="margin-top:40px;padding-top:14px;border-top:1px solid rgba(148,163,184,0.12);font-size:12px;color:#7D8B9E">Los gestores se listan primero. El rol se modifica en la ficha de cada usuario.</div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+const USERS = [
+  { name: "Carlos Molinillo", mail: "cmolinillov@hotmail.com", role: "Gestor", portfolios: "5 carteras", date: "21 feb 2026" },
+  { name: "Manu Acedo", mail: "manuacedo@gmail.com", role: "Cliente", portfolios: "1 cartera", date: "7 jul 2026" },
+  { name: "FITA", mail: "rafema92@gmail.com", role: "Cliente", portfolios: "1 cartera", date: "18 abr 2026" },
+  { name: "Mario Mano", mail: "mariologo95@gmail.com", role: "Cliente", portfolios: "1 cartera", date: "14 mar 2026" },
+  { name: "M Fita", mail: "fuenmariz@gmail.com", role: "Cliente", portfolios: "1 cartera", date: "7 mar 2026" },
+  { name: "Pablo GS", mail: "pablogs22@gmail.com", role: "Cliente", portfolios: "1 cartera", date: "3 mar 2026" }
+];
+const GRID = "minmax(0,1.15fr) minmax(0,1.6fr) 92px 110px 108px 22px";
+
+class Component extends DCLogic {
+  state = { tab: "Todos", hover: null };
+
+  renderVals() {
+    const counts = { Todos: USERS.length, Gestores: 1, Clientes: 5 };
+    const tabs = ["Todos", "Gestores", "Clientes"].map(id => {
+      const on = id === this.state.tab;
+      return {
+        label: id + " (" + counts[id] + ")",
+        onClick: () => this.setState({ tab: id }),
+        style: {
+          fontSize: 13,
+          fontWeight: on ? 500 : 400,
+          color: on ? "#F3F6FA" : "#A5B1C2",
+          paddingBottom: 10,
+          boxShadow: on ? "inset 0 -2px 0 #2F6BFF" : "none",
+          cursor: "pointer"
+        }
+      };
+    });
+
+    const wanted = this.state.tab === "Gestores" ? "Gestor" : this.state.tab === "Clientes" ? "Cliente" : null;
+    const rows = USERS.filter(u => !wanted || u.role === wanted).map((u, i) => {
+      const on = this.state.hover === u.mail;
+      return Object.assign({}, u, {
+        enter: () => this.setState({ hover: u.mail }),
+        leave: () => this.setState({ hover: null }),
+        rowStyle: {
+          display: "grid",
+          gridTemplateColumns: GRID,
+          columnGap: 24,
+          alignItems: "center",
+          padding: "15px 12px 15px 0",
+          marginLeft: -12,
+          paddingLeft: 12,
+          borderBottom: "1px solid rgba(148,163,184,0.12)",
+          background: on ? "#0C1420" : "transparent",
+          cursor: "pointer"
+        },
+        arrowStyle: { fontSize: 12, color: "#7D8B9E", textAlign: "right", opacity: on ? 1 : 0 }
+      });
+    });
+
+    return { tabs, rows };
+  }
+}
+
+</script>
+</body>
+</html>

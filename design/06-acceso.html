@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#070B12;color:#F3F6FA;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#A5B1C2;text-decoration:none}
+a:hover{color:#F3F6FA}
+input{font-family:inherit;width:100%;padding:11px 13px;background:#162232;border:1px solid #26364A;border-radius:8px;color:#F3F6FA;font-size:13px}
+input:focus{outline:2px solid #4B7DFF;outline-offset:0;border-color:#4B7DFF}
+input::placeholder{color:#5B6B80}
+@keyframes pcxPulse{0%,100%{opacity:1}50%{opacity:.35}}
+</style>
+</helmet>
+<div style="background:#070B12">
+
+  <div style="display:grid;grid-template-columns:58fr 42fr;min-height:660px">
+
+    <div style="display:flex;flex-direction:column;padding:40px 64px 32px;background:#070B12">
+      <div style="display:flex;align-items:center;gap:10px">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none" style="display:block;flex:none">
+          <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round"></path>
+          <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+          <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0"></rect>
+        </svg>
+        <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA">PortCodex</span>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:56px 0">
+        <h1 style="margin:0;font-size:46px;font-weight:600;line-height:1.02;letter-spacing:-0.035em;color:#F3F6FA;max-width:11em">Una visión clara de tu patrimonio digital.</h1>
+        <p style="margin:30px 0 0;font-size:15px;font-weight:400;line-height:1.6;color:#A5B1C2;max-width:29em;text-wrap:pretty">PortCodex reúne tus posiciones, mantiene la contabilidad al día y anticipa el impacto fiscal de cada operación.</p>
+        <div style="margin-top:64px;max-width:400px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="width:6px;height:6px;border-radius:50%;background:#18BFD0;animation:pcxPulse 2.6s ease-in-out infinite"></span>
+            <span style="font-size:12px;color:#A5B1C2">Lectura continua</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(148,163,184,0.08)">
+            <span style="font-size:13px;color:#A5B1C2">Redes soportadas</span>
+            <span style="font-size:13px;color:#F3F6FA">6</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(148,163,184,0.08)">
+            <span style="font-size:13px;color:#A5B1C2">Protocolos monitorizados</span>
+            <span style="font-size:13px;color:#F3F6FA">12</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(148,163,184,0.08)">
+            <span style="font-size:13px;color:#A5B1C2">Frecuencia de lectura</span>
+            <span style="font-size:13px;color:#F3F6FA">cada 30 min</span>
+          </div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:12px 0;border-bottom:1px solid rgba(148,163,184,0.08)">
+            <span style="font-size:13px;color:#A5B1C2">Última sincronización</span>
+            <span style="{{ agoStyle }}">{{ ago }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:30px;margin-top:30px;color:#7D8B9E">
+            <span title="Bitcoin" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" style="display:block">
+                <circle cx="12" cy="12" r="10.2" stroke="currentColor" stroke-width="1.5"></circle>
+                <path d="M9.3 7.2h3.9a2.35 2.35 0 0 1 0 4.7H9.3m0 0h4.3a2.45 2.45 0 0 1 0 4.9H9.3V7.2m1.5-1.8v1.8m2.6-1.8v1.8m-2.6 9.6v1.8m2.6-1.8v1.8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </span>
+            <span title="Ethereum" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="15" height="22" viewBox="0 0 16 24" fill="none" style="display:block">
+                <path d="M8 1.2 15 12.3 8 16.4 1 12.3 8 1.2Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path>
+                <path d="M8 17.9 15 13.8 8 22.8 1 13.8 8 17.9Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path>
+              </svg>
+            </span>
+            <span title="Arbitrum" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="20" height="21" viewBox="0 0 22 24" fill="none" style="display:block">
+                <path d="M11 1.3 20.2 6.6v10.8L11 22.7 1.8 17.4V6.6L11 1.3Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path>
+                <path d="M7.4 17.1 11 8.2l3.6 8.9M12.7 12.9h-3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"></path>
+              </svg>
+            </span>
+            <span title="Solana" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="22" height="18" viewBox="0 0 24 20" fill="none" style="display:block">
+                <path d="M5.6 3.1h14.1l-3.4 3.5H2.2L5.6 3.1Z" fill="currentColor"></path>
+                <path d="M2.2 9.8h14.1l3.4 3.5H5.6L2.2 9.8Z" fill="currentColor"></path>
+                <path d="M5.6 16.5h14.1l-3.4-3.5H2.2" fill="currentColor" opacity="0"></path>
+                <path d="M5.6 16.9h14.1l-3.4-3.5H2.2l3.4 3.5Z" fill="currentColor"></path>
+              </svg>
+            </span>
+            <span title="Hyperliquid" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="24" height="18" viewBox="0 0 26 18" fill="none" style="display:block">
+                <path d="M1.4 11.6c2.6 0 3.6-5.4 6.3-5.4 2.6 0 2.7 5.7 5.3 5.7s3.2-5.9 5.8-5.9c2.4 0 3 4.4 5.8 4.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path>
+              </svg>
+            </span>
+            <span title="BNB Chain" style="display:flex;align-items:center;color:inherit" style-hover="color:#A5B1C2">
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" style="display:block">
+                <path d="M12 2.4 15.4 5.8 12 9.2 8.6 5.8 12 2.4Zm0 12.4 3.4 3.4L12 21.6 8.6 18.2 12 14.8ZM5.8 8.6 9.2 12l-3.4 3.4L2.4 12l3.4-3.4Zm12.4 0L21.6 12l-3.4 3.4L14.8 12l3.4-3.4Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"></path>
+              </svg>
+            </span>
+          </div>
+          <div style="font-size:11px;color:#7D8B9E;margin-top:26px;max-width:34em;text-wrap:pretty">PortCodex lee las posiciones directamente de cada red, sin intermediarios.</div>
+        </div>
+      </div>
+      <div style="padding-top:18px;border-top:1px solid rgba(148,163,184,0.12);font-size:12px;color:#7D8B9E">Claridad · Control · Trazabilidad</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:56px 48px;background:#0C1420">
+      <div style="width:100%;max-width:380px">
+        <div style="font-size:21px;font-weight:600;letter-spacing:-0.015em;color:#F3F6FA">Acceder</div>
+
+        <div style="margin-top:30px">
+          <label for="pcx-mail" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:8px">Correo electrónico</label>
+          <input id="pcx-mail" type="email" value="{{ email }}" onChange="{{ setEmail }}" />
+        </div>
+
+        <div style="margin-top:18px">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:8px">
+            <label for="pcx-pass" style="font-size:12px;color:#A5B1C2">Contraseña</label>
+            <a href="#" onClick="{{ toggleReveal }}" style="font-size:12px;color:#7D8B9E">{{ revealLabel }}</a>
+          </div>
+          <input id="pcx-pass" type="{{ passType }}" value="{{ pass }}" onChange="{{ setPass }}" />
+        </div>
+
+        <button onClick="{{ submit }}" style="width:100%;margin-top:26px;padding:12px 18px;border:none;border-radius:8px;background:#2F6BFF;color:#F3F6FA;font-size:14px;font-weight:500;cursor:pointer" style-hover="background:#4B7DFF">Acceder</button>
+
+        <div style="text-align:center;margin-top:18px">
+          <a href="#" style="font-size:13px;color:#8AA8FF">¿Has olvidado la contraseña?</a>
+        </div>
+
+        <div style="margin-top:34px;padding-top:24px;border-top:1px solid rgba(148,163,184,0.12)">
+          <div style="font-size:13px;font-weight:500;color:#F3F6FA">¿No tienes acceso todavía?</div>
+          <div style="font-size:13px;color:#A5B1C2;margin-top:8px;text-wrap:pretty">PortCodex se contrata a través de un gestor patrimonial.</div>
+          <a href="#" style="display:inline-block;font-size:13px;font-weight:500;color:#8AA8FF;margin-top:12px">Solicitar información →</a>
+        </div>
+
+        <div style="text-align:center;margin-top:38px;font-size:11px;color:#7D8B9E">
+          <a href="#" style="color:#7D8B9E">Aviso legal</a> · <a href="#" style="color:#7D8B9E">Privacidad</a> · <a href="#" style="color:#7D8B9E">Soporte</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:56px 64px 72px;background:#070B12">
+    <div style="padding-top:20px;border-top:1px solid rgba(148,163,184,0.12)">
+      <div style="font-size:13px;font-weight:600;color:#F3F6FA">Estados del formulario</div>
+      <div style="font-size:12px;color:#7D8B9E;margin-top:7px">Referencia del mismo bloque de acceso</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:380px 380px;column-gap:64px;margin-top:36px">
+      <div>
+        <div style="font-size:11px;color:#7D8B9E;margin-bottom:14px">Error de credenciales</div>
+        <div style="padding:28px 30px;background:#0C1420">
+          <div style="font-size:12px;color:#A5B1C2;margin-bottom:8px">Correo electrónico</div>
+          <div style="padding:11px 13px;background:#162232;border:1px solid #26364A;border-radius:8px;font-size:13px;color:#F3F6FA">m.fita@portcodex.com</div>
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:18px 0 8px">
+            <span style="font-size:12px;color:#A5B1C2">Contraseña</span>
+            <span style="font-size:12px;color:#7D8B9E">Mostrar</span>
+          </div>
+          <div style="padding:11px 13px;background:#162232;border:1px solid #F0646F;border-radius:8px;font-size:13px;color:#F3F6FA">••••••••••</div>
+          <div style="font-size:12px;color:#F0646F;margin-top:9px;text-wrap:pretty">No hemos podido verificar esos datos. Revisa el correo y la contraseña.</div>
+          <div style="margin-top:22px;padding:12px 18px;border-radius:8px;background:#2F6BFF;color:#F3F6FA;font-size:14px;font-weight:500;text-align:center">Acceder</div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;color:#7D8B9E;margin-bottom:14px">Enviando</div>
+        <div style="padding:28px 30px;background:#0C1420">
+          <div style="opacity:0.45">
+            <div style="font-size:12px;color:#A5B1C2;margin-bottom:8px">Correo electrónico</div>
+            <div style="padding:11px 13px;background:#162232;border:1px solid #26364A;border-radius:8px;font-size:13px;color:#F3F6FA">m.fita@portcodex.com</div>
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:18px 0 8px">
+              <span style="font-size:12px;color:#A5B1C2">Contraseña</span>
+              <span style="font-size:12px;color:#7D8B9E">Mostrar</span>
+            </div>
+            <div style="padding:11px 13px;background:#162232;border:1px solid #26364A;border-radius:8px;font-size:13px;color:#F3F6FA">••••••••••</div>
+          </div>
+          <div style="margin-top:22px;padding:12px 18px;border-radius:8px;background:#23478F;color:#C3D2EE;font-size:14px;font-weight:500;text-align:center;cursor:not-allowed">Accediendo…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:760}}">
+class Component extends DCLogic {
+  state = { email: "", pass: "", reveal: false, secs: 14, reset: false };
+
+  componentDidMount() {
+    this.timer = setInterval(() => {
+      this.setState(st => {
+        if (st.secs >= 1800) return { secs: 1, reset: true };
+        return { secs: st.secs + 1, reset: false };
+      });
+      clearTimeout(this.settle);
+      this.settle = setTimeout(() => this.setState({ reset: false }), 320);
+    }, 1000);
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.timer);
+    clearTimeout(this.settle);
+  }
+
+  label() {
+    const s = this.state.secs;
+    if (s < 60) return "hace " + s + " s";
+    const m = Math.floor(s / 60);
+    return "hace " + m + " min";
+  }
+
+  renderVals() {
+    return {
+      ago: this.label(),
+      agoStyle: {
+        fontSize: 13,
+        color: "#F3F6FA",
+        whiteSpace: "nowrap",
+        transform: "translateY(" + (this.state.reset ? -3 : 0) + "px)",
+        transition: "transform 300ms cubic-bezier(.2,.7,.3,1)"
+      },
+      email: this.state.email,
+      pass: this.state.pass,
+      passType: this.state.reveal ? "text" : "password",
+      revealLabel: this.state.reveal ? "Ocultar" : "Mostrar",
+      setEmail: e => this.setState({ email: e.target.value }),
+      setPass: e => this.setState({ pass: e.target.value }),
+      toggleReveal: e => { e.preventDefault(); this.setState(s => ({ reveal: !s.reveal })); },
+      submit: e => e.preventDefault()
+    };
+  }
+}
+
+</script>
+</body>
+</html>

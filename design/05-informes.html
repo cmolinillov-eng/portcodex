@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#070B12;color:#F3F6FA;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#A5B1C2;text-decoration:none}
+a:hover{color:#F3F6FA}
+input{font-family:inherit;font-variant-numeric:tabular-nums}
+input:focus{outline:none}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#070B12;padding-bottom:80px">
+
+  <div style="display:flex;align-items:center;gap:40px;padding:0 48px;height:56px;border-bottom:1px solid rgba(148,163,184,0.12)">
+    <div style="display:flex;align-items:center;gap:9px">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" style="display:block;flex:none">
+        <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round"></path>
+        <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0"></rect>
+      </svg>
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA">PortCodex</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:26px;height:100%">
+      <a href="Resumen PortCodex.dc.html" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Resumen</a>
+      <a href="Cartera PortCodex.dc.html" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Cartera</a>
+      <a href="Movimientos PortCodex.dc.html" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Movimientos</a>
+      <a href="Fiscalidad PortCodex.dc.html" style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:400;color:#A5B1C2">Fiscalidad</a>
+      <span style="display:flex;align-items:center;height:100%;font-size:13px;font-weight:500;color:#F3F6FA;box-shadow:inset 0 -2px 0 #2F6BFF">Informes</span>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:20px">
+      <div style="display:flex;align-items:center;gap:9px;padding:5px 11px 5px 10px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+        <span style="width:5px;height:5px;border-radius:50%;background:#19B77A"></span>
+        <span style="font-size:12px;font-weight:500;color:#F3F6FA">M Fita</span>
+        <span style="font-size:10px;color:#7D8B9E">▾</span>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">EUR · US$</span>
+    </div>
+  </div>
+
+  <div style="max-width:1240px;padding:0 48px">
+
+    <div style="padding:48px 0 0">
+      <div style="font-size:13px;font-weight:400;color:#7D8B9E">Informes</div>
+      <div style="font-size:20px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA;margin-top:14px">Documentación de la cartera de M Fita</div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:30px 0 22px;margin-top:44px;border-top:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Informe fiscal del ejercicio</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Bases imponibles y desglose por casilla del Modelo 100</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+        <span style="font-size:12px;color:#A5B1C2">2026</span>
+        <span style="font-size:10px;color:#7D8B9E">▾</span>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">PDF</span>
+      <button style="padding:9px 16px;border:none;border-radius:8px;background:#2F6BFF;color:#F3F6FA;font-size:13px;font-weight:500;cursor:pointer;justify-self:end" style-hover="background:#4B7DFF">Generar</button>
+    </div>
+    <div style="font-size:11px;color:#7D8B9E;padding-bottom:24px;border-bottom:1px solid rgba(148,163,184,0.12)">El ejercicio fiscal comprende el año natural completo.</div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:30px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Informe patrimonial</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Valor, evolución, composición y rendimiento del periodo</div>
+      </div>
+      <div style="min-width:0;position:relative">
+        <sc-if value="{{ pat_isPreset }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ pat_toggle }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px;cursor:pointer">
+            <span style="font-size:12px;color:#A5B1C2">{{ pat_preset }}</span>
+            <span style="font-size:10px;color:#7D8B9E">▾</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ pat_isCustom }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input value="{{ pat_from }}" onChange="{{ pat_setFrom }}" style="{{ pat_fromStyle }}" />
+              <span style="font-size:12px;color:#7D8B9E">→</span>
+              <input value="{{ pat_to }}" onChange="{{ pat_setTo }}" style="{{ pat_toStyle }}" />
+            </div>
+            <sc-if value="{{ pat_error }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:11px;color:#F0646F;margin-top:7px">La fecha final debe ser posterior</div>
+            </sc-if>
+            <a href="#" onClick="{{ pat_reset }}" style="display:inline-block;font-size:11px;color:#7D8B9E;margin-top:7px">Volver a periodos</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{ pat_open }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:100%;left:0;margin-top:6px;width:176px;background:#111C2B;border:1px solid rgba(148,163,184,0.12);border-radius:8px;padding:5px 0;z-index:20">
+            <sc-for list="{{ pat_options }}" as="o" hint-placeholder-count="5">
+              <div onClick="{{ o.onClick }}" style="{{ o.style }}">{{ o.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">PDF</span>
+      <a href="#" style="font-size:13px;font-weight:500;color:#A5B1C2;justify-self:end">Generar</a>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:30px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Historial de operaciones</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Todas las operaciones con su clasificación fiscal</div>
+      </div>
+      <div style="min-width:0;position:relative">
+        <sc-if value="{{ his_isPreset }}" hint-placeholder-val="{{ true }}">
+          <div onClick="{{ his_toggle }}" style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px;cursor:pointer">
+            <span style="font-size:12px;color:#A5B1C2">{{ his_preset }}</span>
+            <span style="font-size:10px;color:#7D8B9E">▾</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ his_isCustom }}" hint-placeholder-val="{{ false }}">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input value="{{ his_from }}" onChange="{{ his_setFrom }}" style="{{ his_fromStyle }}" />
+              <span style="font-size:12px;color:#7D8B9E">→</span>
+              <input value="{{ his_to }}" onChange="{{ his_setTo }}" style="{{ his_toStyle }}" />
+            </div>
+            <sc-if value="{{ his_error }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:11px;color:#F0646F;margin-top:7px">La fecha final debe ser posterior</div>
+            </sc-if>
+            <a href="#" onClick="{{ his_reset }}" style="display:inline-block;font-size:11px;color:#7D8B9E;margin-top:7px">Volver a periodos</a>
+          </div>
+        </sc-if>
+        <sc-if value="{{ his_open }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;top:100%;left:0;margin-top:6px;width:176px;background:#111C2B;border:1px solid rgba(148,163,184,0.12);border-radius:8px;padding:5px 0;z-index:20">
+            <sc-for list="{{ his_options }}" as="o" hint-placeholder-count="5">
+              <div onClick="{{ o.onClick }}" style="{{ o.style }}">{{ o.label }}</div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">CSV</span>
+      <a href="#" style="font-size:13px;font-weight:500;color:#A5B1C2;justify-self:end">Descargar</a>
+    </div>
+
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:30px 0;border-bottom:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Posiciones a fecha</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Fotografía de la cartera en un momento concreto</div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+        <span style="font-size:12px;color:#A5B1C2">28 jul 2026</span>
+        <span style="font-size:10px;color:#7D8B9E">▾</span>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">CSV</span>
+      <a href="#" style="font-size:13px;font-weight:500;color:#A5B1C2;justify-self:end">Descargar</a>
+    </div>
+
+    <sc-if value="{{ showEmptyExample }}" hint-placeholder-val="{{ true }}">
+      <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:30px 0;border-bottom:1px solid rgba(148,163,184,0.12);opacity:0.45">
+        <div style="min-width:0">
+          <div style="font-size:14px;font-weight:500;color:#F3F6FA">Informe fiscal del ejercicio</div>
+          <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Sin operaciones en 2025</div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+          <span style="font-size:12px;color:#A5B1C2">2025</span>
+          <span style="font-size:10px;color:#7D8B9E">▾</span>
+        </div>
+        <span style="font-size:12px;color:#7D8B9E">PDF</span>
+        <span></span>
+      </div>
+    </sc-if>
+
+    <div style="margin-top:72px;padding-top:20px;border-top:1px solid rgba(148,163,184,0.12)">
+      <div style="font-size:13px;font-weight:600;color:#F3F6FA">Estados del selector de periodo</div>
+      <div style="font-size:12px;color:#7D8B9E;margin-top:7px">Referencia de la misma fila «Informe patrimonial» en sus dos estados</div>
+    </div>
+
+    <div style="font-size:11px;color:#7D8B9E;margin-top:34px">Desplegable abierto</div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:start;padding:18px 0 0;margin-top:10px;border-top:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Informe patrimonial</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Valor, evolución, composición y rendimiento del periodo</div>
+      </div>
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;width:150px;padding:7px 11px;border:1px solid rgba(148,163,184,0.12);border-radius:6px">
+          <span style="font-size:12px;color:#A5B1C2">Año en curso</span>
+          <span style="font-size:10px;color:#7D8B9E">▾</span>
+        </div>
+        <div style="width:176px;margin-top:6px;background:#162232;border:1px solid rgba(148,163,184,0.12);border-radius:8px;padding:5px 0">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 12px">
+            <span style="font-size:12px;color:#F3F6FA">Año en curso</span>
+            <span style="font-size:11px;color:#A5B1C2">✓</span>
+          </div>
+          <div style="padding:7px 12px;font-size:12px;color:#A5B1C2">Último trimestre</div>
+          <div style="padding:7px 12px;font-size:12px;color:#A5B1C2">Últimos 12 meses</div>
+          <div style="padding:7px 12px;font-size:12px;color:#A5B1C2">Desde el inicio</div>
+          <div style="height:1px;margin:5px 0;background:rgba(148,163,184,0.12)"></div>
+          <div style="padding:7px 12px;font-size:12px;color:#A5B1C2">Personalizado…</div>
+        </div>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E;padding-top:8px">PDF</span>
+      <a href="#" style="font-size:13px;font-weight:500;color:#A5B1C2;justify-self:end;padding-top:7px">Generar</a>
+    </div>
+
+    <div style="font-size:11px;color:#7D8B9E;margin-top:44px">Rango personalizado</div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) 260px 56px 132px;column-gap:28px;align-items:center;padding:22px 0;margin-top:10px;border-top:1px solid rgba(148,163,184,0.12);border-bottom:1px solid rgba(148,163,184,0.12)">
+      <div style="min-width:0">
+        <div style="font-size:14px;font-weight:500;color:#F3F6FA">Informe patrimonial</div>
+        <div style="font-size:12px;color:#7D8B9E;margin-top:6px">Valor, evolución, composición y rendimiento del periodo</div>
+      </div>
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:108px;padding:7px 10px;border:1px solid rgba(148,163,184,0.12);border-radius:6px;font-size:12px;color:#F3F6FA">01 ene 2026</span>
+          <span style="font-size:12px;color:#7D8B9E">→</span>
+          <span style="width:108px;padding:7px 10px;border:1px solid rgba(148,163,184,0.12);border-radius:6px;font-size:12px;color:#F3F6FA">28 jul 2026</span>
+        </div>
+        <a href="#" style="display:inline-block;font-size:11px;color:#7D8B9E;margin-top:8px">Volver a periodos</a>
+      </div>
+      <span style="font-size:12px;color:#7D8B9E">PDF</span>
+      <a href="#" style="font-size:13px;font-weight:500;color:#A5B1C2;justify-self:end">Generar</a>
+    </div>
+
+    <div style="margin-top:52px;padding-top:16px;border-top:1px solid rgba(148,163,184,0.12);font-size:12px;color:#7D8B9E;max-width:620px;text-wrap:pretty;line-height:1.7">Los informes fiscales son orientativos y no sustituyen el criterio de un asesor. Los documentos se generan con los datos disponibles en el momento de la descarga.</div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showEmptyExample&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Estados&quot;}}">
+const PRESETS = ["Año en curso", "Último trimestre", "Últimos 12 meses", "Desde el inicio"];
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+class Component extends DCLogic {
+  state = {
+    pat: { mode: "preset", open: false, preset: "Año en curso", from: "01 ene 2026", to: "28 jul 2026" },
+    his: { mode: "preset", open: false, preset: "2026", from: "01 ene 2026", to: "28 jul 2026" }
+  };
+
+  parse(s) {
+    const m = String(s).trim().toLowerCase().match(/^(\d{1,2})\s+([a-záéíóú]{3})\s+(\d{4})$/);
+    if (!m) return null;
+    const mi = MONTHS.indexOf(m[2]);
+    if (mi < 0) return null;
+    return new Date(+m[3], mi, +m[1]).getTime();
+  }
+
+  set(key, patch) {
+    this.setState(s => ({ [key]: Object.assign({}, s[key], patch) }));
+  }
+
+  field(bad) {
+    return {
+      width: 108,
+      padding: "7px 10px",
+      border: "1px solid " + (bad ? "#F0646F" : "rgba(148,163,184,0.12)"),
+      borderRadius: 6,
+      background: "transparent",
+      color: bad ? "#F0646F" : "#F3F6FA",
+      fontSize: 12
+    };
+  }
+
+  block(key) {
+    const st = this.state[key];
+    const a = this.parse(st.from), b = this.parse(st.to);
+    const bad = a !== null && b !== null && b <= a;
+    const options = PRESETS.map(p => ({
+      label: p,
+      onClick: () => this.set(key, { preset: p, mode: "preset", open: false }),
+      style: { padding: "7px 12px", fontSize: 12, color: p === st.preset ? "#F3F6FA" : "#A5B1C2", cursor: "pointer" }
+    }));
+    options.push({ label: "", onClick: null, style: { height: 1, margin: "5px 0", background: "rgba(148,163,184,0.12)" } });
+    options.push({
+      label: "Personalizado…",
+      onClick: () => this.set(key, { mode: "custom", open: false }),
+      style: { padding: "7px 12px", fontSize: 12, color: "#A5B1C2", cursor: "pointer" }
+    });
+
+    const out = {};
+    out[key + "_isPreset"] = st.mode === "preset";
+    out[key + "_isCustom"] = st.mode === "custom";
+    out[key + "_open"] = st.open;
+    out[key + "_preset"] = st.preset;
+    out[key + "_from"] = st.from;
+    out[key + "_to"] = st.to;
+    out[key + "_error"] = bad;
+    out[key + "_fromStyle"] = this.field(false);
+    out[key + "_toStyle"] = this.field(bad);
+    out[key + "_options"] = options;
+    out[key + "_toggle"] = () => this.set(key, { open: !st.open });
+    out[key + "_setFrom"] = e => this.set(key, { from: e.target.value });
+    out[key + "_setTo"] = e => this.set(key, { to: e.target.value });
+    out[key + "_reset"] = e => { if (e) e.preventDefault(); this.set(key, { mode: "preset", open: false }); };
+    return out;
+  }
+
+  renderVals() {
+    return Object.assign(
+      { showEmptyExample: this.props.showEmptyExample !== false },
+      this.block("pat"),
+      this.block("his")
+    );
+  }
+}
+
+</script>
+</body>
+</html>

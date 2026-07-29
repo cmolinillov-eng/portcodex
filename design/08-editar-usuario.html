@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:#070B12;color:#F3F6FA;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#A5B1C2;text-decoration:none}
+a:hover{color:#F3F6FA}
+input,select{font-family:inherit;width:100%;padding:11px 13px;background:#162232;border:1px solid #26364A;border-radius:8px;color:#F3F6FA;font-size:13px;appearance:none}
+input:focus,select:focus{outline:2px solid #4B7DFF;outline-offset:0;border-color:#4B7DFF}
+</style>
+</helmet>
+<div style="min-height:100vh;background:#070B12;padding-bottom:80px">
+
+  <div style="display:flex;align-items:center;gap:28px;padding:0 48px;height:56px;border-bottom:1px solid rgba(148,163,184,0.12)">
+    <div style="display:flex;align-items:center;gap:9px">
+      <svg width="22" height="22" viewBox="0 0 28 28" fill="none" style="display:block;flex:none">
+        <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round"></path>
+        <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" stroke="#2F6BFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path>
+        <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0"></rect>
+      </svg>
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#F3F6FA">PortCodex</span>
+    </div>
+    <span style="font-size:13px;color:#A5B1C2;padding-left:4px">Administración</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:9px">
+      <span style="font-size:12px;font-weight:500;color:#F3F6FA">Carlos Molinillo</span>
+      <span style="font-size:10px;color:#7D8B9E">▾</span>
+    </div>
+  </div>
+
+  <div style="max-width:1240px;padding:0 48px">
+
+    <div style="display:flex;align-items:baseline;gap:20px;padding:40px 0 0">
+      <div style="display:flex;align-items:baseline;gap:8px;font-size:12px;color:#7D8B9E">
+        <span>Administración</span>
+        <span>›</span>
+        <a href="Administracion PortCodex.dc.html" style="color:#7D8B9E">Usuarios</a>
+        <span>›</span>
+        <span style="color:#A5B1C2">M Fita</span>
+      </div>
+      <a href="Administracion PortCodex.dc.html" style="margin-left:auto;font-size:13px;color:#A5B1C2">Volver</a>
+    </div>
+
+    <div style="margin-top:26px">
+      <div style="font-size:24px;font-weight:600;letter-spacing:-0.02em;color:#F3F6FA">M Fita</div>
+      <div style="font-size:12px;color:#7D8B9E;margin-top:9px">Cliente · alta el 7 de marzo de 2026</div>
+    </div>
+
+    <div style="max-width:480px;margin-top:44px">
+      <div>
+        <label for="pcx-name" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:8px">Nombre</label>
+        <input id="pcx-name" value="{{ name }}" onChange="{{ setName }}" />
+      </div>
+
+      <div style="margin-top:20px">
+        <label for="pcx-mail" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:8px">Correo electrónico</label>
+        <input id="pcx-mail" type="email" value="{{ mail }}" onChange="{{ setMail }}" />
+      </div>
+
+      <div style="margin-top:20px">
+        <label for="pcx-role" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:8px">Rol</label>
+        <div style="position:relative">
+          <select id="pcx-role" value="{{ role }}" onChange="{{ setRole }}">
+            <option value="Cliente">Cliente</option>
+            <option value="Gestor">Gestor</option>
+          </select>
+          <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:10px;color:#7D8B9E;pointer-events:none">▾</span>
+        </div>
+      </div>
+
+      <sc-if value="{{ isClient }}" hint-placeholder-val="{{ true }}">
+        <div style="margin-top:32px;padding-top:28px;border-top:1px solid rgba(148,163,184,0.12)">
+          <label for="pcx-mgr" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:6px">Gestor asignado</label>
+          <div style="font-size:11px;color:#7D8B9E;margin-bottom:10px">Cartera: Portfolio de M Fita</div>
+          <div style="position:relative">
+            <select id="pcx-mgr" value="{{ manager }}" onChange="{{ setManager }}">
+              <option value="Carlos Molinillo">Carlos Molinillo</option>
+              <option value="Sin asignar">Sin asignar</option>
+            </select>
+            <span style="position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:10px;color:#7D8B9E;pointer-events:none">▾</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <div style="display:flex;align-items:center;gap:22px;margin-top:34px">
+        <button disabled="{{ pristine }}" onClick="{{ save }}" style="{{ saveStyle }}">Guardar cambios</button>
+        <a href="#" onClick="{{ discard }}" style="font-size:13px;color:#7D8B9E">Descartar</a>
+      </div>
+    </div>
+
+    <div style="max-width:480px;margin-top:72px;padding-top:24px;border-top:1px solid rgba(148,163,184,0.12)">
+      <div style="font-size:14px;font-weight:500;color:#F3F6FA">Eliminar usuario</div>
+      <div style="font-size:12px;color:#A5B1C2;margin-top:9px;line-height:1.6;text-wrap:pretty">Se eliminará el acceso y se desvinculará su cartera. Las operaciones registradas se conservan.</div>
+
+      <sc-if value="{{ askDelete }}" hint-placeholder-val="{{ false }}">
+        <div style="margin-top:22px;padding-top:20px;border-top:1px solid rgba(148,163,184,0.12)">
+          <label for="pcx-confirm" style="display:block;font-size:12px;color:#A5B1C2;margin-bottom:8px">Escribe «M Fita» para confirmar</label>
+          <input id="pcx-confirm" value="{{ confirm }}" onChange="{{ setConfirm }}" />
+          <div style="display:flex;align-items:center;gap:20px;margin-top:18px">
+            <button disabled="{{ confirmPending }}" onClick="{{ doDelete }}" style="{{ deleteStyle }}">Eliminar usuario</button>
+            <a href="#" onClick="{{ cancelDelete }}" style="font-size:13px;color:#7D8B9E">Cancelar</a>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ idleDelete }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;margin-top:24px">
+          <button onClick="{{ startDelete }}" style="margin-left:auto;padding:9px 16px;border:1px solid #F0646F;border-radius:8px;background:transparent;color:#F0646F;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:rgba(240,100,111,0.08)">Eliminar usuario</button>
+        </div>
+      </sc-if>
+    </div>
+
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}">
+const ORIGINAL = { name: "M Fita", mail: "fuenmariz@gmail.com", role: "Cliente", manager: "Carlos Molinillo" };
+
+class Component extends DCLogic {
+  state = Object.assign({ asking: false, confirm: "" }, ORIGINAL);
+
+  renderVals() {
+    const s = this.state;
+    const pristine = s.name === ORIGINAL.name && s.mail === ORIGINAL.mail && s.role === ORIGINAL.role && s.manager === ORIGINAL.manager;
+    const ready = s.confirm.trim() === ORIGINAL.name;
+    return {
+      name: s.name,
+      mail: s.mail,
+      role: s.role,
+      manager: s.manager,
+      confirm: s.confirm,
+      isClient: s.role === "Cliente",
+      pristine,
+      askDelete: s.asking,
+      idleDelete: !s.asking,
+      confirmPending: !ready,
+      saveStyle: {
+        padding: "10px 18px",
+        border: "none",
+        borderRadius: 8,
+        background: pristine ? "#1B2A44" : "#2F6BFF",
+        color: pristine ? "#6C7C93" : "#F3F6FA",
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: pristine ? "not-allowed" : "pointer"
+      },
+      deleteStyle: {
+        padding: "9px 16px",
+        border: "1px solid " + (ready ? "#F0646F" : "rgba(240,100,111,0.35)"),
+        borderRadius: 8,
+        background: "transparent",
+        color: ready ? "#F0646F" : "rgba(240,100,111,0.5)",
+        fontSize: 13,
+        fontWeight: 500,
+        cursor: ready ? "pointer" : "not-allowed"
+      },
+      setName: e => this.setState({ name: e.target.value }),
+      setMail: e => this.setState({ mail: e.target.value }),
+      setRole: e => this.setState({ role: e.target.value }),
+      setManager: e => this.setState({ manager: e.target.value }),
+      setConfirm: e => this.setState({ confirm: e.target.value }),
+      save: e => e.preventDefault(),
+      discard: e => { e.preventDefault(); this.setState(Object.assign({}, ORIGINAL)); },
+      startDelete: e => { e.preventDefault(); this.setState({ asking: true, confirm: "" }); },
+      cancelDelete: e => { e.preventDefault(); this.setState({ asking: false, confirm: "" }); },
+      doDelete: e => e.preventDefault()
+    };
+  }
+}
+
+</script>
+</body>
+</html>
