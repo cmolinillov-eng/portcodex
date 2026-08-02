@@ -1,28 +1,73 @@
+/**
+ * Pantalla de espera de TODAS las rutas.
+ *
+ * Se ve durante el instante en que el servidor lee la cartera, así que es lo
+ * primero del producto que aparece. La anterior era del sistema derogado
+ * —orbes verdes desenfocados y barra de progreso animada— y se colaba delante
+ * de cada pantalla nueva.
+ *
+ * Aquí no hay barra de progreso: una barra que avanza sin saber cuánto queda
+ * miente. Se dibuja la SILUETA de lo que va a aparecer —la barra de navegación,
+ * la cifra grande, el filo de la sección— para que al llegar el contenido nada
+ * salte de sitio.
+ */
 export default function Loading() {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background text-foreground">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.18)]" aria-hidden="true" />
-      <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(111,174,143,0.13)]" aria-hidden="true" />
+    <div className="pcx-screen" style={{ minHeight: "100vh" }}>
+      {/* Silueta de la barra de navegación: misma altura y mismo filo. */}
+      <div style={{ height: "var(--nav-h)", borderBottom: "1px solid var(--line)" }} />
 
-      <section className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-8 md:px-10 md:py-10">
-        <header className="card-premium rounded-3xl p-6 md:p-8">
-          <p className="text-sm uppercase tracking-[0.22em] text-[var(--muted)]">Dashboard</p>
-          <h1 className="mt-3 text-3xl font-semibold md:text-4xl">Cargando datos en vivo...</h1>
-          <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-[rgba(255,255,255,0.08)]">
-            <div className="h-full w-1/3 animate-pulse rounded-full bg-gradient-to-r from-[var(--brand)] to-[var(--brand-soft)]" />
+      <div
+        className="mx-auto"
+        style={{ maxWidth: "var(--shell-max)", padding: "0 var(--shell-pad)" }}
+      >
+        <div style={{ paddingTop: 56 }}>
+          <Bar width={112} height={13} />
+          {/* Hueco de la cifra protagonista, a su altura real. */}
+          <div style={{ marginTop: 14 }}>
+            <Bar width={340} height={56} />
           </div>
-        </header>
+          <div style={{ marginTop: 18 }}>
+            <Bar width={210} height={18} />
+          </div>
 
-        <section className="card-premium rounded-3xl p-6 md:p-8">
-          <div className="space-y-3">
-            <div className="h-4 w-1/3 animate-pulse rounded bg-[rgba(255,255,255,0.09)]" />
-            <div className="h-4 w-full animate-pulse rounded bg-[rgba(255,255,255,0.07)]" />
-            <div className="h-4 w-full animate-pulse rounded bg-[rgba(255,255,255,0.07)]" />
-            <div className="h-4 w-5/6 animate-pulse rounded bg-[rgba(255,255,255,0.07)]" />
+          <div
+            className="flex gap-11"
+            style={{ marginTop: 40, paddingTop: 16, borderTop: "1px solid var(--line)" }}
+          >
+            <Bar width={128} height={14} />
+            <Bar width={128} height={14} />
+            <Bar width={148} height={14} />
           </div>
-        </section>
-      </section>
-    </main>
+        </div>
+
+        <div style={{ paddingTop: 52 }}>
+          <Bar width={180} height={15} />
+          <div style={{ marginTop: 22 }}>
+            <Bar width="100%" height={10} />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
+/**
+ * Un hueco. Late muy despacio y con poco recorrido: lo justo para decir «esto
+ * viene en camino» sin convertir la espera en un espectáculo.
+ */
+function Bar({ width, height }: { width: number | string; height: number }) {
+  return (
+    <div
+      className="pcx-pulse"
+      style={{
+        width,
+        height,
+        borderRadius: 3,
+        background: "var(--line-strong)",
+        opacity: 0.5,
+      }}
+      aria-hidden="true"
+    />
+  );
+}

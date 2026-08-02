@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
-import { AdminUsersPanel } from "@/components/admin/admin-users-panel";
+import { TopNav } from "@/components/shell/TopNav";
+import { PageShell } from "@/components/shell/PageShell";
+import { UsersDirectory, type AdminUserSummary } from "@/components/admin/UsersDirectory";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { getDashboardData } from "@/lib/dashboard/get-dashboard-data";
 import { ensureOwnedPortfoliosForProfiles } from "@/lib/portfolios/ensure-owned-portfolios";
@@ -191,5 +193,32 @@ export default async function AdminPage() {
     };
   });
 
-  return <AdminUsersPanel rows={userRows} portfolios={portfolioRows} />;
+  // El listado pasa al diseño nuevo. El cambio de rol YA NO se hace desde la
+  // fila —un desplegable ahí cambia permisos con un clic accidental— sino desde
+  // la ficha del usuario, que es donde se puede leer lo que se está tocando.
+  const directoryUsers: AdminUserSummary[] = userRows.map((u) => ({
+    id: u.id,
+    name: u.fullName || u.email,
+    email: u.email,
+    role: u.role,
+    // A un gestor le cuentan las carteras que gestiona; a los demás, las suyas.
+    portfolioCount:
+      u.role === "admin"
+        ? u.managedPortfolioCount
+        : portfolioRows.filter((p) => p.ownerId === u.id).length,
+    createdAt: u.createdAt,
+  }));
+
+  return (
+    <div className="pcx-screen" style={{ minHeight: "100vh" }}>
+      <TopNav section="Administración" />
+      <PageShell>
+        <UsersDirectory
+          users={directoryUsers}
+          userHref={(u) => `/admin/users/${u.id}/edit`}
+          createUserHref="/admin/create-user"
+        />
+      </PageShell>
+    </div>
+  );
 }
