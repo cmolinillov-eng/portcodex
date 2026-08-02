@@ -71,7 +71,7 @@ export default function PreviewAdministracion() {
       <PageShell>
         <UsersDirectory
           users={USERS}
-          userHref={() => "/preview/editar-usuario"}
+          userHrefPattern="/preview/editar-usuario"
           createUserHref="/preview/administracion"
         />
 

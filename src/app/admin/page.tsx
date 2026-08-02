@@ -215,7 +215,7 @@ export default async function AdminPage() {
       <PageShell>
         <UsersDirectory
           users={directoryUsers}
-          userHref={(u) => `/admin/users/${u.id}/edit`}
+          userHrefPattern="/admin/users/:id/edit"
           createUserHref="/admin/create-user"
         />
       </PageShell>

@@ -64,7 +64,14 @@ type TabId = "todos" | AdminRole;
 export interface UsersDirectoryProps {
   users: AdminUserSummary[];
   /** Destino de cada fila: la ficha del usuario. */
-  userHref: (user: AdminUserSummary) => string;
+  /**
+   * Plantilla del enlace a la ficha, con `:id` donde va el identificador.
+   *
+   * Es una CADENA y no una función a propósito: este es un componente de
+   * cliente, y una función no puede cruzar la frontera desde el servidor —
+   * React no sabe serializarla y la página revienta entera en producción.
+   */
+  userHrefPattern: string;
   /** Alta de usuario. Es una navegación, así que se pinta como enlace. */
   createUserHref?: string;
   onCreateUser?: () => void;
@@ -72,7 +79,7 @@ export interface UsersDirectoryProps {
 
 export function UsersDirectory({
   users,
-  userHref,
+  userHrefPattern,
   createUserHref,
   onCreateUser,
 }: UsersDirectoryProps) {
@@ -158,7 +165,7 @@ export function UsersDirectory({
       <div style={{ marginTop: showTabs ? 2 : 26 }}>
         <DataTable columns={COLUMNS} gap={COLUMN_GAP}>
           {rows.map((user) => (
-            <UserRow key={user.id} user={user} href={userHref(user)} />
+            <UserRow key={user.id} user={user} href={userHrefPattern.replace(":id", user.id)} />
           ))}
         </DataTable>
       </div>
