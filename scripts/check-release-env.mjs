@@ -4,6 +4,10 @@ import path from "node:path";
 
 const envPath = path.resolve(process.cwd(), ".env.local");
 const required = [
+  // Sin esto el cron diario devuelve 401 todas las noches, en silencio.
+  "CRON_SECRET",
+  // Se incrusta al compilar: si falta, las canónicas apuntan a localhost.
+  "NEXT_PUBLIC_APP_URL",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",

@@ -43,3 +43,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Evidencias de versión: son PDF e informes generados con datos REALES de
+# clientes (nombre, patrimonio, operaciones). Se generan cuando hacen falta y
+# nunca se comitean.
+release-evidence/
+*.pdf
+
+# Scripts temporales de verificación. Se crean, se usan y se borran; si alguno
+# sobrevive a un `git add .`, que no entre.
+*.tmp.mjs
+*.tmp.ts

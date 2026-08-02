@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
+import { checkServiceAuth } from "@/lib/auth/service-auth";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 import { capturePortfolioSnapshot } from "@/lib/snapshots/capture";
 import { computeReinvestSplit, type ReinvestSplit, type SwapLeg } from "@/lib/onchain/reinvest-split";
@@ -643,11 +644,13 @@ export async function GET(request: NextRequest) {
   // Bypass de SERVICIO (worker/cron): con el secreto compartido, la ingesta
   // automática corre SIN sesión de operador → la contabilidad avanza sola
   // aunque nadie abra el panel (antes solo se ingería al cargar el dashboard).
-  const cronSecret = process.env.CRON_SECRET;
-  const isCron = Boolean(cronSecret) && request.headers.get("x-cron-secret") === cronSecret;
+  // Acotado a la cartera concreta, en tiempo constante, y con la ESCRITURA
+  // detrás de un secreto distinto: un worker que solo lee no tiene por qué
+  // poder ingerir operaciones. Ver lib/auth/service-auth.ts.
+  const service = checkServiceAuth(request.headers.get("x-cron-secret"), portfolioId);
   let canWrite = false;
-  if (isCron) {
-    canWrite = true;
+  if (service.isService) {
+    canWrite = service.canWrite;
   } else {
     const access = await getViewerAccess();
     const check = ensurePortfolioAccess(access, portfolioId, false);

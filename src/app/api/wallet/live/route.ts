@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
+import { checkServiceAuth } from "@/lib/auth/service-auth";
 import { checkRateLimit } from "@/lib/security/rate-limit";
 import { syncPortfolioLive } from "@/lib/onchain/sync";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
@@ -44,8 +45,13 @@ export async function GET(request: NextRequest) {
     // visitaba se quedaba congelado durante semanas (se vieron snapshots de
     // más de 20 días). Con el secreto compartido, el cron puede refrescarlos
     // todos sin sesión de operador.
-    const cronSecret = process.env.CRON_SECRET;
-    const isCron = Boolean(cronSecret) && request.headers.get("x-cron-secret") === cronSecret;
+    // Acotado a la cartera concreta y con comparación en tiempo constante: ver
+    // lib/auth/service-auth.ts. Antes bastaba la cabecera para leer CUALQUIER
+    // cartera, sin decir cuál.
+    const { isService: isCron } = checkServiceAuth(
+      request.headers.get("x-cron-secret"),
+      portfolioId,
+    );
     let viewerId: string | null = null;
     if (!isCron) {
       const access = await getViewerAccess();
