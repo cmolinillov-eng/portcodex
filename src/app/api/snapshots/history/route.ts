@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { getPortfolioSnapshots } from "@/lib/snapshots/capture";
+import { buildSnapshotSeries } from "@/lib/snapshots/metrics";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -51,59 +52,11 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Calcular métricas derivadas
-    const points = snapshots.map((s) => ({
-      date: s.capturedAt,
-      value: s.totalValueUsd,
-      deposited: s.totalDepositedUsd,
-      harvest: s.pendingHarvestUsd,
-      realizedPnl: s.realizedPnlUsd,
-      pnl: s.totalValueUsd - s.totalDepositedUsd + s.realizedPnlUsd,
-      pnlPercent:
-        s.totalDepositedUsd > 0
-          ? ((s.totalValueUsd - s.totalDepositedUsd + s.realizedPnlUsd) / s.totalDepositedUsd) * 100
-          : 0,
-    }));
+    // El cálculo vive en lib/snapshots/metrics.ts: lo comparte esta ruta con
+    // el Resumen, que pinta la misma serie en servidor.
+    const { points, metrics } = buildSnapshotSeries(snapshots);
 
-    // TWR (Time-Weighted Return): producto de retornos entre períodos,
-    // ajustado por flujos de capital (depósitos/retiros).
-    let twr = 0;
-    if (points.length >= 2) {
-      let cumulativeReturn = 1;
-      for (let i = 1; i < points.length; i++) {
-        const prev = points[i - 1];
-        const curr = points[i];
-        // Ajustar por flujos: si el depositado cambió entre puntos, el valor
-        // "pre-flujo" del portfolio es: valor_actual - (deposited_actual - deposited_previo)
-        const capitalFlow = curr.deposited - prev.deposited;
-        const adjustedPrevValue = prev.value + capitalFlow;
-        if (adjustedPrevValue > 0) {
-          const periodReturn = curr.value / adjustedPrevValue;
-          cumulativeReturn *= periodReturn;
-        }
-      }
-      twr = (cumulativeReturn - 1) * 100;
-    }
-
-    // Max Drawdown: mayor caída pico-a-valle
-    let maxDrawdown = 0;
-    let peak = points[0].value;
-    for (const point of points) {
-      if (point.value > peak) peak = point.value;
-      const drawdown = peak > 0 ? ((peak - point.value) / peak) * 100 : 0;
-      if (drawdown > maxDrawdown) maxDrawdown = drawdown;
-    }
-
-    return NextResponse.json({
-      snapshots: points,
-      metrics: {
-        twr: Number(twr.toFixed(2)),
-        maxDrawdown: Number(maxDrawdown.toFixed(2)),
-        totalDays: points.length,
-        firstDate: points[0].date,
-        lastDate: points[points.length - 1].date,
-      },
-    });
+    return NextResponse.json({ snapshots: points, metrics });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error inesperado.";
     return NextResponse.json({ error: message }, { status: 500 });

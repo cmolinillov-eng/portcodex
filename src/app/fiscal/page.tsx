@@ -6,7 +6,7 @@ import {
   aggregateByCasilla,
   type AeatBucketInput,
 } from "@/lib/tax/aeat-mapping";
-import { isForeignCustodian } from "@/lib/tax/aeat-mapping";
+import { isForeignCustodian, isRendimiento, MODELO_721_THRESHOLD } from "@/lib/tax/aeat-mapping";
 import { FiscalPageHeader } from "@/components/fiscal/FiscalPageHeader";
 import { FiscalBadge } from "@/components/fiscal/FiscalBadge";
 import { formatEur } from "@/lib/fiscal/format";
@@ -15,15 +15,7 @@ import { getTaxYear } from "@/lib/tax/eur-conversion";
 
 export const dynamic = "force-dynamic";
 
-const MODELO_721_THRESHOLD = 50000;
 
-function isRendimiento(it: string): boolean {
-  return (
-    it === "rendimiento_capital_mobiliario" ||
-    it === "rend_actividad_economica" ||
-    it === "rend_trabajo"
-  );
-}
 
 export default async function ResumenFiscalPage({
   searchParams,

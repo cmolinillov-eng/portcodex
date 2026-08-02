@@ -401,3 +401,27 @@ export function getCustodyLabel(c: CustodyClass): string {
 export function isForeignCustodian(kind: WalletKind | null): boolean {
   return kind === "cex_foreign" || kind === "broker_foreign";
 }
+
+/**
+ * Umbral del Modelo 721 (declaración informativa de criptomonedas en el
+ * extranjero): 50.000 € de saldo conjunto a 31 de diciembre.
+ *
+ * Estaba escrito dentro de la página fiscal. Sube aquí porque ahora lo miran
+ * dos pantallas, y un umbral legal duplicado es un umbral que acaba diciendo
+ * dos cosas distintas.
+ */
+export const MODELO_721_THRESHOLD = 50000;
+
+/**
+ * ¿Este tipo de renta es un RENDIMIENTO —y no una ganancia patrimonial?
+ *
+ * Cambia qué importe suma a la casilla: en los rendimientos cuenta el valor
+ * íntegro percibido; en las ganancias, solo la plusvalía realizada.
+ */
+export function isRendimiento(incomeType: string): boolean {
+  return (
+    incomeType === "rendimiento_capital_mobiliario" ||
+    incomeType === "rend_actividad_economica" ||
+    incomeType === "rend_trabajo"
+  );
+}
