@@ -478,3 +478,124 @@ Y en cada petición, incluye esta frase:
 > Nada de rejillas de tres columnas con icono, título y párrafo. Composición
 > editorial asimétrica, alineada a la izquierda, con densidades distintas entre
 > secciones.
+
+---
+
+# PARTE 8 — LA LANDING SE CONSTRUYE EN CÓDIGO
+
+*Añadido el 2026-07-30, cuando el dashboard ya existe de verdad.*
+
+Las siete partes anteriores se escribieron para encargar la landing a Claude
+Design. **Eso cambia.** La landing se construye en código, en este mismo
+proyecto, con el sistema del producto. Tres razones, por orden de peso:
+
+1. **La landing tiene que parecerse al producto, y el producto ya está en
+   código.** Si se maqueta aparte, hereda otro interlineado, otro tracking, otro
+   azul, y a los dos meses la portada y la aplicación son dos marcas distintas.
+   Usando `globals.css` eso no puede pasar: el azul de la landing **es** el azul
+   del dashboard, porque es la misma variable.
+2. **Las capturas ya no son inventadas.** Existen `/` y `/cartera` funcionando.
+   La sección «enséñamelo» se llena con una captura REAL, no con un dibujo de
+   una interfaz que no existe. Es la diferencia entre demostrar y prometer.
+3. **La portada es lo primero que se indexa y lo que más rápido carga o no
+   carga.** En código se controla el peso, la fuente y el HTML; en un exportado,
+   no.
+
+## Lo que NO cambia
+
+Todo lo demás sigue vigente: las bases de marca (Parte 1), el argumento
+(Parte 2), las nueve secciones (Parte 3), la regla de movimiento (Parte 4), la
+composición (Parte 6) y —sobre todo— **la Parte 7, cómo no parecer hecho por una
+IA**. Esa parte es la más importante del documento.
+
+## El *copy brief*, cerrado
+
+| | |
+|---|---|
+| **Objetivo de la página** | Que un gestor patrimonial o un asesor fiscal entienda en treinta segundos que esto lleva la contabilidad, no muestra saldos, y pida una conversación. |
+| **Público** | Gestores patrimoniales, asesores fiscales, family offices, inversores con posiciones repartidas. Gente que **ya tiene el dinero**. |
+| **Nivel de conocimiento** | Conocen el problema (no saben su rendimiento real ni qué declarar). No conocen la solución. |
+| **Propuesta** | No es un visor de carteras: es un libro de cuentas que se escribe solo. |
+| **Acción principal** | **Solicitar información.** No hay registro. |
+| **Acción secundaria** | Acceder, para quien ya es cliente. |
+
+### La consecuencia más importante de ese cuadro
+
+**PortCodex no se contrata desde la web.** Se contrata a través de un gestor.
+Eso cambia el trabajo de la página entera: no es un embudo de conversión, es una
+**carta de presentación**. No hay prueba gratuita que ofrecer, ni precios que
+comparar, ni urgencia que fabricar. El único trabajo de la página es que quien
+la lea piense «esta gente sabe lo que hace» y escriba.
+
+De ahí se sigue que:
+- **Nada de contadores de urgencia, «plazas limitadas» ni descuentos.** Sería la
+  primera señal de que no somos lo que decimos ser.
+- **El botón dice qué pasa después**: «Solicitar información», no «Empezar
+  gratis». Nadie empieza nada gratis aquí.
+- El formulario pide lo mínimo para poder responder: nombre, correo, y en qué
+  situación está. Nada de teléfono obligatorio ni de «tamaño de la empresa».
+
+## Honestidad de las afirmaciones: la regla dura
+
+Esto es lo que más rápido delata una página hecha por una máquina, y lo que más
+daño hace en un producto financiero.
+
+**Prohibido, sin excepciones:**
+- Cifras inventadas. Ni «+2.400 carteras», ni «1.200 M$ monitorizados», ni
+  «ahorra 12 horas al mes». **Si no tenemos el dato, la frase no existe.**
+- Testimonios y nombres de clientes que no han dado su consentimiento por
+  escrito.
+- Logotipos de empresas como si fueran clientes.
+- Sellos de certificación que no tenemos.
+- «Miles de usuarios confían en nosotros» y sus variantes.
+- Promesas fiscales. **Nunca** «cumple con Hacienda» ni «declaración
+  garantizada»: el cálculo es orientativo y lo firma un asesor, no nosotros. Eso
+  ya está escrito en el producto y la portada no puede contradecirlo.
+
+**Lo que sí podemos afirmar, porque es verificable:**
+- Qué redes se leen y qué protocolos (son los que hay en el código).
+- Que la lectura es automática y directa de la cadena, sin intermediarios.
+- Que la contabilidad usa FIFO y traslada el coste de adquisición.
+- Que el desglose sigue las casillas del Modelo 100 y contempla el Modelo 721.
+- Que el informe se entrega en un PDF pensado para un asesor fiscal.
+
+Donde falte una prueba, se deja el hueco marcado como pendiente. **Un hueco
+honesto es mejor que un número bonito.**
+
+## Cómo se escribe el texto
+
+La voz de la Parte 1 sigue mandando. Cuatro reglas más, que son las que separan
+un texto escrito de un texto generado:
+
+1. **Frases de longitud desigual.** El texto de IA tiene un ritmo plano: todas
+   las frases miden lo mismo. Alterna una frase de veinte palabras con una de
+   cuatro. La corta remata.
+2. **Nada de tríadas.** «Rápido, seguro y sencillo» es la firma de la máquina.
+   Si hay tres cosas que decir, dilas en tres sitios distintos o di solo la que
+   importa.
+3. **Un verbo concreto vale más que tres adjetivos.** No «solución integral y
+   robusta de gestión patrimonial», sino «lee, ordena y explica». El producto ya
+   se describe con verbos en el brief: úsalos.
+4. **Prohibidas estas palabras**: *revolucionario, potente, sin esfuerzo,
+   perfecto, líder, innovador, ecosistema, empoderar, desbloquear, sin
+   fisuras, todo en uno, la nueva era de, y mucho más*. Y en general cualquier
+   adjetivo que no se pueda comprobar.
+
+## Cómo se construye, técnicamente
+
+- Ruta nueva, **fuera del área autenticada**. `/login` ya es solo el acceso.
+- **Los tokens de `globals.css`, sin excepción.** Ni un hexadecimal nuevo.
+- La clase `.pcx-screen` no se usa aquí: la landing es texto corrido y quiere el
+  interlineado de párrafo, no el de tabla.
+- **La landing puede permitirse tipografía más grande que el producto.** El
+  cuerpo de 13 px es de herramienta densa; en una portada el cuerpo es 17-18 px y
+  los titulares llegan donde tengan que llegar. Lo que NO cambia es la familia,
+  el color y los pesos.
+- **Capturas reales del dashboard**, tomadas de `/preview` (que tiene los datos
+  de la maqueta, no datos de un cliente real). **Nunca una captura con el
+  patrimonio de M Fita**: son datos de una persona.
+- Peso y rendimiento importan: nada de librerías de animación, la fuente ya está
+  cargada por el proyecto, imágenes en formato moderno y con `width`/`height`
+  para que no salte el diseño.
+- Metadatos: título, descripción, Open Graph con una imagen propia. Y `alt` real
+  en las capturas, describiendo qué se ve.

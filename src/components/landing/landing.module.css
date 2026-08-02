@@ -1,0 +1,999 @@
+/**
+ * Portada comercial — hoja de estilo local.
+ *
+ * Vive en un módulo CSS y no en `globals.css` a propósito: la portada es la
+ * ÚNICA pantalla con esta tipografía (cuerpo de 17 px en lugar de 13) y no debe
+ * poder contaminar al producto. Todos los colores, radios, tiempos y espacios
+ * salen de los tokens de `globals.css`; aquí no hay ni un hexadecimal.
+ *
+ * La clase `.pcx-screen` NO se usa: aprieta el interlineado para tablas y esto
+ * es texto corrido.
+ */
+
+/* ───────────────────────────────────────────────────────────── contenedor */
+
+.page {
+  background: var(--void-deep);
+  color: var(--foreground);
+  /* `clip` en lugar de `hidden`: no crea contexto de scroll y deja funcionar
+     el desplazamiento suave de los anclajes. */
+  overflow-x: clip;
+}
+
+.wrap {
+  width: 100%;
+  max-width: 1280px; /* 1200 de contenido + 40 de margen a cada lado */
+  margin-inline: auto;
+  padding-inline: var(--space-6);
+}
+
+@media (min-width: 768px) {
+  .wrap {
+    padding-inline: var(--space-8);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────── tipografía */
+
+.h1 {
+  font-size: clamp(2.5rem, 7vw, 4.75rem);
+  font-weight: 600;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+
+.h2 {
+  font-size: clamp(1.6875rem, 3.6vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+  text-wrap: balance;
+}
+
+/* Titular corto y seco (sección de confianza). Va más grande que un h2
+   normal porque su trabajo es sonar rotundo, no explicar. */
+.h2Short {
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  letter-spacing: -0.035em;
+  line-height: 1.02;
+}
+
+.h3 {
+  font-size: 1.1875rem;
+  font-weight: 600;
+  line-height: 1.28;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+}
+
+.lead {
+  font-size: clamp(1.0625rem, 1.9vw, 1.375rem);
+  font-weight: 400;
+  line-height: 1.48;
+  letter-spacing: -0.012em;
+  color: var(--muted);
+  max-width: var(--measure-lead);
+}
+
+.body {
+  font-size: 1.0625rem;
+  font-weight: 400;
+  line-height: 1.62;
+  color: var(--muted);
+  max-width: var(--measure-text);
+}
+
+/* Destacado dentro de texto corrido: cambia el PESO y la tinta, no el color
+   de marca. Así una idea clave resalta sin gastar acento. */
+.strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.meta {
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--faint);
+  letter-spacing: 0;
+}
+
+.eyebrow {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--faint);
+  letter-spacing: 0;
+}
+
+/* ────────────────────────────────────────────────────────── navegación */
+
+.nav {
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.navAccess {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: -0.01em;
+  transition: color var(--dur) var(--ease);
+}
+
+.navAccess:hover {
+  color: var(--foreground);
+}
+
+/* ────────────────────────────────────────────────────── secciones/ritmo */
+
+/* Las secciones NO miden lo mismo: es la mitad del carácter editorial.
+   Apertura y cierre muy vacíos; contabilidad densa; gestores corta. */
+.secOpen {
+  padding-top: clamp(72px, 12vw, 128px);
+  padding-bottom: clamp(96px, 16vw, 176px);
+  text-align: center;
+}
+
+/* Filo superior de sección ALINEADO CON EL TEXTO.
+   Si se pone como `border-top` de la propia sección, el filo dibuja el borde de
+   la caja —que incluye el margen lateral— y sobresale 40 px por cada lado
+   respecto a la primera letra del titular. Un separador que no cuadra con la
+   columna de texto se nota aunque no se sepa por qué. */
+.ruleTop {
+  position: relative;
+}
+
+.ruleTop::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-6);
+  right: var(--space-6);
+  height: 1px;
+  background: var(--line);
+}
+
+@media (min-width: 768px) {
+  .ruleTop::before {
+    left: var(--space-8);
+    right: var(--space-8);
+  }
+}
+
+.secProblem {
+  padding-block: clamp(72px, 10vw, 112px);
+}
+
+.secSteps {
+  padding-block: clamp(80px, 11vw, 128px);
+}
+
+.secProduct {
+  padding-block: clamp(64px, 8vw, 96px);
+}
+
+.secLedger {
+  padding-block: clamp(72px, 9vw, 104px);
+  background: var(--void-surface);
+  border-block: 1px solid var(--line);
+}
+
+.secTax {
+  padding-block: clamp(80px, 11vw, 128px);
+}
+
+.secManagers {
+  padding-block: clamp(56px, 6vw, 80px);
+}
+
+.secTrust {
+  padding-block: clamp(72px, 10vw, 112px);
+}
+
+.secClose {
+  padding-top: clamp(88px, 13vw, 152px);
+  padding-bottom: clamp(64px, 8vw, 96px);
+  text-align: center;
+}
+
+/* ─────────────────────────────────────────────────────────────── acciones */
+
+.ctaRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  align-items: center;
+}
+
+.ctaRowCenter {
+  justify-content: center;
+}
+
+/* Acción principal: el ÚNICO relleno azul de su pantalla. Blanco puro encima,
+   que es la excepción medida de la identidad. */
+.ctaPrimary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-md);
+  background: var(--accent-primary);
+  color: var(--text-on-accent);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: 1px solid var(--accent-primary);
+  transition: background var(--dur) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.ctaPrimary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.ctaPrimary:active {
+  background: var(--accent-press);
+  transform: scale(0.99);
+}
+
+/* Acción terciaria: sin caja. Un filo bajo el texto y nada más. */
+.ctaQuiet {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-strong);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+
+.ctaQuiet:hover {
+  color: var(--foreground);
+  border-color: var(--foreground);
+}
+
+/* ──────────────────────────────────────────── lista editorial (problema) */
+
+.editorialList {
+  margin-top: clamp(40px, 6vw, 64px);
+  display: flex;
+  flex-direction: column;
+}
+
+.editorialItem {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+  padding-block: var(--space-7);
+  border-top: 1px solid var(--line);
+}
+
+.editorialItem:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 768px) {
+  .editorialItem {
+    grid-template-columns: 56px minmax(0, 1fr);
+    column-gap: var(--space-6);
+  }
+}
+
+.editorialIndex {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums lining-nums;
+  padding-top: 0.35em;
+}
+
+/* El primer apunte pesa más que los otros dos: si los tres miden igual, la
+   lista se lee como una rejilla. */
+.editorialTitleLead {
+  font-size: clamp(1.25rem, 2.6vw, 1.625rem);
+  font-weight: 500;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.editorialTitle {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.editorialNote {
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 58ch;
+}
+
+/* ───────────────────────────────────────────────────── pasos con espina */
+
+.stepsHead {
+  max-width: 22ch;
+}
+
+.steps {
+  margin-top: clamp(48px, 7vw, 80px);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(48px, 6vw, 72px);
+  padding-left: var(--space-8);
+}
+
+@media (min-width: 768px) {
+  .steps {
+    padding-left: 88px;
+  }
+}
+
+/* La espina: filo neutro de 1 px con una línea de acento que lo recorre según
+   avanzas. Es el único movimiento de la sección y el único azul. */
+.spine {
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.spineFill {
+  position: absolute;
+  inset: 0;
+  background: var(--accent-primary);
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 420ms var(--ease);
+}
+
+.step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+}
+
+.stepNumber {
+  position: absolute;
+  left: calc(-1 * var(--space-8));
+  top: 0;
+  width: var(--space-8);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums lining-nums;
+  padding-top: 0.4em;
+}
+
+@media (min-width: 768px) {
+  .stepNumber {
+    left: -88px;
+    width: 88px;
+    font-size: clamp(1.75rem, 3vw, 2.375rem);
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    padding-top: 0;
+    line-height: 1;
+    /* `--slate` es color de ELEMENTO, no de tinta: da 2,56:1 y no pasa ni el
+       umbral relajado de texto grande. La rama de móvil de este mismo selector
+       ya usaba `--faint` (5,7:1); aquí se había colado el otro. */
+    color: var(--faint);
+  }
+}
+
+.stepTitle {
+  font-size: clamp(1.25rem, 2.4vw, 1.625rem);
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.stepBody {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 56ch;
+}
+
+.stepsFoot {
+  margin-top: clamp(40px, 5vw, 56px);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--line);
+  max-width: 78ch;
+}
+
+/* ───────────────────────────────────────────────────── placa de producto */
+
+.productHead {
+  display: grid;
+  gap: clamp(24px, 4vw, 40px);
+  align-items: end;
+}
+
+@media (min-width: 900px) {
+  .productHead {
+    /* La retícula se rompe a propósito: el titular arranca en el borde y la
+       cifra vive en las cuatro últimas columnas. */
+    grid-template-columns: minmax(0, 7fr) minmax(0, 4fr);
+    column-gap: clamp(40px, 6vw, 88px);
+  }
+}
+
+.figureBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-strong);
+}
+
+.figureLabel {
+  font-size: 0.8125rem;
+  color: var(--faint);
+}
+
+.figureValue {
+  font-size: clamp(2.25rem, 5.5vw, 3.5rem);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.figureUnit {
+  font-size: 0.45em;
+  font-weight: 500;
+  color: var(--muted);
+  margin-left: 0.25em;
+  letter-spacing: -0.01em;
+}
+
+.figureDelta {
+  font-size: 0.9375rem;
+  color: var(--loss);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.figureDeltaNote {
+  color: var(--faint);
+}
+
+/* Un filo fino y ya: sin marco de navegador, sin perspectiva, sin sombra. */
+.plate {
+  margin: 0;
+  margin-top: clamp(40px, 6vw, 64px);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-xl);
+  background: var(--void-deep);
+  overflow: hidden;
+}
+
+.plateSmall {
+  margin-top: clamp(32px, 4vw, 48px);
+  max-width: 760px;
+}
+
+.plateCrop {
+  position: relative;
+  overflow: hidden;
+}
+
+.plateImg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.plateCaption {
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+/* Leyenda de la captura: cuatro columnas de anchos DISTINTOS bajo un filo.
+   Nombra qué mirar; no describe funciones ni lleva iconos. */
+.legend {
+  margin-top: clamp(32px, 4vw, 48px);
+  display: grid;
+  gap: var(--space-6);
+}
+
+@media (min-width: 1024px) {
+  .legend {
+    grid-template-columns: 4fr 3fr 3fr 2fr;
+    column-gap: var(--space-7);
+  }
+}
+
+.legendItem {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--line-strong);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+}
+
+/* ─────────────────────────────────────────────── contabilidad (densa) */
+
+.ledgerHead {
+  display: grid;
+  gap: var(--space-6);
+}
+
+@media (min-width: 900px) {
+  .ledgerHead {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    column-gap: clamp(48px, 7vw, 104px);
+    align-items: start;
+  }
+  /* El texto arranca en la tercera columna de la retícula, no pegado al
+     titular: es lo que da carácter frente a dos bloques centrados. */
+  .ledgerHeadText {
+    padding-top: 0.4em;
+  }
+}
+
+/* Separación de capital y rendimiento. Concepto abstracto: merece una
+   explicación visual, no un adorno. */
+.split {
+  margin-top: clamp(48px, 6vw, 72px);
+  max-width: 620px;
+}
+
+.splitBar {
+  display: flex;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  gap: 0;
+  transition: gap 520ms var(--ease);
+}
+
+.splitBarOpen {
+  gap: var(--space-2);
+}
+
+.splitCapital {
+  flex: 1 1 auto;
+  background: var(--section-lending);
+  border-radius: 999px;
+}
+
+.splitYield {
+  flex: 0 0 22%;
+  background: var(--profit);
+  border-radius: 999px;
+}
+
+.splitLegend {
+  margin-top: var(--space-5);
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 560px) {
+  .splitLegend {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-7);
+  }
+}
+
+.splitCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 380ms var(--ease), transform 380ms var(--ease);
+}
+
+.splitCellOpen {
+  opacity: 1;
+  transform: none;
+}
+
+.splitCell:nth-child(2) {
+  transition-delay: 120ms;
+}
+
+.splitCellLabel {
+  font-size: 0.8125rem;
+  color: var(--faint);
+}
+
+.splitCellValue {
+  font-size: 1.375rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--foreground);
+}
+
+.splitCellValueProfit {
+  color: var(--profit);
+}
+
+.splitFoot {
+  margin-top: var(--space-4);
+  font-size: 0.8125rem;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splitCell {
+    opacity: 1;
+    transform: none;
+  }
+  .splitBar {
+    gap: var(--space-2);
+  }
+}
+
+/* Cuatro piezas, cuatro pesos. Ninguna fila con dos bloques del mismo ancho,
+   y sólo UNA lleva tarjeta: la que carga el argumento. */
+.pieces {
+  margin-top: clamp(56px, 7vw, 80px);
+  display: grid;
+  gap: var(--space-7);
+}
+
+@media (min-width: 900px) {
+  .pieces {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--space-8);
+    row-gap: clamp(40px, 5vw, 56px);
+    align-items: start;
+  }
+  .pieceWide {
+    grid-column: span 7;
+  }
+  .pieceNarrow {
+    grid-column: span 5;
+  }
+}
+
+.piece {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-strong);
+}
+
+.pieceStar {
+  padding: var(--space-6);
+  border: 1px solid var(--glass-border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--void-elevated);
+}
+
+.pieceTitle {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+}
+
+.pieceStar .pieceTitle {
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+}
+
+.pieceBody {
+  margin-top: var(--space-2);
+  font-size: 1rem;
+  line-height: 1.58;
+  color: var(--muted);
+  max-width: 52ch;
+}
+
+/* ───────────────────────────────────────────────────────── documento fiscal */
+
+.taxHead {
+  display: grid;
+  gap: clamp(32px, 5vw, 56px);
+}
+
+@media (min-width: 1024px) {
+  .taxHead {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: clamp(48px, 7vw, 96px);
+    align-items: start;
+  }
+}
+
+.taxDoc {
+  display: flex;
+  flex-direction: column;
+}
+
+.taxRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
+.taxRow:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 560px) {
+  .taxRow {
+    grid-template-columns: 104px minmax(0, 1fr);
+    column-gap: var(--space-6);
+    align-items: baseline;
+  }
+}
+
+/* Las casillas son identificadores: es el único territorio de la
+   monoespaciada, y es el mismo tratamiento que usa la pantalla de Fiscalidad. */
+.taxCasilla {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  color: var(--faint);
+}
+
+.taxText {
+  font-size: 1.0625rem;
+  line-height: 1.5;
+  color: var(--foreground);
+  font-weight: 400;
+}
+
+.taxTextNote {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.9375rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.disclaimer {
+  margin-top: clamp(32px, 4vw, 48px);
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--line-strong);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--faint);
+  max-width: 72ch;
+}
+
+/* ──────────────────────────────────────────────────────────── confianza */
+
+.trustHead {
+  display: grid;
+  gap: clamp(32px, 5vw, 48px);
+}
+
+@media (min-width: 1024px) {
+  .trustHead {
+    grid-template-columns: minmax(0, 4fr) minmax(0, 8fr);
+    column-gap: clamp(48px, 8vw, 112px);
+    align-items: start;
+  }
+}
+
+.trustList {
+  display: flex;
+  flex-direction: column;
+}
+
+.trustRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-1);
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
+.trustRow:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+@media (min-width: 700px) {
+  .trustRow {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: var(--space-8);
+    align-items: baseline;
+  }
+}
+
+.trustTerm {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  line-height: 1.4;
+}
+
+.trustDef {
+  font-size: 1rem;
+  line-height: 1.58;
+  color: var(--muted);
+}
+
+/* ───────────────────────────────────────────────────────── cierre y pie */
+
+.closeInner {
+  max-width: 780px;
+  margin-inline: auto;
+}
+
+.form {
+  margin-top: clamp(40px, 6vw, 56px);
+  display: grid;
+  gap: var(--space-4);
+  text-align: left;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+@media (min-width: 640px) {
+  .formPair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-4);
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fieldLabel {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--glass-border-strong);
+  background: var(--void-surface);
+  padding: var(--space-3) var(--space-4);
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--accent-primary);
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--disabled);
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.ctaPrimary:disabled {
+  background: var(--accent-busy);
+  border-color: var(--accent-busy);
+  color: var(--text-on-accent-busy);
+  cursor: not-allowed;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding-block: var(--space-8);
+  display: grid;
+  gap: var(--space-6);
+}
+
+@media (min-width: 768px) {
+  .footer {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    column-gap: var(--space-8);
+  }
+}
+
+.footerNote {
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--faint);
+  max-width: 60ch;
+}
+
+/* Enlaces legales del pie. En columna en el escritorio —donde la rejilla del
+   pie los alinea a la derecha— y en fila envolvente en móvil, para no gastar
+   cinco líneas de alto en cuatro palabras. */
+.footerLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-5);
+  align-items: baseline;
+}
+
+@media (min-width: 768px) {
+  .footerLinks {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--space-3);
+  }
+}
+
+.footerLink {
+  font-size: 0.8125rem;
+  color: var(--faint);
+  transition: color var(--dur) var(--ease);
+}
+
+.footerLink:hover {
+  color: var(--foreground);
+}
+
+/* ─────────────────────────────────────────────────── entradas al scroll */
+
+/* Desplazamiento corto y se para. Sin rebote, sin paralaje, sin bucles. */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 460ms var(--ease), transform 460ms var(--ease);
+  will-change: transform, opacity;
+}
+
+.revealIn {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .spineFill {
+    transition: none;
+  }
+}
