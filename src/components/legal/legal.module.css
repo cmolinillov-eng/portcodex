@@ -1,0 +1,535 @@
+/**
+ * Páginas legales — hoja de estilo local.
+ *
+ * Mismo criterio que `landing.module.css`: módulo propio, ni un hexadecimal,
+ * todo sale de los tokens de `globals.css`.
+ *
+ * `.pcx-screen` NO se usa. Esa clase aprieta el interlineado a `normal` para que
+ * las filas de tabla midan lo que miden en las maquetas; aquí se lee texto
+ * corrido y el texto corrido necesita aire (1,68 de interlineado, medida de
+ * 68 ch). Es la misma decisión que tomó la portada.
+ *
+ * Sin JavaScript: el índice se pega con `position: sticky` y los enlaces son
+ * anclas. Una página legal debe poder leerse con el navegador más pobre.
+ */
+
+/* ───────────────────────────────────────────────────────────── contenedor */
+
+.page {
+  background: var(--void-deep);
+  color: var(--foreground);
+  overflow-x: clip;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main {
+  flex: 1 0 auto;
+  padding-bottom: clamp(64px, 8vw, 104px);
+}
+
+/* ──────────────────────────────────────────────────────────── cabecera */
+
+.head {
+  padding-top: clamp(40px, 6vw, 72px);
+  padding-bottom: clamp(32px, 4vw, 48px);
+}
+
+/* Migas: dos niveles, sin iconos ni chevrons dibujados. */
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--faint);
+  letter-spacing: 0;
+}
+
+.crumbLink {
+  color: var(--faint);
+  transition: color var(--dur) var(--ease);
+}
+
+.crumbLink:hover {
+  color: var(--foreground);
+}
+
+.h1 {
+  margin-top: var(--space-6);
+  font-size: clamp(2rem, 4.6vw, 3.25rem);
+  font-weight: 600;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  color: var(--foreground);
+  max-width: 20ch;
+  text-wrap: balance;
+}
+
+.standfirst {
+  margin-top: var(--space-6);
+  font-size: clamp(1.0625rem, 1.6vw, 1.25rem);
+  line-height: 1.5;
+  letter-spacing: -0.012em;
+  color: var(--muted);
+  max-width: var(--measure-lead);
+}
+
+/* Fecha. Va arriba y no escondida al pie: en un documento legal la vigencia es
+   parte del contenido, no un metadato. */
+.updated {
+  margin-top: var(--space-7);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--faint);
+  max-width: var(--measure-text);
+}
+
+/* ─────────────────────────────────────────── aviso de estado del documento */
+
+/* No es un pie de página en gris claro: es lo primero que se lee después del
+   titular, y se señala en ámbar porque es la EXCEPCIÓN —un documento que
+   todavía no puede publicarse—, que es exactamente para lo que el sistema
+   reserva ese color. */
+.status {
+  margin-top: clamp(32px, 4vw, 48px);
+  padding: var(--space-6);
+  padding-left: var(--space-6);
+  border: 1px solid var(--glass-border-strong);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--radius-lg);
+  background: var(--void-elevated);
+  max-width: var(--measure-text);
+}
+
+.statusTitle {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--warn);
+}
+
+.statusBody {
+  margin-top: var(--space-3);
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.statusBody strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* ───────────────────────────────────────────────── documento e índice */
+
+.doc {
+  display: grid;
+  gap: clamp(40px, 5vw, 56px);
+  padding-top: clamp(40px, 5vw, 64px);
+  align-items: start;
+}
+
+@media (min-width: 1080px) {
+  .doc {
+    grid-template-columns: minmax(0, 224px) minmax(0, 1fr);
+    column-gap: clamp(48px, 6vw, 96px);
+  }
+}
+
+.toc {
+  border-top: 1px solid var(--line-strong);
+  padding-top: var(--space-4);
+}
+
+@media (min-width: 1080px) {
+  .toc {
+    position: sticky;
+    top: var(--space-7);
+  }
+}
+
+.tocTitle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.tocList {
+  margin-top: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  list-style: none;
+  padding: 0;
+}
+
+.tocLink {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: var(--space-3);
+  align-items: baseline;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--muted);
+  transition: color var(--dur) var(--ease);
+}
+
+.tocLink:hover {
+  color: var(--foreground);
+}
+
+.tocNum {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--faint);
+}
+
+/* ─────────────────────────────────────────────────────────────── secciones */
+
+.sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.section {
+  padding-top: clamp(32px, 4vw, 44px);
+  padding-bottom: clamp(8px, 1vw, 12px);
+  border-top: 1px solid var(--line);
+  scroll-margin-top: var(--space-7);
+}
+
+.section:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.sectionHead {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 640px) {
+  .sectionHead {
+    grid-template-columns: 40px minmax(0, 1fr);
+    column-gap: var(--space-5);
+    align-items: baseline;
+  }
+}
+
+/* Numeración en Public Sans con cifras tabulares. La monoespaciada queda
+   reservada a wallets, hashes e identificadores; un ordinal no lo es. */
+.sectionNum {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.h2 {
+  font-size: clamp(1.375rem, 2.4vw, 1.75rem);
+  font-weight: 600;
+  line-height: 1.16;
+  letter-spacing: -0.025em;
+  color: var(--foreground);
+  max-width: 32ch;
+  text-wrap: balance;
+}
+
+/* El cuerpo arranca alineado con el título en pantallas anchas: la columna de
+   ordinales queda vacía y el texto forma una sola caja de lectura. */
+.body {
+  margin-top: var(--space-5);
+}
+
+@media (min-width: 640px) {
+  .body {
+    margin-left: calc(40px + var(--space-5));
+  }
+}
+
+/* ───────────────────────────────────────────────────────── texto corrido */
+
+.body p {
+  font-size: 1.0625rem;
+  line-height: 1.68;
+  color: var(--muted);
+  max-width: var(--measure-text);
+}
+
+.body p + p {
+  margin-top: var(--space-5);
+}
+
+.body strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.body a {
+  color: var(--brand-soft);
+  text-decoration: underline;
+  text-underline-offset: 0.18em;
+  text-decoration-thickness: 1px;
+  transition: color var(--dur) var(--ease);
+}
+
+.body a:hover {
+  color: var(--foreground);
+}
+
+.body h3 {
+  margin-top: var(--space-7);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  max-width: 44ch;
+}
+
+.body h3 + p {
+  margin-top: var(--space-3);
+}
+
+/* Listas: el punto lo dibuja un filo corto, no un bullet tipográfico. Es el
+   mismo lenguaje de separadores que usa el resto del producto. */
+.list {
+  margin-top: var(--space-5);
+  list-style: none;
+  padding: 0;
+  max-width: var(--measure-text);
+  display: flex;
+  flex-direction: column;
+}
+
+.list li {
+  position: relative;
+  padding-left: var(--space-6);
+  padding-block: var(--space-3);
+  font-size: 1.0625rem;
+  line-height: 1.62;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.list li:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: calc(var(--space-3) + 0.8em);
+  width: 12px;
+  height: 1px;
+  background: var(--line-strong);
+}
+
+.list li strong {
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+/* Nota al pie de una sección: más pequeña, con filo lateral. */
+.note {
+  margin-top: var(--space-6);
+  padding-left: var(--space-5);
+  border-left: 1px solid var(--line-strong);
+  max-width: 72ch;
+}
+
+.note p {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--faint);
+}
+
+.note p + p {
+  margin-top: var(--space-3);
+}
+
+/* ────────────────────────────────────────────────── ficha (destinatarios) */
+
+/* Sustituye a la tabla. Una tabla de cinco columnas se desborda a 390 px o se
+   encoge hasta ser ilegible; estas filas se apilan solas y siguen leyéndose
+   como lo que son: una lista de pares etiqueta/valor. */
+.entries {
+  margin-top: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  max-width: var(--measure-text);
+}
+
+.entry {
+  padding-block: var(--space-5);
+  border-top: 1px solid var(--line);
+}
+
+.entry:last-child {
+  border-bottom: 1px solid var(--line);
+}
+
+.entryName {
+  font-size: 1.0625rem;
+  font-weight: 500;
+  letter-spacing: -0.015em;
+  color: var(--foreground);
+  line-height: 1.35;
+}
+
+/* Nombres de cookie y dominios: identificadores. Aquí sí manda la
+   monoespaciada, igual que las casillas de la portada. */
+.entryCode {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.9375rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--foreground);
+}
+
+.entryRows {
+  margin-top: var(--space-3);
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+
+@media (min-width: 560px) {
+  .entryRows {
+    grid-template-columns: 128px minmax(0, 1fr);
+    column-gap: var(--space-5);
+    row-gap: var(--space-2);
+    align-items: baseline;
+  }
+}
+
+.entryLabel {
+  font-size: 0.8125rem;
+  color: var(--faint);
+  line-height: 1.5;
+}
+
+.entryValue {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.entryValue code {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.875em;
+  letter-spacing: 0;
+  color: var(--muted);
+}
+
+/* ───────────────────────────────────────────────────────────── marcadores */
+
+/* Dato que solo conoce el responsable y que NADIE debe poder confundir con
+   texto definitivo. En ámbar, con fondo propio y en monoespaciada: se ve desde
+   el otro lado de la habitación, que es justo lo que se pretende.
+   Medido: #F0A43C sobre #493317 da 5,7:1 — pasa AA. */
+.mark {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.8125em;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--warn);
+  background: var(--warn-soft);
+  padding: 0.12em 0.4em;
+  border-radius: var(--radius-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ─────────────────────────────────────────────────────────────── índice */
+
+.indexList {
+  display: grid;
+  gap: var(--space-6);
+  padding-top: clamp(32px, 4vw, 48px);
+  list-style: none;
+  margin: 0;
+  padding-inline: 0;
+}
+
+@media (min-width: 860px) {
+  .indexList {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--space-8);
+    row-gap: var(--space-7);
+  }
+}
+
+.indexCard {
+  display: block;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line-strong);
+  transition: border-color var(--dur) var(--ease);
+}
+
+.indexCard:hover {
+  border-color: var(--foreground);
+}
+
+.indexTitle {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  color: var(--foreground);
+}
+
+.indexSummary {
+  display: block;
+  margin-top: var(--space-3);
+  font-size: 1rem;
+  line-height: 1.58;
+  color: var(--muted);
+  max-width: 46ch;
+}
+
+/* ─────────────────────────────────────────────────────────────────── pie */
+
+/* Navegación entre documentos al final: quien acaba de leer uno suele querer
+   el siguiente, y volver arriba a buscarlo es fricción gratuita. */
+.docNav {
+  margin-top: clamp(48px, 6vw, 72px);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--line-strong);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-6);
+  align-items: baseline;
+}
+
+.docNavLabel {
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.docNavLink {
+  font-size: 0.9375rem;
+  color: var(--muted);
+  transition: color var(--dur) var(--ease);
+}
+
+.docNavLink:hover {
+  color: var(--foreground);
+}
+
+.docNavCurrent {
+  font-size: 0.9375rem;
+  color: var(--faint);
+}
