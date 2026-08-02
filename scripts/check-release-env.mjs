@@ -13,9 +13,16 @@ const required = [
   "SUPABASE_SERVICE_ROLE_KEY",
   "SUPERADMIN_USER_ID",
   "SUPERADMIN_EMAIL",
-  "NEXT_PUBLIC_APP_URL",
+  
 ];
-const recommended = ["COINGECKO_API_KEY"];
+const recommended = [
+  "COINGECKO_API_KEY",
+  // Sin estas dos el bypass de servicio queda INERTE, que es el estado seguro:
+  // el cron no puede leer ni escribir nada. Se declaran aquí para que se sepa
+  // que existen, no porque falten para arrancar.
+  "CRON_WRITE_SECRET",
+  "SERVICE_PORTFOLIO_IDS",
+];
 const productionRules = ["ENABLE_DEV_AUTH_FALLBACK=false", "DEV_VIEWER_USER_ID empty or undefined"];
 
 function parseEnv(raw) {
