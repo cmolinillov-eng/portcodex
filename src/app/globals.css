@@ -78,6 +78,11 @@
      que NO pasa. En el botón principal del producto no hay margen para ceder
      ese cuarto de punto. */
   --text-on-accent: #FFFFFF;
+  /* Botón principal MIENTRAS trabaja. Es un azul apagado, no el azul al 60 % de
+     opacidad: rebajar la opacidad deja ver el fondo a través y el botón parece
+     desactivado en vez de ocupado. Medido 5,9:1 — pasa AA. */
+  --accent-busy: #23478F;
+  --text-on-accent-busy: #C3D2EE;
   --surface: var(--void-surface);
   --surface-2: var(--void-elevated);
   --brand: var(--accent-primary);
@@ -104,13 +109,17 @@
   --dur: 200ms;
   --dur-slow: 250ms;
 
-  /* Composición por sección. El CIAN no aparece aquí a propósito: baja a
-     acento excepcional (2 %) reservado a sincronización y datos en vivo, no a
-     marcar categorías. */
-  --section-wallet: #718096;   /* neutra */
-  --section-staking: #475467;  /* slate */
-  --section-lending: #8B78FF;  /* terciaria */
-  --section-lp: #2F6BFF;       /* principal */
+  /* Composición por sección — RAMPA NEUTRA, medida en las maquetas aprobadas.
+     El cian no aparece (queda reservado a sincronización y datos en vivo) y el
+     azul tampoco: si la barra de composición usa el azul de marca, compite con
+     la cifra de patrimonio y con el gráfico de evolución, que sí son azules.
+     En neutros, la barra se lee como lo que es —un reparto— y no como un aviso.
+     Cada estrategia tiene un tono FIJO: si dependiera del orden, una categoría
+     cambiaría de color al abrirse otra, y el cliente lo leería como un cambio. */
+  --section-wallet: #DCE3EC;   /* más claro = custodia propia, sin compromiso */
+  --section-lending: #A9B8CB;
+  --section-staking: #71869F;
+  --section-lp: #42566E;       /* más oscuro = capital más comprometido */
   /* SLATE es un color de ELEMENTO, no de texto. Medido da 2,6:1 sobre
      obsidiana y 2,1:1 sobre tarjeta: como tinta es ilegible. Sirve para filos,
      separadores y series neutras de gráfico. Para texto secundario, --muted. */
@@ -153,7 +162,40 @@
      cansa y rompe la lectura editorial. */
   --measure-text: 68ch;   /* párrafos */
   --measure-lead: 52ch;   /* entradillas y subtítulos */
-  --shell-max: 1200px;    /* ancho útil de página */
+
+  /* ── MEDIDAS DE PÁGINA ────────────────────────────────────────────────────
+     Tomadas de las maquetas aprobadas (web/design/), no estimadas. */
+  --shell-max: 1240px;    /* ancho útil de página */
+  /* Margen lateral. Las maquetas NO se ponen de acuerdo: Resumen usa 64, y
+     Movimientos, Fiscalidad, Informes, Administración y Editar usuario usan 48
+     (Cartera llega a mezclar 64 en la barra con 48 en el contenido, que es un
+     descuadre de la propia maqueta). Manda 48: son seis de ocho pantallas, es
+     el valor al que se llegó al final, y da 32 px más de ancho útil justo a las
+     pantallas que viven de tablas. Preferimos que las ocho coincidan entre sí a
+     que cada una coincida con su maqueta: si el margen cambiara al navegar, la
+     página entera daría un salto entre secciones. */
+  --shell-pad: 48px;
+  --nav-h: 56px;          /* alto de la barra de navegación */
+
+  /* ── ESCALA TIPOGRÁFICA REAL ──────────────────────────────────────────────
+     Medida sobre las ocho maquetas. Corrige el brief, que estimaba un cuerpo
+     de 15 px: el real es 13, y hay 119 usos de 11 px. Es una interfaz DENSA,
+     como corresponde a una herramienta de trabajo diario — no a una portada.
+
+     Solo tres pesos: 400 cuerpo · 500 etiquetas y celdas · 600 cifras y
+     títulos. El 500 es el más frecuente. */
+  --text-hero: 60px;      /* patrimonio total, solo en Resumen */
+  --text-display: 46px;   /* titular de Acceso */
+  --text-page: 31px;      /* cifra de cabecera de pantalla */
+  /* Titular de pantalla. Faltaba: Fiscalidad e Informes lo usan y quedaba
+     cableado a 20 en los componentes. */
+  --text-subhead: 20px;
+  --text-section: 17px;   /* título de sección */
+  --text-lead: 15px;      /* entradillas */
+  --text-body: 13px;      /* cuerpo y celdas de tabla ← el más usado */
+  --text-label: 12px;     /* etiquetas y secundario */
+  --text-meta: 11px;      /* terciario y notas al pie */
+  --text-micro: 9px;      /* micro-etiquetas */
 }
 
 @theme inline {
@@ -349,6 +391,149 @@ button, a {
   font-weight: 500;
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
+}
+
+/**
+ * Interlineado de las pantallas del rediseño.
+ *
+ * Las maquetas no fijan `line-height`, así que heredan el `normal` del
+ * navegador (~1,2). El preflight de Tailwind impone `1.5` a todo el documento,
+ * y eso engorda cada fila de tabla un 25 %: una fila de movimientos medía 89 px
+ * en código contra los 58 de la maqueta. En una herramienta densa eso no es un
+ * matiz estético, es media pantalla menos de datos.
+ *
+ * Se aplica por pantalla y no al `body` a propósito: las páginas antiguas
+ * (`/operar`, fiscal, admin) se maquetaron con 1,5 y apretarlas de golpe las
+ * dejaría estrechas. Cuando no quede ninguna, esto sube al `body`.
+ */
+.pcx-screen {
+  line-height: normal;
+  /* Las maquetas tampoco aprietan el tracking del cuerpo: el −0,005em global
+     estrecha el texto lo justo para que una nota de dos líneas caiga en una, y
+     entonces la altura del bloque deja de coincidir. El tracking negativo se
+     aplica donde toca —titulares y cifras—, no a todo. */
+  letter-spacing: normal;
+}
+
+/* =====================================================================
+   PANTALLAS ESTRECHAS
+   =====================================================================
+
+   Las ocho maquetas se dibujaron a 1240 px fijos y NO cubren el móvil. Esto
+   decide qué pasa por debajo, y la decisión de fondo es una:
+
+     **Una fila deja de ser una fila y pasa a ser una FICHA.**
+
+   Las columnas no se estrechan hasta romperse: se reapilan, y cada dato
+   recupera su etiqueta —la que en escritorio vive en la cabecera de la tabla y
+   que al apilar se perdería—. Una tabla de seis columnas comprimida a 390 px no
+   se lee; seis pares de «etiqueta: valor», sí.
+
+   Dos cortes, no cinco:
+     · < 900 px  → ficha. Es el ancho al que la rejilla de Cartera ya no cabe.
+     · ≥ 900 px  → tabla, como se diseñó.
+
+   Administración y Editar usuario quedan fuera a propósito: son pantallas de
+   gestor, y nadie cambia los permisos de un usuario desde el móvil. */
+
+/* El aire lateral se encoge antes que el contenido: a 390 px, 48 px por lado
+   se comen una cuarta parte de la pantalla. */
+@media (max-width: 899px) {
+  :root {
+    --shell-pad: 20px;
+  }
+}
+
+/* La cifra protagonista no puede medir 60 px en un móvil: se sale. Escala con
+   el ancho pero nunca baja de 34, que es donde deja de mandar. */
+@media (max-width: 899px) {
+  .pcx-hero-figure {
+    font-size: clamp(34px, 11vw, var(--text-hero)) !important;
+  }
+}
+
+/* Rejilla de tabla gobernada por variable: el componente pasa su plantilla de
+   escritorio en `--pcx-cols` y aquí se decide qué hacer en estrecho. Es lo que
+   permite adaptar componentes escritos con estilos EN LÍNEA, que no admiten
+   media queries. */
+.pcx-grid {
+  grid-template-columns: var(--pcx-cols);
+}
+
+@media (max-width: 899px) {
+  .pcx-grid {
+    grid-template-columns: 1fr;
+    row-gap: 10px;
+  }
+
+  /* La cabecera de columnas sobra: cada celda lleva ya su etiqueta. */
+  .pcx-grid-head {
+    display: none;
+  }
+
+  /* La etiqueta que la celda recupera al apilarse. Sale de `data-label`, que
+     es el mismo texto de la cabecera de columna. */
+  .pcx-grid > [data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: var(--text-meta);
+    font-weight: 400;
+    color: var(--faint);
+    margin-bottom: 3px;
+  }
+
+  /* Apilado, alinear a la derecha no separa nada de nada: todo a la izquierda,
+     que es por donde se lee. */
+  .pcx-grid > *,
+  .pcx-grid .text-right {
+    text-align: left !important;
+  }
+  .pcx-grid .justify-end {
+    justify-content: flex-start !important;
+  }
+}
+
+/* Bloques que en escritorio van uno al lado del otro y en móvil no caben. */
+@media (max-width: 899px) {
+  .pcx-stack-narrow {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 24px !important;
+  }
+  .pcx-cols-narrow {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* El texto corrido dentro de una pantalla sí quiere aire: los avisos legales y
+   las explicaciones se leen en párrafo, no en celda. */
+.pcx-screen p {
+  line-height: 1.55;
+}
+
+/* Latido de sincronización — el ÚNICO elemento animado del producto.
+   Lento a propósito (2,6 s): a menor velocidad diría «cargando»; a esta,
+   dice «vivo». Se desactiva si el sistema pide menos movimiento. */
+@keyframes pcxPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.82);
+  }
+}
+
+.pcx-pulse {
+  animation: pcxPulse 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pcx-pulse {
+    animation: none;
+  }
 }
 
 .glow-divider {
@@ -999,3 +1184,58 @@ button, a {
 .header-stat-row:hover::before {
   opacity: 1;
 }
+
+/* En estrecho la tira de secciones baja a SU PROPIA LÍNEA. Compartiendo fila
+   con el logotipo y la cartera activa le quedaban 130 px para cinco secciones,
+   y lo que se veía era una palabra cortada por la mitad: parecía un fallo, no
+   un contenido desplazable. Con la fila entera, se desplaza y se entiende. */
+@media (max-width: 899px) {
+  .pcx-nav-inner {
+    flex-wrap: wrap;
+    height: auto !important;
+    padding-top: 10px !important;
+    padding-bottom: 6px !important;
+    row-gap: 4px;
+  }
+  .pcx-nav-inner > .pcx-nav-scroll {
+    order: 3;
+    flex-basis: 100%;
+    height: 40px;
+  }
+}
+
+/* Tira de navegación desplazable en móvil, sin barra visible: el gesto está,
+   el adorno no.
+   `min-width: 0` es lo que de verdad hace el trabajo: sin él, un contenedor
+   flexible se niega a encoger por debajo del ancho de su contenido, la tira
+   medía 390 px de contenido dentro de una caja que no cedía, y la barra entera
+   empujaba la página 322 px hacia la derecha. */
+.pcx-nav-scroll {
+  overflow-x: auto;
+  min-width: 0;
+  flex: 1 1 auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pcx-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* La moneda YA NO se esconde: era un apaño para cuando la barra iba en una
+   sola línea y no cabía. Con las secciones en su propia fila, cabe todo. */
+
+/* En estrecho, el filo que separa dos bloques apilados deja de tener sentido:
+   ya no hay nada a la izquierda de lo que separarlos. */
+@media (max-width: 899px) {
+  .pcx-cols-narrow > * {
+    border-left: none !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+  }
+  .pcx-cols-narrow > * + * {
+    margin-top: 20px;
+    padding-top: 20px !important;
+    border-top: 1px solid var(--line);
+  }
+}
+

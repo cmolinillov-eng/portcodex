@@ -43,7 +43,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className="dark">
-      <body className={`${uiFont.variable} ${monoFont.variable} ${designerFont.variable} antialiased bg-[#101318] text-[#edf0f3]`}>
+      {/* Fondo y tinta salen de los tokens, no cableados: #101318/#edf0f3 eran
+          del sistema anterior y no son la obsidiana de marca (#070B12). */}
+      <body
+        className={`${uiFont.variable} ${monoFont.variable} ${designerFont.variable} antialiased`}
+        style={{ background: "var(--background)", color: "var(--foreground)" }}
+      >
         {children}
       </body>
     </html>

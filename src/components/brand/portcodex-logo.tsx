@@ -79,13 +79,17 @@ export function PortCodexLogo({
 
   // Wordmark: Public Sans Semibold, UNA sola tinta, espaciado compacto. Sin
   // degradados, sin dos colores para "Port" y "Codex", sin efectos.
+  //
+  // Proporción y tracking tomados de las maquetas aprobadas: símbolo de 22 px
+  // con nombre de 15 px. Antes iba a 0,86 y −0,03em, y el nombre se comía al
+  // símbolo en la barra de navegación.
   const wordmark = (
     <span
       style={{
         color: ink,
-        fontSize: size * 0.86,
+        fontSize: Math.round(size * 0.68),
         fontWeight: 600,
-        letterSpacing: "-0.03em",
+        letterSpacing: "-0.01em",
         lineHeight: 1,
         whiteSpace: "nowrap",
       }}
@@ -144,39 +148,42 @@ const SYMBOL_INK: Record<LogoTone, string> = {
 const ACCENT_MIN_PX = 20;
 
 /**
- * Open Ledger Monogram. Se lee de tres maneras a la vez: registro abierto, C en
- * la hoja izquierda y P en la derecha.
+ * Monograma C + P. Es el símbolo de PRODUCTO: el que vive en la navegación, el
+ * favicon y el icono de aplicación.
  *
- * Cada hoja es UN trazo continuo — por tramos quedaban muescas donde se
- * encontraban. Fuente de verdad: public/brand/logo/portcodex-symbol.svg; va
- * en línea (no como <img>) para poder entintarlo por variante.
+ * Se eligió sobre el «registro abierto» del tablero de marca por una razón
+ * práctica: a 22 px —donde está el 99 % del tiempo— este se lee y aquel no.
+ * Cumple igualmente lo que pide la identidad («las letras P y C»), y es el que
+ * se aprobó a lo largo de las ocho maquetas.
  *
- * PROVISIONAL: dibujado a partir del mockup para desbloquear el producto. Al
- * llegar el redibujo profesional se sustituyen estos dos `path` y toda la
- * aplicación lo hereda.
+ * El registro abierto sigue siendo válido para marca, portada y presentaciones,
+ * donde tiene espacio para respirar. Vive en
+ * public/brand/logo/portcodex-symbol.svg.
+ *
+ * Trazado tomado literalmente de las maquetas (web/design/01-resumen.html), no
+ * redibujado a ojo: así el producto y el diseño aprobado no divergen.
  */
 function Symbol({ tone, size }: { tone: LogoTone; size: number; className?: string }) {
   const withAccent = size >= ACCENT_MIN_PX && tone !== "mono-claro" && tone !== "mono-oscuro";
+  // El trazo escala con el tamaño: a 22 px son los 2,6 de la maqueta.
+  const stroke = (2.6 / 22) * size;
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 96 96"
+      viewBox="0 0 28 28"
       fill="none"
       aria-hidden="true"
       style={{ color: SYMBOL_INK[tone], flexShrink: 0, display: "block" }}
     >
-      <g
-        stroke="currentColor"
-        strokeWidth="8.5"
-        strokeLinecap="butt"
-        strokeLinejoin="miter"
-        strokeMiterlimit="2.2"
-      >
-        <path d="M44 30.5 L15 17.5 L15 69.5 L44 82.5" />
-        <path d="M63 54.5 L83 44.5 L83 18 L54 31 L54 82.5 L70 75.5" />
+      <g stroke="currentColor" strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">
+        {/* C */}
+        <path d="M13 5.5C8.3 5.5 5 9.3 5 14s3.3 8.5 8 8.5" />
+        {/* P */}
+        <path d="M16.4 22.5V5.5h3.1a4.3 4.3 0 0 1 0 8.6h-3.1" />
       </g>
-      {withAccent ? <path d="M73.5 66.5 L82 62.8 L82 74 L73.5 77.7 Z" fill="#18BFD0" /> : null}
+      {/* Punto decimal — único uso del cian, y se retira por debajo de 20 px */}
+      {withAccent ? <rect x="22" y="18.6" width="3.9" height="3.9" fill="#18BFD0" /> : null}
     </svg>
   );
 }
