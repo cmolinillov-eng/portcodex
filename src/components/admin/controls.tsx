@@ -133,13 +133,39 @@ export function DangerButton({
   );
 }
 
-/** Acción secundaria en texto: «Descartar», «Cancelar». Sin peso ninguno. */
-export function QuietButton({ children, onClick }: { children: ReactNode; onClick?: () => void }) {
+/**
+ * Acción secundaria en texto: «Descartar», «Cancelar», «Quitar cliente». Sin
+ * peso ninguno.
+ *
+ * `tone="danger"` sube a rojo SOLO al apuntar. Es la acción que se repite en
+ * cada fila de una lista, y un filo rojo por fila convertiría la lista en un
+ * semáforo: cuando algo se señala en todas partes deja de señalar nada. El rojo
+ * aparece justo cuando se va a pulsar, que es cuando avisa de verdad.
+ */
+export function QuietButton({
+  children,
+  onClick,
+  tone = "neutral",
+  disabled = false,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  tone?: "neutral" | "danger";
+  disabled?: boolean;
+  /** Obligatorio cuando el mismo texto se repite en varias filas: «Quitar
+   *  cliente» dice lo mismo en las seis y no distingue a cuál se refiere. */
+  ariaLabel?: string;
+}) {
   const [hover, setHover] = useState(false);
+  const hot = hover && !disabled;
+
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -147,8 +173,15 @@ export function QuietButton({ children, onClick }: { children: ReactNode; onClic
         border: "none",
         padding: 0,
         fontSize: "var(--text-body)",
-        color: hover ? "var(--muted)" : "var(--faint)",
-        cursor: "pointer",
+        color: disabled
+          ? "var(--disabled)"
+          : hot
+            ? tone === "danger"
+              ? "var(--loss)"
+              : "var(--muted)"
+            : "var(--faint)",
+        cursor: disabled ? "not-allowed" : "pointer",
+        whiteSpace: "nowrap",
       }}
     >
       {children}

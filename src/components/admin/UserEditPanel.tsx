@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { longDate } from "@/lib/format/figures";
+import { longDate, plural } from "@/lib/format/figures";
 import { DangerButton, PrimaryButton, QuietButton, SelectField, TextField } from "./controls";
 import { ROLE_LABEL, ROLE_ORDER, type AdminRole } from "./roles";
 
@@ -26,6 +26,12 @@ import { ROLE_LABEL, ROLE_ORDER, type AdminRole } from "./roles";
  * borra a un cliente necesita saber que su historial de operaciones no se va con
  * él.
  *
+ * **La cartera de clientes de un gestor NO va en el formulario.** Añadir o
+ * quitar un cliente escribe en el momento —no espera a «Guardar cambios»—, así
+ * que vive en su propio bloque, detrás de un filo. Mezclar en un mismo botón
+ * cosas que se guardan y cosas que ya están guardadas es lo que hace dudar de
+ * si algo se aplicó.
+ *
  * Medidas tomadas de web/design/08-editar-usuario.html.
  */
 
@@ -42,23 +48,62 @@ export interface AdminUserDetail {
   createdAt: string | null;
 }
 
+/** Cartera propia del usuario, con el gestor que la lleva. */
+export interface OwnedPortfolio {
+  id: string;
+  name: string;
+  /** `null` = sin asignar. */
+  managerId: string | null;
+}
+
 /** Lo que el formulario devuelve al guardar. */
 export interface UserEditValues {
   name: string;
   email: string;
   role: AdminRole;
-  /** Gestor asignado a la cartera del cliente. Cadena vacía = sin asignar.
-   *  Solo tiene sentido cuando el rol es `cliente` y el usuario tiene cartera. */
-  managerId: string;
+  /**
+   * Gestor de cada cartera propia: `id de cartera → id de gestor`, con cadena
+   * vacía para «sin asignar».
+   *
+   * Es un mapa y no un campo suelto porque un cliente puede tener más de una
+   * cartera y cada una lleva su gestor. Con una sola —el caso normal— se pinta
+   * exactamente el desplegable único de la maqueta.
+   */
+  managerByPortfolio: Record<string, string>;
+}
+
+/**
+ * Bloque «Clientes del gestor».
+ *
+ * Va aparte del formulario porque escribe en el momento. Todo lo que necesita
+ * viaja junto en un solo objeto para que la pantalla no tenga que decidir si
+ * seis props sueltas van o no van juntas.
+ */
+export interface ManagedClientsBlock {
+  /** Clientes que hoy lleva este gestor. Uno por cartera gestionada. */
+  clients: Array<{ portfolioId: string; ownerLabel: string; portfolioName: string }>;
+  /** Carteras de cliente que hoy no tiene nadie, y que por tanto se le pueden dar. */
+  assignable: Array<{ portfolioId: string; label: string }>;
+  onAdd: (portfolioId: string) => void;
+  onRemove: (portfolioId: string) => void;
+  /** Hay una asignación en vuelo: se apagan los controles del bloque. */
+  busy?: boolean;
+  error?: string | null;
 }
 
 export interface UserEditPanelProps {
   user: AdminUserDetail;
   /** Gestores elegibles. */
   managerOptions: Array<{ id: string; label: string }>;
-  /** Cartera del usuario, para asignarle gestor. Sin cartera, el bloque no sale:
-   *  un desplegable que no gobierna nada es peor que ninguno. */
-  portfolio?: { id: string; name: string; managerId: string | null } | null;
+  /** Carteras del usuario, para asignarles gestor. Sin carteras el bloque no
+   *  sale: un desplegable que no gobierna nada es peor que ninguno. */
+  portfolios?: OwnedPortfolio[];
+  /**
+   * Clientes de este gestor. Se pasa SOLO cuando el rol ya guardado es gestor:
+   * asignarle clientes a quien todavía no lo es lo rechaza el servidor, y un
+   * control que siempre falla es peor que uno que no está.
+   */
+  managedClients?: ManagedClientsBlock | null;
   /** Vuelta al listado. */
   backHref: string;
   onSave?: (values: UserEditValues) => void;
@@ -74,7 +119,8 @@ export interface UserEditPanelProps {
 export function UserEditPanel({
   user,
   managerOptions,
-  portfolio,
+  portfolios = [],
+  managedClients,
   backHref,
   onSave,
   onDelete,
@@ -85,14 +131,20 @@ export function UserEditPanel({
 }: UserEditPanelProps) {
   const label = user.name.trim() || user.email;
 
-  // El estado inicial se fija al montar. La ruta real debe montar este panel con
-  // `key={user.id}` para que cambiar de usuario reinicie la comparación.
+  // El estado inicial se fija al montar, así que quien monte este panel tiene
+  // que remontarlo cuando cambien los datos guardados: con `key={user.id}` basta
+  // para no comparar contra el usuario anterior al cambiar de ficha, pero
+  // después de GUARDAR haría falta remontar también, o el botón se quedaría
+  // encendido comparando contra valores viejos. `UserEditScreen` lo resuelve con
+  // una huella de los datos del servidor.
   const initial = useMemo<UserEditValues>(
     () => ({
       name: user.name,
       email: user.email,
       role: user.role,
-      managerId: portfolio?.managerId ?? "",
+      managerByPortfolio: Object.fromEntries(
+        portfolios.map((p) => [p.id, p.managerId ?? ""]),
+      ),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
@@ -105,7 +157,13 @@ export function UserEditPanel({
   const set = <K extends keyof UserEditValues>(key: K, value: UserEditValues[K]) =>
     setValues((prev) => ({ ...prev, [key]: value }));
 
-  const showManager = values.role === "cliente" && Boolean(portfolio);
+  const setManager = (portfolioId: string, managerId: string) =>
+    setValues((prev) => ({
+      ...prev,
+      managerByPortfolio: { ...prev.managerByPortfolio, [portfolioId]: managerId },
+    }));
+
+  const showManager = values.role === "cliente" && portfolios.length > 0;
 
   // Lo que hace que el botón se encienda. El gestor solo cuenta si su bloque
   // está a la vista: si el rol ya no es cliente, ese campo no se va a guardar.
@@ -113,7 +171,10 @@ export function UserEditPanel({
     values.name !== initial.name ||
     values.email !== initial.email ||
     values.role !== initial.role ||
-    (showManager && values.managerId !== initial.managerId);
+    (showManager &&
+      portfolios.some(
+        (p) => (values.managerByPortfolio[p.id] ?? "") !== (initial.managerByPortfolio[p.id] ?? ""),
+      ));
 
   const confirmReady = confirmText.trim() === label;
 
@@ -187,21 +248,25 @@ export function UserEditPanel({
           />
         </div>
 
-        {showManager && portfolio ? (
+        {showManager ? (
           // Separado por un filo: es lo único del formulario que no habla del
-          // usuario sino de su cartera, y aparece y desaparece según el rol.
+          // usuario sino de sus carteras, y aparece y desaparece según el rol.
           <div style={{ marginTop: 32, paddingTop: 28, borderTop: "1px solid var(--line)" }}>
-            <SelectField
-              id="pcx-user-manager"
-              label="Gestor asignado"
-              note={`Cartera: ${portfolio.name}`}
-              value={values.managerId}
-              onChange={(v) => set("managerId", v)}
-              options={[
-                { value: "", label: "Sin asignar" },
-                ...managerOptions.map((m) => ({ value: m.id, label: m.label })),
-              ]}
-            />
+            {portfolios.map((p, index) => (
+              <div key={p.id} style={index === 0 ? undefined : { marginTop: 20 }}>
+                <SelectField
+                  id={`pcx-user-manager-${p.id}`}
+                  label="Gestor asignado"
+                  note={`Cartera: ${p.name}`}
+                  value={values.managerByPortfolio[p.id] ?? ""}
+                  onChange={(v) => setManager(p.id, v)}
+                  options={[
+                    { value: "", label: "Sin asignar" },
+                    ...managerOptions.map((m) => ({ value: m.id, label: m.label })),
+                  ]}
+                />
+              </div>
+            ))}
           </div>
         ) : null}
 
@@ -223,6 +288,19 @@ export function UserEditPanel({
           </div>
         ) : null}
       </form>
+
+      {managedClients ? (
+        <ManagedClients
+          block={managedClients}
+          width={COLUMN_WIDTH}
+          /* El aviso solo aparece cuando de verdad estorba: se ha bajado el rol
+             de un gestor que todavía lleva clientes. El servidor lo rechaza, y
+             es mejor decirlo antes de pulsar que después de fallar. */
+          roleWarning={
+            values.role !== "admin" && initial.role === "admin" && managedClients.clients.length > 0
+          }
+        />
+      ) : null}
 
       {onDelete ? (
         <section
@@ -294,5 +372,173 @@ export function UserEditPanel({
         </section>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Clientes que lleva un gestor.
+ *
+ * **Filas con filo, sin tarjetas.** Es el mismo lenguaje que las tablas del
+ * producto: nombre y cartera a la izquierda, la acción a la derecha. Meter cada
+ * cliente en una caja con fondo propio los convertiría en seis objetos sueltos
+ * en vez de en una lista.
+ *
+ * **Añadir escribe en el momento**, sin pasar por «Guardar cambios»: es la
+ * relación entre dos usuarios, no un campo del perfil de este.
+ */
+function ManagedClients({
+  block,
+  width,
+  roleWarning,
+}: {
+  block: ManagedClientsBlock;
+  width: number;
+  roleWarning: boolean;
+}) {
+  const { clients, assignable, onAdd, onRemove, busy = false, error } = block;
+  const [pick, setPick] = useState("");
+
+  // Si la cartera elegida ya no está libre —porque acaba de asignarse— el
+  // desplegable se vacía solo. Así no queda señalando una opción que ya no
+  // existe después de añadirla.
+  const picked = assignable.some((option) => option.portfolioId === pick) ? pick : "";
+
+  return (
+    <section
+      style={{ maxWidth: width, marginTop: 56, paddingTop: 24, borderTop: "1px solid var(--line)" }}
+    >
+      <h2 style={{ margin: 0, fontSize: 14, fontWeight: 500, color: "var(--foreground)" }}>
+        Clientes del gestor
+      </h2>
+      <p
+        style={{
+          margin: 0,
+          fontSize: "var(--text-label)",
+          color: "var(--faint)",
+          marginTop: 9,
+          textWrap: "pretty",
+        }}
+      >
+        {clients.length === 0
+          ? "No lleva ningún cliente todavía."
+          : `Lleva ${plural(clients.length, "cliente", "clientes")}.`}
+      </p>
+
+      {roleWarning ? (
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--text-label)",
+            color: "var(--warn)",
+            marginTop: 10,
+            textWrap: "pretty",
+          }}
+        >
+          Un gestor con clientes no puede cambiar de rol. Quítale antes los que lleva.
+        </p>
+      ) : null}
+
+      {clients.length > 0 ? (
+        <div style={{ marginTop: 18, borderBottom: "1px solid var(--line)" }}>
+          {clients.map((client) => (
+            <div
+              key={client.portfolioId}
+              className="flex items-center"
+              style={{
+                gap: 16,
+                paddingTop: 13,
+                paddingBottom: 13,
+                borderTop: "1px solid var(--line)",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div
+                  title={client.ownerLabel}
+                  style={{
+                    fontSize: "var(--text-body)",
+                    color: "var(--foreground)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {client.ownerLabel}
+                </div>
+                {/* La cartera va en segunda línea y en menor: identifica la fila
+                    cuando un cliente tiene más de una, y estorba cuando no. */}
+                <div
+                  title={client.portfolioName}
+                  style={{
+                    fontSize: "var(--text-meta)",
+                    color: "var(--faint)",
+                    marginTop: 3,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {client.portfolioName}
+                </div>
+              </div>
+              <div style={{ marginLeft: "auto" }}>
+                <QuietButton
+                  tone="danger"
+                  disabled={busy}
+                  ariaLabel={`Quitar a ${client.ownerLabel} de este gestor`}
+                  onClick={() => onRemove(client.portfolioId)}
+                >
+                  Quitar cliente
+                </QuietButton>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {assignable.length === 0 ? (
+        /* Una línea, no un desplegable vacío: un control sin opciones obliga a
+           abrirlo para descubrir que no hay nada dentro. */
+        <p
+          style={{
+            margin: 0,
+            fontSize: "var(--text-label)",
+            color: "var(--faint)",
+            marginTop: 20,
+          }}
+        >
+          No hay clientes sin gestor a los que asignarle.
+        </p>
+      ) : (
+        <div style={{ marginTop: 24 }}>
+          <SelectField
+            id="pcx-add-client"
+            label="Añadir cliente"
+            value={picked}
+            onChange={setPick}
+            options={[
+              { value: "", label: "Selecciona un cliente" },
+              ...assignable.map((option) => ({
+                value: option.portfolioId,
+                label: option.label,
+              })),
+            ]}
+          />
+          <div className="flex" style={{ marginTop: 16 }}>
+            <PrimaryButton disabled={!picked || busy} onClick={() => onAdd(picked)}>
+              {busy ? "Guardando…" : "Añadir cliente"}
+            </PrimaryButton>
+          </div>
+        </div>
+      )}
+
+      {error ? (
+        <div
+          role="alert"
+          style={{ fontSize: "var(--text-label)", color: "var(--loss)", marginTop: 14 }}
+        >
+          {error}
+        </div>
+      ) : null}
+    </section>
   );
 }

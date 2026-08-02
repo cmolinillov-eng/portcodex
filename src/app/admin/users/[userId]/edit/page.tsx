@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { unstable_noStore as noStore } from "next/cache";
-import { AdminUserEditForm } from "@/components/admin/admin-user-edit-form";
+import { TopNav } from "@/components/shell/TopNav";
+import { PageShell } from "@/components/shell/PageShell";
+import { UserEditScreen } from "@/components/admin/UserEditScreen";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 
@@ -33,10 +35,6 @@ type PortfolioRow = {
 };
 
 function readOwner(profile: PortfolioRow["owner"]) {
-  return Array.isArray(profile) ? profile[0] ?? null : profile;
-}
-
-function readManager(profile: PortfolioRow["manager"]) {
   return Array.isArray(profile) ? profile[0] ?? null : profile;
 }
 
@@ -108,15 +106,11 @@ export default async function AdminUserEditPage({ params }: PageProps) {
 
   const ownedPortfolios = allPortfolios
     .filter((portfolio) => (portfolio.owner_id ?? "").trim() === targetUserId)
-    .map((portfolio) => {
-      const manager = readManager(portfolio.manager);
-      return {
-        id: (portfolio.id ?? "").trim(),
-        name: (portfolio.name ?? "").trim() || "Portfolio sin nombre",
-        managerId: (portfolio.manager_id ?? "").trim() || null,
-        managerLabel: label(manager?.full_name ?? null, manager?.email ?? null),
-      };
-    })
+    .map((portfolio) => ({
+      id: (portfolio.id ?? "").trim(),
+      name: (portfolio.name ?? "").trim() || "Portfolio sin nombre",
+      managerId: (portfolio.manager_id ?? "").trim() || null,
+    }))
     .filter((portfolio) => portfolio.id.length > 0);
 
   const managedClientPortfolios = allPortfolios
@@ -169,19 +163,57 @@ export default async function AdminUserEditPage({ params }: PageProps) {
     });
   }
 
+  const role = (profile.role ?? "autonomo") as "autonomo" | "admin" | "cliente";
+
+  // El bloque de clientes solo se pinta si el rol GUARDADO es gestor. Con el rol
+  // que hay a medio cambiar en el desplegable no vale: `/api/admin/portfolio-managers`
+  // rechaza asignar una cartera a quien todavía no es gestor en base de datos, y
+  // un control que siempre devuelve error es peor que uno que no está.
+  const isManager = role === "admin";
+
+  // Una fila por cartera gestionada, sin agrupar por propietario. El formulario
+  // anterior deduplicaba por cliente, y con eso su segunda cartera desaparecía
+  // de la lista: quedaba asignada y sin forma de quitarla desde aquí.
+  const managedClients = isManager
+    ? managedClientPortfolios.map((portfolio) => ({
+        portfolioId: portfolio.id,
+        ownerLabel: portfolio.ownerLabel,
+        portfolioName: portfolio.name,
+      }))
+    : null;
+
+  const assignableClients = isManager
+    ? clientPortfolioPool
+        .filter((portfolio) => portfolio.managerId === null)
+        .map((portfolio) => ({
+          portfolioId: portfolio.id,
+          label: `${portfolio.ownerLabel} · ${portfolio.name}`,
+        }))
+    : null;
+
   return (
-    <AdminUserEditForm
-      user={{
-        id: targetUserId,
-        fullName: (profile.full_name ?? "").trim(),
-        email: (profile.email ?? "").trim(),
-        role: (profile.role ?? "autonomo") as "autonomo" | "admin" | "cliente",
-        createdAt: profile.created_at ?? null,
-      }}
-      managerOptions={managerOptions}
-      ownedPortfolios={ownedPortfolios}
-      managedClientPortfolios={managedClientPortfolios}
-      clientPortfolioPool={clientPortfolioPool}
-    />
+    <div className="pcx-screen" style={{ minHeight: "100vh" }}>
+      <TopNav section="Administración" />
+      <PageShell>
+        <UserEditScreen
+          user={{
+            id: targetUserId,
+            name: (profile.full_name ?? "").trim(),
+            email: (profile.email ?? "").trim(),
+            role,
+            createdAt: profile.created_at ?? null,
+          }}
+          managerOptions={managerOptions}
+          portfolios={ownedPortfolios.map((portfolio) => ({
+            id: portfolio.id,
+            name: portfolio.name,
+            managerId: portfolio.managerId,
+          }))}
+          managedClients={managedClients}
+          assignableClients={assignableClients}
+          backHref="/admin"
+        />
+      </PageShell>
+    </div>
   );
 }

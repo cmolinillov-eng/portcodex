@@ -30,11 +30,13 @@ export default function PreviewEditarUsuario() {
             createdAt: "2026-03-07",
           }}
           managerOptions={[{ id: "u-carlos", label: "Álvaro Ruiz" }]}
-          portfolio={{
-            id: "p-mfita",
-            name: "Portfolio de Elena Cortés",
-            managerId: "u-carlos",
-          }}
+          portfolios={[
+            {
+              id: "p-mfita",
+              name: "Portfolio de Elena Cortés",
+              managerId: "u-carlos",
+            },
+          ]}
           backHref="/preview/administracion"
           onSave={() => {}}
           onDelete={() => {}}
