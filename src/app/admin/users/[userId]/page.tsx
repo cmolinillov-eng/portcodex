@@ -86,40 +86,82 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
 
   return (
     <>
-      <div className="fixed top-3 left-1/2 z-50 -translate-x-1/2 rounded-xl border border-[rgba(111,174,143,0.45)] bg-[rgba(2,6,17,0.88)] px-4 py-2 backdrop-blur">
-        <div className="flex flex-wrap items-center gap-3 text-xs md:text-sm">
-          <Link href="/admin" className="btn-secondary btn-secondary-compact">
-            Volver a Admin
+      {/* Barra de contexto del operador. Ocupa el ancho completo y usa el mismo
+          lenguaje que TopNav (obsidiana, línea de 1px, azul institucional): la
+          píldora flotante verde era del sistema anterior. */}
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 40,
+          background: "var(--void-surface)",
+          borderBottom: "1px solid var(--line)",
+          padding: "12px var(--shell-pad)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            flexWrap: "wrap",
+            fontSize: "var(--text-body)",
+          }}
+        >
+          <Link href="/admin" style={{ color: "var(--muted)" }}>
+            ← Administración
           </Link>
-          <span className="text-[var(--muted)]">Viendo portfolio de:</span>
-          <span className="font-medium text-foreground">{displayName}</span>
+          <span style={{ color: "var(--faint)" }}>·</span>
+          <span style={{ color: "var(--muted)" }}>Viendo la cartera de</span>
+          <span style={{ fontWeight: 500 }}>{displayName}</span>
           {selectedPortfolio ? (
-            <span className="text-[var(--muted)]">
+            <span style={{ color: "var(--muted)" }}>
               · {selectedPortfolio.name ?? "Portfolio sin nombre"}
             </span>
           ) : null}
+
           {targetPortfolios.length > 1 ? (
-            <div className="flex flex-wrap gap-1">
-              {targetPortfolios.map((portfolio) => (
-                <Link
-                  key={portfolio.id}
-                  href={`/admin/users/${userId}?portfolioId=${portfolio.id ?? ""}`}
-                  className={`inline-flex rounded-md border px-2 py-1 ${
-                    portfolio.id === selectedPortfolioId
-                      ? "border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
-                      : "border-[var(--line)] bg-black/20 text-[var(--muted)] hover:text-foreground"
-                  }`}
-                >
-                  {portfolio.name ?? "Portfolio"}
-                </Link>
-              ))}
-            </div>
+            <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {targetPortfolios.map((portfolio) => {
+                const activo = portfolio.id === selectedPortfolioId;
+                return (
+                  <Link
+                    key={portfolio.id}
+                    href={`/admin/users/${userId}?portfolioId=${portfolio.id ?? ""}`}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: "var(--radius-sm)",
+                      fontSize: "var(--text-label)",
+                      background: activo ? "var(--accent-soft)" : "transparent",
+                      color: activo ? "var(--brand-soft)" : "var(--muted)",
+                      border: `1px solid ${activo ? "var(--accent-soft)" : "var(--line)"}`,
+                    }}
+                  >
+                    {portfolio.name ?? "Portfolio"}
+                  </Link>
+                );
+              })}
+            </span>
           ) : null}
+
+          {/* El botón de editar vive aquí desde que la fila del directorio
+              lleva a la cartera: sin él no había forma de llegar a la ficha. */}
+          <Link
+            href={`/admin/users/${userId}/edit`}
+            style={{
+              marginLeft: "auto",
+              padding: "6px 14px",
+              borderRadius: "var(--radius-sm)",
+              border: "1px solid var(--line-strong)",
+              color: "var(--foreground)",
+              fontSize: "var(--text-label)",
+            }}
+          >
+            Editar usuario
+          </Link>
         </div>
       </div>
-      <div className="pt-14">
-        <DashboardClient data={data} />
-      </div>
+      <DashboardClient data={data} />
     </>
   );
 }

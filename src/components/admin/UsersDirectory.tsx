@@ -20,6 +20,8 @@ import { ROLE_LABEL, ROLE_NOUN, ROLE_ORDER, ROLE_TAB_LABEL, type AdminRole } fro
  *    «Editar» repetido en las seis filas no informa de nada —dice lo mismo en
  *    todas— y se come una columna que sí podía llevar dato. La flecha aparece
  *    solo al apuntar, que es cuando hace falta saber que aquello se abre.
+ *    La fila abre la CARTERA, que es a lo que se entra el 90 % de las veces;
+ *    la ficha de edición cuelga de la barra de contexto de esa cartera.
  * 3. **Los gestores van primero.** Son los que administran al resto; enterrarlos
  *    por fecha de alta obliga a buscarlos.
  *
@@ -223,7 +225,7 @@ function UserRow({ user, href }: { user: AdminUserSummary; href: string }) {
   return (
     <Link
       href={href}
-      aria-label={`Editar ${label}`}
+      aria-label={`Abrir la cartera de ${label}`}
       style={{ display: "block", color: "inherit" }}
       onMouseEnter={() => setActive(true)}
       onMouseLeave={() => setActive(false)}
