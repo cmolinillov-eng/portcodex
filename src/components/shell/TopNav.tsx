@@ -62,8 +62,14 @@ export function TopNav({
   return (
     // El filo inferior va de lado a lado del navegador —así se lee como barra de
     // aplicación y no como una caja— pero su CONTENIDO se ciñe a la misma
-    // rejilla que la página: el logotipo tiene que caer a plomo con la cifra de
-    // patrimonio. En la maqueta coinciden porque el lienzo medía justo 1240.
+    // rejilla que la página: el logotipo cae a plomo con la cifra de patrimonio.
+    //
+    // Esto se APARTA de la maqueta a sabiendas. Allí la barra lleva 64 px de
+    // margen y el contenido 48, así que el logotipo queda 16 px a la derecha de
+    // la cifra. Sobre un lienzo fijo no se nota; en un navegador de verdad, dos
+    // márgenes distintos en la misma columna se leen como un fallo. Los 48 px
+    // son los del contenido, que es quien manda: la barra se alinea con la
+    // página, no al revés.
     <nav className="border-b" style={{ borderColor: "var(--line)" }}>
       <div
         className="pcx-nav-inner mx-auto flex items-center gap-10"
