@@ -33,7 +33,16 @@ export interface ReportRowProps {
   /** «PDF» o «CSV». El formato no se elige: cada informe tiene el suyo. */
   format: string;
   /** Sin acción, la fila es solo informativa (informe sin datos). */
-  action?: { label: string; variant?: "primary" | "quiet" };
+  action?: {
+    label: string;
+    variant?: "primary" | "quiet";
+    /**
+     * Destino de la descarga. Con `href` la acción es un ENLACE de verdad; sin
+     * él es un botón inerte, que es lo que eran las cinco filas de esta pantalla
+     * hasta ahora: se veían perfectas y no descargaban nada.
+     */
+    href?: string;
+  };
   /** Informe sin operaciones en el periodo: se apaga entero. */
   dimmed?: boolean;
   /** Aclaración bajo la fila, en terciario. */
@@ -114,6 +123,7 @@ export function ReportRow({
           <ReportAction
             label={action.label}
             variant={action.variant ?? "quiet"}
+            href={action.href}
             disabled={disabled}
             paddingTop={align === "start" ? 7 : undefined}
           />
@@ -149,11 +159,13 @@ export function ReportRow({
 function ReportAction({
   label,
   variant,
+  href,
   disabled,
   paddingTop,
 }: {
   label: string;
   variant: "primary" | "quiet";
+  href?: string;
   disabled: boolean;
   paddingTop?: number;
 }) {
@@ -181,6 +193,21 @@ function ReportAction({
           color: "var(--text-on-accent)",
         }
       : { color: hovered && !disabled ? "var(--foreground)" : "var(--muted)" };
+
+  // Con destino es un ENLACE, no un botón: se abre en otra pestaña, se copia y
+  // funciona sin JavaScript. Un botón que solo navega es un enlace disfrazado.
+  if (href && !disabled) {
+    return (
+      <a
+        href={href}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{ ...base, ...skin, display: "inline-block", textDecoration: "none" }}
+      >
+        {label}
+      </a>
+    );
+  }
 
   return (
     <button

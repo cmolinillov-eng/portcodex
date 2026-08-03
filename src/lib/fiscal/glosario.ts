@@ -1,9 +1,13 @@
-"use client";
-
-import { useMemo, useState } from "react";
-import { Search, BookOpen } from "lucide-react";
-
-type GlosarioCategory =
+/**
+ * Términos fiscales, escritos para alguien que no es asesor.
+ *
+ * Vivían dentro de la pantalla /fiscal/glosario, que era del sistema
+ * anterior y se ha retirado. El texto sobrevive aquí, separado de
+ * cualquier interfaz, porque explicar qué es una permuta o por qué el
+ * FIFO decide el coste no depende de cómo se dibuje: cuando haya maqueta
+ * de glosario, esta es la fuente.
+ */
+export type GlosarioCategory =
   | "Categoría fiscal"
   | "Base imponible"
   | "Método de cálculo"
@@ -12,7 +16,7 @@ type GlosarioCategory =
   | "Conceptos DeFi"
   | "Billeteras";
 
-interface GlosarioTerm {
+export interface GlosarioTerm {
   term: string;
   category: GlosarioCategory;
   definition: string;
@@ -20,7 +24,7 @@ interface GlosarioTerm {
   source?: string;
 }
 
-const TERMS: GlosarioTerm[] = [
+export const TERMINOS: GlosarioTerm[] = [
   // ─── Categoría fiscal ──────────────────────────────────────────────────
   {
     term: "Ganancia patrimonial por transmisión",
@@ -217,124 +221,3 @@ const TERMS: GlosarioTerm[] = [
       "Tú controlas las claves: hardware wallet, hot wallet, DEX, smart contract wallet. No hay custodio externo y no aplica el Modelo 721, pero la trazabilidad es 100 % tu responsabilidad.",
   },
 ];
-
-const CATEGORIES: GlosarioCategory[] = [
-  "Categoría fiscal",
-  "Base imponible",
-  "Método de cálculo",
-  "Casillas IRPF",
-  "Modelos AEAT",
-  "Conceptos DeFi",
-  "Billeteras",
-];
-
-export function GlosarioClient() {
-  const [activeCategory, setActiveCategory] = useState<GlosarioCategory | "todas">("todas");
-  const [query, setQuery] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return TERMS.filter((t) => {
-      if (activeCategory !== "todas" && t.category !== activeCategory) return false;
-      if (q) {
-        const hay = `${t.term} ${t.definition} ${t.example ?? ""} ${t.source ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [activeCategory, query]);
-
-  return (
-    <div className="mx-auto max-w-4xl space-y-6 px-7 py-7">
-      {/* Buscador */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar término, concepto o casilla…"
-          className="w-full rounded-lg border border-[var(--line)] bg-[var(--void-surface)] py-2.5 pl-9 pr-3 text-sm text-[var(--foreground)] placeholder:text-[var(--muted)] focus:border-[rgba(111,174,143,0.55)] focus:outline-none"
-        />
-      </div>
-
-      {/* Filtros de categoría */}
-      <div className="flex flex-wrap gap-2">
-        <CategoryChip
-          label="Todas"
-          active={activeCategory === "todas"}
-          onClick={() => setActiveCategory("todas")}
-        />
-        {CATEGORIES.map((c) => (
-          <CategoryChip key={c} label={c} active={activeCategory === c} onClick={() => setActiveCategory(c)} />
-        ))}
-      </div>
-
-      {/* Términos */}
-      {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-[var(--line)] bg-[var(--void-surface)] px-5 py-12 text-center text-sm text-[var(--muted)]">
-          No hay términos que coincidan con la búsqueda.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((t) => (
-            <article
-              key={t.term}
-              className="rounded-2xl border border-[var(--line)] bg-[var(--void-surface)] p-5"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--foreground)]">
-                  <BookOpen className="h-4 w-4 text-[#6FAE8F]" />
-                  {t.term}
-                </h3>
-                <span className="shrink-0 whitespace-nowrap text-[10px] uppercase tracking-wide text-[var(--muted)]">
-                  {t.category}
-                </span>
-              </div>
-              <p className="mt-2.5 text-sm leading-relaxed text-[var(--muted)]">{t.definition}</p>
-              {t.example ? (
-                <p className="mt-3 rounded-lg border border-[rgba(111,174,143,0.18)] bg-[rgba(111,174,143,0.06)] px-3 py-2 text-xs leading-relaxed text-[var(--brand-soft)]">
-                  <span className="font-medium text-[#6FAE8F]">Ejemplo · </span>
-                  {t.example}
-                </p>
-              ) : null}
-              {t.source ? (
-                <p className="mt-2.5 text-[11px] uppercase tracking-wide text-[var(--muted)]/80">
-                  Fuente · {t.source}
-                </p>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      )}
-
-      <p className="text-[11px] leading-relaxed text-[var(--muted)]">
-        Definiciones orientativas para entender la trazabilidad de tus movimientos. Las casillas del Modelo 100
-        cambian de numeración cada ejercicio. No constituye asesoramiento fiscal.
-      </p>
-    </div>
-  );
-}
-
-function CategoryChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`whitespace-nowrap rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-        active
-          ? "border-[rgba(111,174,143,0.5)] bg-[rgba(111,174,143,0.14)] text-[#6FAE8F]"
-          : "border-[var(--line)] bg-[var(--void-surface)] text-[var(--muted)] hover:border-[rgba(111,174,143,0.3)]"
-      }`}
-    >
-      {label}
-    </button>
-  );
-}

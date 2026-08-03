@@ -13,6 +13,7 @@ import { getTaxYear } from "@/lib/tax/eur-conversion";
 import { TopNav } from "@/components/shell/TopNav";
 import { PageShell, DataProvenance } from "@/components/shell/PageShell";
 import { FiscalHeader } from "@/components/dashboard/fiscalidad/FiscalHeader";
+import { ExportLink } from "@/components/dashboard/export/ExportLink";
 import { TaxBases } from "@/components/dashboard/fiscalidad/TaxBases";
 import { CasillaBreakdown } from "@/components/dashboard/fiscalidad/CasillaBreakdown";
 import { Modelo721 } from "@/components/dashboard/fiscalidad/Modelo721";
@@ -91,6 +92,17 @@ export default async function FiscalidadPage({
           section="Fiscalidad"
           title={`Ejercicio ${selectedYear}`}
           note={plural(yearEntries.length, "operación registrada", "operaciones registradas")}
+          // Descarga la trazabilidad COMPLETA del ejercicio —con casilla AEAT y
+          // base imponible por operación—, que es el documento que se le pasa al
+          // asesor. Los otros dos formatos (CoinTracking y copia JSON) viven en
+          // Informes, junto al resto de documentos descargables.
+          action={
+            yearEntries.length > 0 ? (
+              <ExportLink
+                href={`/api/fiscal/export?portfolioId=${portfolioId}&formato=trazabilidad&ejercicio=${selectedYear}`}
+              />
+            ) : null
+          }
         />
 
         <TaxBases

@@ -105,6 +105,28 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  /**
+   * La sección /fiscal era la fiscalidad anterior al rediseño. Quedó huérfana
+   * —ningún enlace de la navegación nueva llegaba a ella— pero seguía sirviendo
+   * su interfaz vieja a quien tuviera la URL guardada.
+   *
+   * Va aquí y no en páginas con `permanentRedirect` porque aquello NO redirigía:
+   * al ser rutas sin datos, Next las prerenderiza estáticas y la redirección se
+   * resuelve en el cliente, así que un `curl` —y cualquier buscador— recibía un
+   * 200 con la página entera. Desde la configuración es un 308 de verdad, antes
+   * de que se ejecute una línea de React.
+   */
+  async redirects() {
+    return [
+      { source: "/fiscal", destination: "/fiscalidad", permanent: true },
+      { source: "/fiscal/exportar", destination: "/informes", permanent: true },
+      { source: "/fiscal/operaciones", destination: "/movimientos", permanent: true },
+      // El glosario todavía no tiene maqueta; sus términos siguen escritos en
+      // lib/fiscal/glosario.ts. Hasta que la tenga, vuelve de donde venía.
+      { source: "/fiscal/glosario", destination: "/fiscalidad", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

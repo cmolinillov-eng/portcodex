@@ -74,7 +74,26 @@ export default async function InformesPage({
           description="Todas las operaciones con su clasificación fiscal"
           period={{ kind: "selectable" }}
           format="CSV"
-          action={{ label: "Descargar", variant: "quiet" }}
+          action={{
+            label: "Descargar",
+            variant: "quiet",
+            href: `/api/fiscal/export?portfolioId=${portfolioId}&formato=trazabilidad`,
+          }}
+        />
+
+        {/* Mismos datos, formato que digiere el software fiscal español. Es una
+            fila y no una tercera tarjeta en una pantalla aparte: para el cliente
+            es «otro documento que me puedo bajar», igual que los de arriba. */}
+        <ReportRow
+          title="Operaciones para tu gestor fiscal"
+          description="Formato CoinTracking, que aceptan la mayoría de gestores en España"
+          period={{ kind: "fixed", label: "Todo el histórico" }}
+          format="CSV"
+          action={{
+            label: "Descargar",
+            variant: "quiet",
+            href: `/api/fiscal/export?portfolioId=${portfolioId}&formato=cointracking`,
+          }}
         />
 
         <ReportRow
