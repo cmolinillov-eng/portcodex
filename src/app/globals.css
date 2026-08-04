@@ -1239,3 +1239,12 @@ button, a {
   }
 }
 
+
+/* Selector de ejercicio. Safari pinta un triángulo propio en `summary` que no
+   se quita con `list-style`, y dejaría dos chevrones: el suyo y el nuestro. */
+.pcx-year-picker > summary::-webkit-details-marker {
+  display: none;
+}
+.pcx-year-picker > summary::marker {
+  content: "";
+}

@@ -26,7 +26,9 @@ export default function PreviewFiscalidad() {
           section="Fiscalidad"
           title="Ejercicio 2026"
           note="52 operaciones registradas"
-          yearControl={<YearPicker year="2026" />}
+          yearControl={
+            <YearPicker year="2026" years={["2026", "2025", "2024"]} hrefFor={(y) => `#${y}`} />
+          }
           action={
             <button type="button" style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}>
               Exportar

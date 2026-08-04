@@ -12,7 +12,7 @@ import {
 import { getTaxYear } from "@/lib/tax/eur-conversion";
 import { TopNav } from "@/components/shell/TopNav";
 import { PageShell, DataProvenance } from "@/components/shell/PageShell";
-import { FiscalHeader } from "@/components/dashboard/fiscalidad/FiscalHeader";
+import { FiscalHeader, YearPicker } from "@/components/dashboard/fiscalidad/FiscalHeader";
 import { ExportLink } from "@/components/dashboard/export/ExportLink";
 import { TaxBases } from "@/components/dashboard/fiscalidad/TaxBases";
 import { CasillaBreakdown } from "@/components/dashboard/fiscalidad/CasillaBreakdown";
@@ -42,22 +42,32 @@ export default async function FiscalidadPage({
       <div className="pcx-screen" style={{ minHeight: "100vh" }}>
         <TopNav />
         <PageShell>
-          <FiscalHeader section="Fiscalidad" title="Sin cartera" note="No hay ninguna cartera disponible." />
+          <FiscalHeader
+            section="Fiscalidad"
+            title="Sin cartera"
+            note="No hay ninguna cartera disponible."
+          />
         </PageShell>
       </div>
     );
   }
 
-  const { entries } = await computeTraceability(portfolioId);
+  const { entries, fxSource, unpricedCount } = await computeTraceability(portfolioId);
 
   // El Modelo 100 es ANUAL. El FIFO ya corrió sobre TODO el histórico —las
   // bases de coste vienen bien—; aquí solo se filtra qué operaciones suman.
-  const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort((a, b) => b - a);
+  const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort(
+    (a, b) => b - a,
+  );
   const requested = Number(ejercicio);
+  // Por defecto, el AÑO EN CURSO. Antes se cogía `years[0]` —el último año con
+  // operaciones—, así que si la última era de 2024 la pantalla titulaba
+  // «Ejercicio 2024» sin avisar, mientras Informes hablaba del año natural: las
+  // dos pantallas respondían cosas distintas a «qué ejercicio es el actual».
+  // Si el año en curso no tiene operaciones se dice, no se salta hacia atrás.
+  const currentYear = new Date().getFullYear();
   const selectedYear =
-    Number.isInteger(requested) && years.includes(requested)
-      ? requested
-      : (years[0] ?? new Date().getFullYear());
+    Number.isInteger(requested) && years.includes(requested) ? requested : currentYear;
   const yearEntries = entries.filter((e) => getTaxYear(e.transactionDate) === selectedYear);
 
   const bucketInputs: AeatBucketInput[] = yearEntries.map((e) => ({
@@ -86,6 +96,7 @@ export default async function FiscalidadPage({
 
   const savingsBuckets = buckets.filter((b) => b.base === "ahorro");
   const savingsOperations = savingsBuckets.reduce((s, b) => s + b.operaciones, 0);
+  const generalBuckets = buckets.filter((b) => b.base === "general");
 
   return (
     <div className="pcx-screen" style={{ minHeight: "100vh" }}>
@@ -95,7 +106,20 @@ export default async function FiscalidadPage({
         <FiscalHeader
           section="Fiscalidad"
           title={`Ejercicio ${selectedYear}`}
-          note={plural(yearEntries.length, "operación registrada", "operaciones registradas")}
+          note={
+            yearEntries.length > 0
+              ? plural(yearEntries.length, "operación registrada", "operaciones registradas")
+              : `Sin operaciones registradas en ${selectedYear}.${years.length > 0 ? ` Hay datos de ${years.join(", ")}.` : ""}`
+          }
+          // Los ejercicios con operaciones, más el año en curso: si estás en
+          // 2027 y no has operado, tienes que poder volver a 2026 desde aquí.
+          yearControl={
+            <YearPicker
+              year={String(selectedYear)}
+              years={[...new Set([currentYear, ...years])].sort((a, b) => b - a).map(String)}
+              hrefFor={(y) => `?ejercicio=${y}`}
+            />
+          }
           // Descarga la trazabilidad COMPLETA del ejercicio —con casilla AEAT y
           // base imponible por operación—, que es el documento que se le pasa al
           // asesor. Los otros dos formatos (CoinTracking y copia JSON) viven en
@@ -148,6 +172,27 @@ export default async function FiscalidadPage({
           totalEur={totalBaseAhorro}
         />
 
+        {/* La tabla de arriba filtra por base «ahorro», así que mientras la base
+            general valga cero no falta nada. En cuanto NO valga cero, se estaría
+            enseñando una cifra arriba sin una sola casilla que la explique —y el
+            PDF sí las lista, con lo que documento y pantalla dirían cosas
+            distintas del mismo ejercicio. */}
+        {generalBuckets.length > 0 ? (
+          <CasillaBreakdown
+            rows={generalBuckets.map((b) => ({
+              id: b.badge,
+              casilla: b.casilla,
+              category: b.badge,
+              operations: b.operaciones,
+              amountEur: b.importeEur,
+              concept: b.aeatNote,
+            }))}
+            totalLabel="Total base general"
+            totalOperations={generalBuckets.reduce((s, b) => s + b.operaciones, 0)}
+            totalEur={totalBaseGeneral}
+          />
+        ) : null}
+
         {/* NUNCA se afirma «sin obligación de declarar».
          *
          * El 721 se calcula sobre el SALDO a valor de mercado a 31 de diciembre,
@@ -176,6 +221,41 @@ export default async function FiscalidadPage({
               : `Con las compras y ventas registradas en plataformas extranjeras salen ${moneyRound(foreignBalance, "EUR")}, por debajo del umbral de ${moneyRound(MODELO_721_THRESHOLD, "EUR")}. Este cálculo NO incluye lo que hayas transferido desde tus propias wallets, los rendimientos cobrados allí ni la revalorización, así que no basta para descartar la obligación: comprueba el saldo real a 31 de diciembre.`
           }
         />
+
+        {/* Estos dos avisos ya los calculaba `computeTraceability` —su propio
+            comentario dice «si > 0, la UI avisa»— y solo los enseñaba el PDF.
+            La pantalla que da las bases imponibles se los callaba: operaciones
+            excluidas del cómputo en silencio, y un tipo de cambio de reserva
+            aplicado sin decirlo. Quien mira la pantalla y no descarga el
+            documento tiene el mismo derecho a saberlo. */}
+        {unpricedCount > 0 ? (
+          <DataProvenance>
+            <strong>
+              {plural(unpricedCount, "operación registra", "operaciones registran")} un valor de
+              cero
+            </strong>{" "}
+            y {unpricedCount === 1 ? "queda" : "quedan"} fuera de este cálculo. Revísal
+            {unpricedCount === 1 ? "a" : "as"} antes de declarar.
+          </DataProvenance>
+        ) : null}
+
+        {fxSource !== "historical" ? (
+          <DataProvenance>
+            {fxSource === "current" ? (
+              <>
+                No se ha podido recuperar la serie histórica de tipos de cambio y se ha aplicado el
+                tipo de hoy a todas las operaciones. Las cifras son una aproximación: para declarar
+                deben revalorarse con el tipo de la fecha de cada operación.
+              </>
+            ) : (
+              <>
+                <strong>No se ha recuperado ningún tipo de cambio oficial</strong> y se ha aplicado
+                uno de referencia fijo. Las cifras en euros de esta pantalla no son aptas para
+                presentar y deben recalcularse.
+              </>
+            )}
+          </DataProvenance>
+        ) : null}
 
         <DataProvenance>
           Cálculo orientativo elaborado a partir de las operaciones registradas. No sustituye el

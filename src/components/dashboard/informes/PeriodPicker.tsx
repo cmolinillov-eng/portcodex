@@ -73,16 +73,33 @@ export interface PeriodInit {
 }
 
 /**
- * Estado del selector y su validez, para que la fila pueda apagar el botón de
- * generar cuando el rango no se sostiene.
+ * Rango por defecto del modo «Personalizado…»: del 1 de enero de ESTE año a
+ * hoy.
+ *
+ * Estaba cableado a «01 ene 2026 → 28 jul 2026», que son literalmente las
+ * fechas que tenía la maqueta el día que se dibujó: el 28 de julio de 2026 era
+ * «hoy». Congeladas en el componente, en 2027 alguien abriría «Personalizado…»
+ * y se encontraría el año pasado ya escrito. Las constantes de la maqueta viven
+ * en app/preview, no aquí.
  */
+function rangoPorDefecto(): { desde: string; hasta: string } {
+  const hoy = new Date();
+  const primeroDeEnero = new Date(hoy.getFullYear(), 0, 1);
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { desde: iso(primeroDeEnero), hasta: iso(hoy) };
+}
+
 export function usePeriod(init: PeriodInit = {}) {
-  const [state, setState] = useState<PeriodState>({
-    mode: init.mode ?? "preset",
-    open: init.open ?? false,
-    preset: init.preset ?? PERIOD_PRESETS[0],
-    from: longDate(init.fromIso ?? "2026-01-01"),
-    to: longDate(init.toIso ?? "2026-07-28"),
+  const [state, setState] = useState<PeriodState>(() => {
+    const porDefecto = rangoPorDefecto();
+    return {
+      mode: init.mode ?? "preset",
+      open: init.open ?? false,
+      preset: init.preset ?? PERIOD_PRESETS[0],
+      from: longDate(init.fromIso ?? porDefecto.desde),
+      to: longDate(init.toIso ?? porDefecto.hasta),
+    };
   });
 
   const from = parseSpanishDate(state.from);
@@ -191,12 +208,20 @@ export function PeriodPicker({
               label="Fecha de inicio"
               invalid={false}
             />
-            <span style={{ fontSize: "var(--text-label)", color: "var(--faint)" }} aria-hidden="true">
+            <span
+              style={{ fontSize: "var(--text-label)", color: "var(--faint)" }}
+              aria-hidden="true"
+            >
               →
             </span>
             {/* El rojo va en la fecha FINAL: es la que está mal colocada, y
                 pintar las dos no diría cuál hay que mover. */}
-            <DateField value={state.to} onChange={api.setTo} label="Fecha de fin" invalid={invalid} />
+            <DateField
+              value={state.to}
+              onChange={api.setTo}
+              label="Fecha de fin"
+              invalid={invalid}
+            />
           </div>
 
           {invalid ? (
@@ -267,7 +292,10 @@ export function PeriodPicker({
 
           {/* El filo separa los periodos hechos del que hay que escribir: no es
               una quinta opción, es otra manera de responder. */}
-          <div style={{ height: 1, margin: "5px 0", background: "var(--line)" }} aria-hidden="true" />
+          <div
+            style={{ height: 1, margin: "5px 0", background: "var(--line)" }}
+            aria-hidden="true"
+          />
 
           <button
             type="button"
