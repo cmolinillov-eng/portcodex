@@ -32,7 +32,10 @@ export function MovementsHeader({
   syncStatus?: ReactNode;
 }) {
   return (
-    <header className="flex items-start" style={{ paddingTop: 44, gap: 40 }}>
+    // `pcx-stack-narrow`, el mismo mecanismo que usa la cabecera de Cartera: en
+    // pantalla estrecha el bloque de sincronización baja debajo del recuento en
+    // vez de encajarse a su derecha, donde se le montaba encima.
+    <header className="pcx-stack-narrow flex items-start" style={{ paddingTop: 44, gap: 40 }}>
       <div style={{ flex: "1 1 auto", minWidth: 0 }}>
         <div className="flex items-baseline" style={{ gap: 20, marginBottom: 12 }}>
           <h1 style={{ margin: 0, fontSize: "var(--text-body)", fontWeight: 400, color: "var(--faint)" }}>

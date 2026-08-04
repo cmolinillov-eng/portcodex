@@ -3,6 +3,7 @@ import { DataTable, DataRow, Cell, AmountCell, StackedCell } from "@/components/
 import type { Column } from "@/components/dashboard/DataTable";
 import { TokenAvatar } from "@/components/dashboard/cartera/TokenAvatar";
 import { money, tokenAmount, plural, type Currency } from "@/lib/format/figures";
+import { UndoButton } from "./UndoButton";
 import { dayKey, groupDate, timeOfDay } from "./format";
 
 /**
@@ -58,6 +59,20 @@ export interface Movement {
   /** Cantidad de token en crudo: los decimales los pone `tokenAmount`. */
   quantity: number;
   symbol: string;
+  /**
+   * La OTRA pata de una permuta.
+   *
+   * Una permuta son dos patas y se registra en dos filas —la que entrega y la
+   * que recibe—, porque fiscalmente no son lo mismo: una transmite y la otra
+   * adquiere. Enseñar solo la propia dejaba media operación sin contar.
+   */
+  counterpart?: {
+    quantity: number;
+    symbol: string;
+    /** `true` si la contraparte es lo RECIBIDO, o sea: esta fila es la que
+     *  entregó. Decide hacia dónde apunta la flecha. */
+    received: boolean;
+  };
   /** «Kamino (ORCA)», «Wallet». */
   platform: string;
   network: string;
@@ -66,19 +81,26 @@ export interface Movement {
   /** Valor en la moneda de la tabla, al tipo de la fecha de la operación. */
   value: number;
   tax: { label: string; tone: TaxTone };
+  /** Lo que agrupa las filas de una misma operación. Solo viene cuando la
+   *  operación se puede deshacer; sin él la fila no pinta acción. */
+  undoGroupId?: string;
 }
 
 export function MovementsTable({
   movements,
   currency = "EUR",
-  onUndo,
+  undoPortfolioId,
   loadMore,
 }: {
   movements: Movement[];
   currency?: Currency;
-  /** Solo desde una pantalla de cliente: pasar una función obliga a que quien
-   *  renderice esta tabla sea un componente de cliente. */
-  onUndo?: (id: string) => void;
+  /**
+   * Cartera sobre la que actúa «Deshacer». Solo se pasa cuando el perfil PUEDE
+   * operar: sin ella no se pinta el botón. Es una cadena y no una función para
+   * que esta tabla siga renderizándose en el servidor —lo interactivo es solo
+   * el botón, que es su propia isla de cliente.
+   */
+  undoPortfolioId?: string;
   /** «Cargar más», cuando queda historial por traer. */
   loadMore?: ReactNode;
 }) {
@@ -89,7 +111,12 @@ export function MovementsTable({
           <div key={day.key}>
             <DayHeading iso={day.iso} count={day.entries.length} first={i === 0} />
             {day.entries.map((m) => (
-              <MovementRow key={m.id} movement={m} currency={currency} onUndo={onUndo} />
+              <MovementRow
+                key={m.id}
+                movement={m}
+                currency={currency}
+                undoPortfolioId={undoPortfolioId}
+              />
             ))}
           </div>
         ))}
@@ -128,11 +155,11 @@ function DayHeading({ iso, count, first }: { iso: string; count: number; first: 
 function MovementRow({
   movement: m,
   currency,
-  onUndo,
+  undoPortfolioId,
 }: {
   movement: Movement;
   currency: Currency;
-  onUndo?: (id: string) => void;
+  undoPortfolioId?: string;
 }) {
   const [amount, suffix] = splitCurrency(money(m.value, currency));
 
@@ -157,10 +184,25 @@ function MovementRow({
         {tokenAmount(m.quantity)}
       </span>
 
-      <span className="flex items-center" style={{ gap: 8, minWidth: 0 }}>
-        <TokenAvatar symbol={m.symbol} />
-        <span style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}>{m.symbol}</span>
-      </span>
+      {/* Activo. En una permuta lleva DOS líneas —la misma forma que usa la
+          plataforma con su red—: arriba el token de esta fila, debajo lo que se
+          recibió a cambio («→») o de dónde vino («←»). Así la fila cuenta la
+          operación entera sin depender de que su gemela esté a la vista. */}
+      <div data-label="Activo" style={{ minWidth: 0 }}>
+        <span className="flex items-center" style={{ gap: 8, minWidth: 0 }}>
+          <TokenAvatar symbol={m.symbol} />
+          <span style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}>{m.symbol}</span>
+        </span>
+        {m.counterpart ? (
+          <div
+            className="tabular-nums"
+            style={{ fontSize: "var(--text-meta)", color: "var(--faint)", marginTop: 4 }}
+          >
+            {m.counterpart.received ? "→" : "←"} {tokenAmount(m.counterpart.quantity)}{" "}
+            {m.counterpart.symbol}
+          </div>
+        ) : null}
+      </div>
 
       <StackedCell compact primary={m.platform} secondary={m.network} label="Plataforma" />
 
@@ -187,18 +229,17 @@ function MovementRow({
         {m.tax.label}
       </span>
 
-      {/* Deshacer solo al pasar por encima: en reposo, trece enlaces repetidos
-          serían la columna más llamativa de la tabla. Sigue siendo alcanzable
-          con el tabulador, y al recibir el foco se muestra. */}
+      {/* La acción SOLO cuando existe: hace falta permiso para operar
+          (`undoPortfolioId`) y que la operación esté agrupada en la base
+          (`undoGroupId`). Antes se pintaba siempre y no llamaba a nadie. */}
       <span style={{ textAlign: "right" }}>
-        <button
-          type="button"
-          onClick={onUndo ? () => onUndo(m.id) : undefined}
-          className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-          style={{ fontSize: "var(--text-meta)", color: "var(--faint)", cursor: "pointer" }}
-        >
-          Deshacer
-        </button>
+        {undoPortfolioId && m.undoGroupId ? (
+          <UndoButton
+            portfolioId={undoPortfolioId}
+            operationGroupId={m.undoGroupId}
+            description={`${m.operation} de ${tokenAmount(m.quantity)} ${m.symbol}`}
+          />
+        ) : null}
       </span>
     </DataRow>
   );
