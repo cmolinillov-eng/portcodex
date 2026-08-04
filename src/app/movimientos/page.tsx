@@ -44,15 +44,35 @@ const OPERATION_LABEL: Record<string, string> = {
  * solo hay tres estados, y únicamente el tercero —lo no clasificado— se señala
  * en ámbar, porque es la excepción que alguien tiene que mirar.
  */
+/**
+ * El TERCER argumento es obligatorio y faltaba.
+ *
+ * `getAeatClassification` decide con `realizedGainEur` si una transmisión es
+ * «Ganancia patrimonial» o «Pérdida patrimonial». Sin él, TODA venta con
+ * minusvalía se etiquetaba como ganancia — y el CSV, que sí lo pasaba, decía lo
+ * contrario sobre la misma operación. Dos documentos del mismo producto
+ * contradiciéndose sobre si alguien ganó o perdió dinero.
+ */
+function clasificar(entry: TraceabilityEntry) {
+  return getAeatClassification(
+    entry.fiscal.category,
+    entry.fiscal.incomeType,
+    entry.fiscal.realizedGainEur,
+  );
+}
+
 function toneOf(entry: TraceabilityEntry): TaxTone {
-  const aeat = getAeatClassification(entry.fiscal.category, entry.fiscal.incomeType);
-  if (!aeat || !aeat.badge) return "unclassified";
+  const aeat = clasificar(entry);
+  // Se compara por la ETIQUETA y no por `!aeat`: la clasificación nunca es
+  // falsy —su caso por defecto devuelve `badge: "Sin clasificar"`—, así que la
+  // rama ámbar no se alcanzaba jamás y lo no clasificado se pintaba como si
+  // estuviera resuelto. El ámbar existe justo para eso.
+  if (!aeat || aeat.badge === "Sin clasificar") return "unclassified";
   return aeat.base === null ? "exempt" : "taxable";
 }
 
 function labelOf(entry: TraceabilityEntry): string {
-  const aeat = getAeatClassification(entry.fiscal.category, entry.fiscal.incomeType);
-  return aeat?.badge || "Sin clasificar";
+  return clasificar(entry).badge || "Sin clasificar";
 }
 
 export default async function MovimientosPage({
@@ -116,7 +136,9 @@ export default async function MovimientosPage({
         <MovementsHeader
           count={sorted.length}
           periodLabel={selectedYear ? `en ${selectedYear}` : "en todo el histórico"}
-          lastLabel={lastAt ? `· última ${timeAgo(lastAt)}` : "· sin operaciones"}
+          // Sin el `·` de delante: la cabecera ya pone el separador, y con los
+          // dos salía «en 2026 · · última hace 3 minutos» en cada carga.
+          lastLabel={lastAt ? `última ${timeAgo(lastAt)}` : "sin operaciones"}
         />
 
         <MovementsTable movements={movements} currency="EUR" />

@@ -280,10 +280,17 @@ function Summary({ report }: { report: FiscalReport }) {
 
       <SectionTitle title="Modelo 721 · Criptomonedas en el extranjero" spaced />
       <div className="s721">
+        {/* Este documento se le entrega a un asesor, así que no puede afirmar
+            «sin obligación»: la cifra de abajo es el flujo neto de compraventa a
+            coste histórico, no el saldo a valor de mercado que exige el modelo.
+            No ve las transferencias entrantes desde wallets propias, ni los
+            rendimientos cobrados en la plataforma, ni la revalorización. Sirve
+            como suelo —si ya supera el umbral, hay obligación seguro— pero
+            nunca para descartarla. Mismo criterio que la pantalla Fiscalidad. */}
         <div className="s721__status">
           {modelo721.obligado
             ? "Con obligación de declarar en este ejercicio"
-            : "Sin obligación de declarar en este ejercicio"}
+            : "Pendiente de comprobar con los saldos reales"}
         </div>
         <p className="s721__why">
           El Modelo 721 es una declaración informativa de los saldos mantenidos en plataformas de
@@ -292,12 +299,21 @@ function Summary({ report }: { report: FiscalReport }) {
           <span className="nb">{money(modelo721.thresholdEur, "EUR")}</span> a fecha de{" "}
           <span className="nb">31 de diciembre de {input.year}</span>.
         </p>
+        {!modelo721.obligado ? (
+          <p className="s721__why">
+            <strong>Este cálculo no basta para descartar la obligación.</strong> La cifra siguiente
+            se obtiene de las compras y ventas registradas, valoradas a su coste, y por tanto no
+            incluye lo transferido desde wallets propias, los rendimientos cobrados en la propia
+            plataforma ni la revalorización. Debe contrastarse con los saldos reales a 31 de
+            diciembre.
+          </p>
+        ) : null}
         <div className="s721__grid">
           {/* La etiqueta no repite «a 31/12»: la fecha de corte tiene su propio
               campo al lado, y con dos líneas esta etiqueta desalineaba las
               tres cifras del panel. */}
           <Field
-            label="Saldo en custodios no residentes"
+            label="Compraventa neta en custodios no residentes"
             value={money(modelo721.foreignBalanceEur, "EUR")}
             strong
           />

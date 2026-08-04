@@ -17,7 +17,7 @@ import { ExportLink } from "@/components/dashboard/export/ExportLink";
 import { TaxBases } from "@/components/dashboard/fiscalidad/TaxBases";
 import { CasillaBreakdown } from "@/components/dashboard/fiscalidad/CasillaBreakdown";
 import { Modelo721 } from "@/components/dashboard/fiscalidad/Modelo721";
-import { money, longDate, plural } from "@/lib/format/figures";
+import { moneyRound, longDate, plural } from "@/lib/format/figures";
 
 /**
  * Fiscalidad — el cálculo orientativo del ejercicio.
@@ -68,8 +68,12 @@ export default async function FiscalidadPage({
 
   const { buckets, totalBaseAhorro, totalBaseGeneral } = aggregateByCasilla(bucketInputs);
 
-  // Modelo 721: el saldo que cuenta es el de CIERRE del ejercicio, así que se
-  // acumula el flujo neto en custodios extranjeros hasta el 31/12.
+  // Modelo 721. OJO: esto NO es el saldo que exige el modelo —que es el de
+  // cierre a valor de mercado— sino el flujo neto de compraventa a coste
+  // histórico. Es un SUELO, no una medida: si ya con esto se pasa el umbral,
+  // hay obligación seguro; si no se pasa, no se puede concluir nada. Ver el
+  // bloque Modelo721 más abajo, donde se explica por qué la pantalla no
+  // absuelve a nadie con este número.
   let foreignNet = 0;
   for (const e of entries) {
     if (getTaxYear(e.transactionDate) > selectedYear) continue;
@@ -114,7 +118,19 @@ export default async function FiscalidadPage({
           general={{
             label: "Base general",
             amountEur: totalBaseGeneral,
-            explanation: "Airdrops, forks, salario y actividad económica",
+            // El mapeo AEAT sabe colocar airdrops, forks, salario y actividad
+            // económica en esta base, pero el clasificador NO EMITE ninguna de
+            // esas categorías: solo produce buy, sell, swap_in, swap_out,
+            // lp_provide, lp_remove y non_taxable_transfer. Es decir, este cero
+            // no es un cálculo que haya dado cero, es el único resultado
+            // posible. Prometer «airdrops, forks, salario» al lado de un 0,00 €
+            // le dice a alguien que cobró un airdrop que no tiene nada que
+            // declarar. Mientras esas categorías no se clasifiquen, la línea
+            // dice lo que de verdad hace.
+            explanation:
+              totalBaseGeneral !== 0
+                ? "Airdrops, forks, salario y actividad económica"
+                : "Los airdrops, forks y rendimientos del trabajo no se clasifican todavía de forma automática: revísalos con tu asesor.",
           }}
         />
 
@@ -132,16 +148,32 @@ export default async function FiscalidadPage({
           totalEur={totalBaseAhorro}
         />
 
+        {/* NUNCA se afirma «sin obligación de declarar».
+         *
+         * El 721 se calcula sobre el SALDO a valor de mercado a 31 de diciembre,
+         * y lo que hay aquí es un flujo neto a coste histórico: suma compras y
+         * resta ventas en custodios extranjeros. Eso deja fuera tres cosas que
+         * cuentan para el umbral: el dinero que entra por transferencia desde
+         * una wallet propia (se clasifica como movimiento no imponible y no
+         * suma), los rendimientos cobrados en la propia plataforma, y la
+         * revalorización —20.000 € comprados que hoy valen 80.000 € siguen
+         * contando 20.000—.
+         *
+         * Con ese cálculo se puede tener seis cifras en un exchange extranjero y
+         * leer «no alcanza el umbral». Declarar de menos el 721 tiene sanción,
+         * así que mientras el saldo real no se calcule desde las posiciones
+         * vivas valoradas a cierre, esta pantalla dice qué ha mirado y qué no,
+         * y no absuelve a nadie. */}
         <Modelo721
           status={
             obligado
               ? "Con obligación de declarar en este ejercicio"
-              : "Sin obligación de declarar en este ejercicio"
+              : "Revisa tus saldos antes de descartarlo"
           }
           explanation={
             obligado
-              ? `El conjunto de saldos en plataformas extranjeras supera el umbral de ${money(MODELO_721_THRESHOLD, "EUR")} a 31 de diciembre (estimado en ${money(foreignBalance, "EUR")}).`
-              : `El conjunto de saldos en plataformas extranjeras no alcanza el umbral de ${money(MODELO_721_THRESHOLD, "EUR")} a 31 de diciembre.`
+              ? `Solo con las compras y ventas registradas en plataformas extranjeras ya se supera el umbral de ${moneyRound(MODELO_721_THRESHOLD, "EUR")} a 31 de diciembre (${moneyRound(foreignBalance, "EUR")}).`
+              : `Con las compras y ventas registradas en plataformas extranjeras salen ${moneyRound(foreignBalance, "EUR")}, por debajo del umbral de ${moneyRound(MODELO_721_THRESHOLD, "EUR")}. Este cálculo NO incluye lo que hayas transferido desde tus propias wallets, los rendimientos cobrados allí ni la revalorización, así que no basta para descartar la obligación: comprueba el saldo real a 31 de diciembre.`
           }
         />
 

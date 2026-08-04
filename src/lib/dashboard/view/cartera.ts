@@ -33,8 +33,34 @@ export interface CarteraView {
   provenance: string;
 }
 
+/**
+ * Clave de una posición para cruzar con sus rendimientos.
+ *
+ * Existe porque los dos lados del cruce se escribían a mano y NO coincidían: el
+ * mapa se construía con las claves de `harvestByPosition`, que usan `::`, y se
+ * consultaba con `|`. El `get()` fallaba siempre, en todas las posiciones, así
+ * que `pendingUsd` era 0 y la línea «sin reclamar» no llegó a pintarse nunca.
+ *
+ * En Lending eso además cambiaba el significado del dato: al desaparecer la
+ * primera línea, la única que quedaba era el interés COBRADO con la etiqueta
+ * «pagado». El cliente leía que había pagado intereses que en realidad ganó.
+ *
+ * Se normaliza la caja del protocolo porque la contabilidad y la lectura
+ * on-chain no siempre lo escriben igual («Kamino» / «kamino»).
+ */
+function claveDePosicion(portfolioId: string, protocol: string, positionId: string): string {
+  return `${portfolioId}::${protocol.toLowerCase()}::${positionId}`;
+}
+
 export function buildCarteraView(data: DashboardData): CarteraView {
-  const harvestByKey = new Map(data.harvestByPosition.map((h) => [h.key, h]));
+  const harvestByKey = new Map(
+    data.harvestByPosition.map((h) => {
+      // La clave viene ya formada; se re-normaliza para que las dos puntas usen
+      // exactamente la misma regla, sin depender de cómo se construyó allí.
+      const [portfolioId = "", protocol = "", positionId = ""] = h.key.split("::");
+      return [claveDePosicion(portfolioId, protocol, positionId), h] as const;
+    }),
+  );
 
   const sections: CarteraSectionData[] = [];
   let totalValue = 0;
@@ -80,7 +106,7 @@ function toPosition(
   harvests: Map<string, { pendingUsd: number; harvestedUsd: number }>,
 ): CarteraPosition {
   const pnlUsd = Number(p.currentValue) - (Number(p.costBasisUsd) || 0);
-  const harvest = harvests.get(`${p.portfolioId}|${p.protocol}|${p.positionId}`);
+  const harvest = harvests.get(claveDePosicion(p.portfolioId, p.protocol, p.positionId));
 
   return {
     key: `${p.portfolioId}|${p.protocol}|${p.positionId}|${p.tokenSymbol}`,
