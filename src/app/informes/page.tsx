@@ -102,7 +102,15 @@ export default async function InformesPage({
           description="Valor, composición y rendimiento a fecha de hoy"
           period={{ kind: "fixed", label: "A fecha de hoy" }}
           format="PDF"
-          action={puedeDescargar ? { label: "Generar", variant: "quiet" } : undefined}
+          action={
+            puedeDescargar
+              ? {
+                  label: "Generar",
+                  variant: "quiet",
+                  href: `/api/informes/patrimonial?portfolioId=${portfolioId}&auto=1`,
+                }
+              : undefined
+          }
           dimmed={!puedeDescargar}
         />
 

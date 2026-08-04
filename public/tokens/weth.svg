@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" role="img" aria-label="Wrapped Ether">
+  <circle cx="12" cy="12" r="12" fill="#627EEA"/>
+  <g fill="#FFFFFF" transform="translate(7.42 5) scale(0.0716)">
+    <path fill-opacity=".6" d="M63.9 0 62.5 4.7v129.9l1.4 1.4 63.9-37.8z"/>
+    <path d="M63.9 0 0 96.2l63.9 37.8V0z"/>
+    <path fill-opacity=".6" d="M63.9 146.1l-.8 1v46.3l.8 2.3 63.9-90z"/>
+    <path d="M63.9 195.7v-49.6L0 108.3z"/>
+    <path fill-opacity=".2" d="M63.9 134l63.9-37.8-63.9-29z"/>
+    <path fill-opacity=".6" d="M0 96.2l63.9 37.8V67.2z"/>
+  </g>
+</svg>

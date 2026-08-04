@@ -1,17 +1,23 @@
 /**
  * Distintivo circular de un token.
  *
- * Es la ÚNICA excepción consciente a la proporción cromática de la identidad:
- * estos colores son los de cada moneda, no los de PortCodex. Se aceptan porque
- * aquí el color IDENTIFICA —el naranja es Bitcoin, el verde es Solana— y el
- * cliente los reconoce antes de leer el texto. En cuanto dejaran de identificar
- * y pasaran a decorar, sobrarían.
+ * Pinta el LOGO real de la moneda cuando lo hay, y un círculo tintado con las
+ * dos primeras letras cuando no. Las maquetas dibujan siempre el círculo de
+ * iniciales; el logo es una desviación deliberada y aprobada por producto —el
+ * cliente reconoce su cartera antes de leerla—, y es la única.
  *
- * Dos letras, no un icono: un logotipo a 22 px se convierte en una mancha, y
- * mantener 60 SVG de terceros al día es una deuda que no compensa. En
- * producción los colores vendrán de la lista de Jupiter (Solana) y CoinGecko;
- * este registro cubre lo que la cartera tiene hoy.
+ * Los logos están EMPAQUETADOS en `public/tokens/`, nunca traídos de un CDN: si
+ * cada navegador pidiera los iconos a un tercero, ese tercero vería qué tokens
+ * tiene cada cliente, que es la composición de su cartera. El porqué de cada
+ * fichero está en `public/tokens/README.md`.
+ *
+ * El respaldo NO es un caso degradado: para la mayoría de las monedas de la
+ * cartera no existe una geometría de marca contrastada, y un logo aproximado
+ * afirma una identidad que no es. Esas se quedan con su tinta, que es lo que la
+ * maqueta aprobó.
  */
+
+import Image from "next/image";
 
 interface TokenInk {
   bg: string;
@@ -42,28 +48,50 @@ const TOKEN_INK: Record<string, TokenInk> = {
  *  un color aleatorio afirmaría una identidad que no tenemos. */
 const UNKNOWN_INK: TokenInk = { bg: "var(--float)", fg: "var(--muted)" };
 
+/** Los símbolos llegan sin normalizar de la contabilidad y de las maquetas:
+ *  conviven «pyUSD» y «PYUSD», «cbBTC» y «CBBTC». */
+function normalizeSymbol(symbol: string): string {
+  return symbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 export function tokenInk(symbol: string): TokenInk {
-  return TOKEN_INK[symbol.toUpperCase().replace(/[^A-Z0-9]/g, "")] ?? UNKNOWN_INK;
+  return TOKEN_INK[normalizeSymbol(symbol)] ?? UNKNOWN_INK;
+}
+
+/**
+ * Símbolos con fichero en `public/tokens/`. Es una lista ESCRITA, no una
+ * comprobación en tiempo de ejecución: hay que saber que falta el logo antes de
+ * pedirlo, porque pedirlo y esperar al fallo deja el hueco visible en pantalla.
+ * Añadir un logo son dos pasos —el SVG y esta línea— y es a propósito.
+ */
+const TOKEN_LOGOS = new Set(["BTC", "ETH", "WETH", "SOL", "USDC", "USDT"]);
+
+function tokenLogo(symbol: string): string | null {
+  const key = normalizeSymbol(symbol);
+  return TOKEN_LOGOS.has(key) ? `/tokens/${key.toLowerCase()}.svg` : null;
 }
 
 const SIZE = 22;
 
 export function TokenAvatar({ symbol, overlap = false }: { symbol: string; overlap?: boolean }) {
+  const logo = tokenLogo(symbol);
   const ink = tokenInk(symbol);
   return (
     <span
       title={symbol}
       /* Decorativo: el símbolo del token se lee en texto justo al lado, así que
-         las dos letras no aportan nada a un lector de pantalla. Declararlo
-         también resuelve que las tintas de marca (blanco sobre #627EEA da
-         3,69:1) no alcancen el AA de texto: no es texto. */
+         ni las dos letras ni el logo aportan nada a un lector de pantalla.
+         Declararlo también resuelve que las tintas de marca (blanco sobre
+         #627EEA da 3,69:1) no alcancen el AA de texto: no es texto. */
       aria-hidden="true"
       style={{
         width: SIZE,
         height: SIZE,
         flex: "none",
         borderRadius: "50%",
-        background: ink.bg,
+        // Con logo NO se pinta la tinta debajo: el SVG trae su propio círculo a
+        // sangre y un fondo distinto asomaría como una orla en el antialiasing.
+        background: logo ? "transparent" : ink.bg,
         color: ink.fg,
         fontSize: 9,
         fontWeight: 600,
@@ -71,6 +99,8 @@ export function TokenAvatar({ symbol, overlap = false }: { symbol: string; overl
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        // Recorta el logo al círculo aunque el SVG venga con esquinas.
+        overflow: "hidden",
         // El segundo distintivo de un par monta sobre el primero, y el anillo
         // del color del fondo es lo que hace legible el solape.
         ...(overlap
@@ -78,7 +108,21 @@ export function TokenAvatar({ symbol, overlap = false }: { symbol: string; overl
           : { position: "relative", zIndex: 1 }),
       }}
     >
-      {symbol.slice(0, 2).toUpperCase()}
+      {logo ? (
+        <Image
+          src={logo}
+          alt=""
+          width={SIZE}
+          height={SIZE}
+          /* Un SVG de 500 bytes no gana nada pasando por el optimizador de
+             imágenes —que además rechaza SVG salvo que se abra
+             `dangerouslyAllowSVG`, y no hay motivo para abrirlo. */
+          unoptimized
+          style={{ width: SIZE, height: SIZE, display: "block" }}
+        />
+      ) : (
+        symbol.slice(0, 2).toUpperCase()
+      )}
     </span>
   );
 }
