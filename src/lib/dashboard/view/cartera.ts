@@ -99,9 +99,45 @@ export function buildCarteraView(data: DashboardData): CarteraView {
     });
   }
 
+  /*
+   * UNA sola cifra de patrimonio en todo el producto.
+   *
+   * Hasta ahora la cabecera de Cartera sumaba el valor CONTABLE de las
+   * posiciones activas, mientras el Resumen enseñaba `summary.totalValueUsd`,
+   * que es la lectura ON-CHAIN (lo que de verdad hay en las cadenas) y solo cae
+   * a la contable si no hay snapshot. Con datos reales son dos números
+   * distintos, así que un cliente abría el Resumen, veía una cifra, pulsaba
+   * Cartera y veía otra. En un producto de patrimonio eso no es un detalle: es
+   * no saber cuánto tienes.
+   *
+   * Manda la lectura on-chain, porque es la que responde a «cuánto tengo».
+   *
+   * Lo que NO se hace es maquillar la diferencia. Las secciones siguen sumando
+   * lo suyo, y si no llegan al total se dice cuánto falta. Cuando el hueco
+   * coincide con los rendimientos sin reclamar —que están ahí, generados y sin
+   * recoger, y por eso el on-chain los ve y el libro no— se nombra. Cuando no
+   * coincide, se dice que hay una diferencia sin afirmar de qué es: inventar la
+   * causa sería peor que reconocer que no la sabemos.
+   */
+  const patrimonio = Number(data.summary.totalValueUsd);
+  const totalPatrimonio = Number.isFinite(patrimonio) && patrimonio > 0 ? patrimonio : totalValue;
+  const hueco = totalPatrimonio - totalValue;
+
+  const sinReclamar =
+    Number(data.summary.totalUnclaimedUsd || 0) + Number(data.summary.totalPendingHarvestUsd || 0);
+  // Medio céntimo: por debajo, la diferencia no se imprime y explicarla sobraría.
+  const hayHueco = Math.abs(hueco) >= 0.01;
+  const loExplicaElSinReclamar = hayHueco && Math.abs(hueco - sinReclamar) < 0.01;
+
+  const detalle = !hayHueco
+    ? ""
+    : loExplicaElSinReclamar
+      ? ` · incluye ${money(sinReclamar)} de rendimientos sin reclamar`
+      : ` · ${money(Math.abs(hueco))} de diferencia con la suma de posiciones`;
+
   return {
-    total: money(totalValue),
-    positionsLabel: `en ${plural(totalPositions, "posición", "posiciones")}`,
+    total: money(totalPatrimonio),
+    positionsLabel: `en ${plural(totalPositions, "posición", "posiciones")}${detalle}`,
     provenance: plural(totalPositions, "posición leída", "posiciones leídas"),
     sections,
   };
