@@ -105,7 +105,13 @@ async function computeClosureSnapshot(
     } else if (capitalOutTypes.has(txType)) {
       if (!isInternal) totalDeposited -= outAmount * spotPrice;
       if (isRebalance && depositedDelta !== null) totalDeposited += depositedDelta; // sale del origen (negativo)
-      if (outSymbol) {
+      // EXCEPCIÓN al «el saldo siempre se actualiza»: el harvest pendiente que
+      // se arrastró en un rebalanceo nunca estuvo en el saldo de la posición
+      // (las filas `harvest` no suman balance), así que restarlo aquí resta
+      // capital que sí existe cuando el token de recompensa es uno del par —
+      // y el valor de cierre, y con él el P&L realizado, salían cortos.
+      const isHarvestOut = reason === "rebalance_harvest_out" || src === "rebalance_harvest_out";
+      if (outSymbol && !isHarvestOut) {
         balances[outSymbol] = (balances[outSymbol] ?? 0) - outAmount;
       }
     }

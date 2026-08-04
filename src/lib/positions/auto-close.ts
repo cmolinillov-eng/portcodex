@@ -123,17 +123,26 @@ export async function autoClosePositionIfEmpty({
 
     const reason = readFlag(tx.metadata, tx.notes, "reason");
     const source = readFlag(tx.metadata, tx.notes, "source");
+    // Harvest pendiente que se arrastró al destino de un rebalanceo: entró
+    // como rendimiento, nunca como capital, y NO forma parte del balance de la
+    // posición (las filas `harvest` no suman a `balances`). Restarlo dejaba un
+    // balance negativo permanente que hacía imposible detectar la posición
+    // vacía (`still_open` para siempre) y, si el token de recompensa era uno
+    // del pool, se comía balance real. Mismo criterio que el dashboard.
+    const isRebalanceHarvestOut =
+      reason === "rebalance_harvest_out" || source === "rebalance_harvest_out";
     const isInternal =
       reason === "harvest_reinvest" ||
       source === "harvest_reinvest" ||
       reason === "rebalance_transfer" ||
-      source === "rebalance_transfer";
+      source === "rebalance_transfer" ||
+      isRebalanceHarvestOut;
 
     if (CAPITAL_IN.has(txType)) {
       if (inSymbol) balances[inSymbol] = (balances[inSymbol] ?? 0) + inAmount;
       if (!isInternal) totalDeposited += inAmount * spotPrice;
     } else if (CAPITAL_OUT.has(txType)) {
-      if (outSymbol) balances[outSymbol] = (balances[outSymbol] ?? 0) - outAmount;
+      if (outSymbol && !isRebalanceHarvestOut) balances[outSymbol] = (balances[outSymbol] ?? 0) - outAmount;
       if (!isInternal) totalDeposited -= outAmount * spotPrice;
     }
   }

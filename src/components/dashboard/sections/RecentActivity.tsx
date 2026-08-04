@@ -157,6 +157,15 @@ export function RecentActivity({
                           Reinv. harvest
                         </span>
                       ) : null}
+                      {/* Un rebalanceo se escribe como retirada + depósito: sin
+                          esta marca parecía que el cliente había sacado dinero
+                          de la cartera y luego aportado más. */}
+                      {item.movementOrigin === "rebalance" ? (
+                        <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[10px] text-sky-300">
+                          <span className="h-1 w-1 rounded-full bg-sky-300" aria-hidden="true" />
+                          Rebalanceo
+                        </span>
+                      ) : null}
                     </div>
                   </td>
 

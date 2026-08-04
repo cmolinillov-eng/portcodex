@@ -358,7 +358,7 @@ function handleDeposit(
     // entra difiere del que salió del origen. Consumimos por FIFO los lotes
     // del vendido y creamos el de este token con la base trasladada — la
     // fila de salida del origen NO consume lotes, lo hace este leg.
-    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, "el rebalanceo");
+    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, REBALANCE_CONTEXT_LABEL);
     if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
       return reinvestSwapResult(rebalanceSwap, {
         symbol,
@@ -875,7 +875,7 @@ function handleStakingMovement(
   // traslada la base del vendido al que entra.
   if (txType === "staking_deposit" && symbol) {
     const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
-    const contextLabel = isRebalanceIn ? "el rebalanceo" : "la reinversión";
+    const contextLabel = isRebalanceIn ? REBALANCE_CONTEXT_LABEL : "la reinversión";
     const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
     if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
       const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
@@ -914,7 +914,7 @@ function handleLendingMovement(
   // lending: traslada la base del vendido al colateral que entra.
   if (txType === "lending_supply" && symbol) {
     const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
-    const contextLabel = isRebalanceIn ? "el rebalanceo" : "la reinversión";
+    const contextLabel = isRebalanceIn ? REBALANCE_CONTEXT_LABEL : "la reinversión";
     const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
     if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
       const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
@@ -1018,7 +1018,7 @@ function handleLpDeposit(
     // trasladada; la rotación del futuro lp_withdraw lo encontrará. Sin legs
     // (mismo token o fila legacy) se mantiene el comportamiento de siempre:
     // sin lote, la base viaja con los lotes originales.
-    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, "el rebalanceo");
+    const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, REBALANCE_CONTEXT_LABEL);
     if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
       return reinvestSwapResult(rebalanceSwap, {
         symbol,
@@ -1110,6 +1110,13 @@ function handleLpDeposit(
  * ganancia aquí (permuta a criterio del asesor; la ventana
  * harvest→redepósito es de minutos, diferencia ≈ 0).
  */
+/** Etiqueta que usan los handlers cuando la permuta viene de un rebalanceo. */
+const REBALANCE_CONTEXT_LABEL = "el rebalanceo";
+
+function isRebalanceContext(contextLabel: string): boolean {
+  return contextLabel === REBALANCE_CONTEXT_LABEL;
+}
+
 function applyReinvestSwapLegs(
   tx: CategorizeInput,
   boughtSymbol: string,
@@ -1151,7 +1158,17 @@ function applyReinvestSwapLegs(
         acquiredViaEvent: "swap_in",
         acquiredViaTransactionId: tx.id ?? null,
       });
-      notes = ` Incluye permuta implícita en ${contextLabel}: ${soldParts.join(" + ")} → ${boughtAmount.toFixed(8)} ${boughtSymbol}; lotes del vendido consumidos por FIFO y base trasladada de ${roundEur(carriedEur)} € al comprado.${uncoveredNote}`;
+      // AVISO EXPLÍCITO EN EL REBALANCEO. En una reinversión de harvest la
+      // ventana cobro→redepósito es de minutos y la ganancia latente ≈ 0, así
+      // que no anotar nada es defendible. En un REBALANCEO no: el activo que
+      // sale puede llevar años en cartera y su plusvalía latente es real. La
+      // app mantiene el criterio de movimiento interno (la base viaja), pero
+      // la anotación debe decirlo para que el asesor no lo pase por alto —
+      // mismo aviso que ya lleva el lp_provide.
+      const dgtWarning = isRebalanceContext(contextLabel)
+        ? " ⚠️ Criterio: la app trata el rebalanceo como movimiento interno y NO calcula ganancia aquí. Si tu asesor aplica el criterio DGT de permuta (art. 37.1.h LIRPF), esta operación tributa y la ganancia debe calcularse aparte."
+        : "";
+      notes = ` Incluye permuta implícita en ${contextLabel}: ${soldParts.join(" + ")} → ${boughtAmount.toFixed(8)} ${boughtSymbol}; lotes del vendido consumidos por FIFO y base trasladada de ${roundEur(carriedEur)} € al comprado.${uncoveredNote}${dgtWarning}`;
     }
   }
   return { newLots, lotUpdates, notes };

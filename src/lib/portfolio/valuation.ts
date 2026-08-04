@@ -137,6 +137,13 @@ export function computePortfolioValuation(
     const source = flag(tx.metadata, tx.notes, "source");
     const reason = flag(tx.metadata, tx.notes, "reason");
     const isInternal = INTERNAL_SOURCES.has(source ?? "") || INTERNAL_SOURCES.has(reason ?? "");
+    // El rebalanceo marca la ENTRADA con `source` y la SALIDA con `reason`
+    // (así las escribe /api/transactions). Mirando solo `source`, el
+    // depositedDelta NEGATIVO de la salida no se aplicaba nunca: la posición
+    // de origen conservaba toda su base de coste y el destino sumaba otra
+    // copia — el mismo capital contado dos veces por posición. Mismo criterio
+    // que get-dashboard-data.ts, que sí mira las dos marcas.
+    const isRebalanceTransfer = source === "rebalance_transfer" || reason === "rebalance_transfer";
     // Rotación hold→posición (depósito de LP/staking/lending auto-ingerido): el
     // capital ya entró por un hold y ya cuenta; no debe sumar otra vez al total.
     // Solo el lado DEPÓSITO onchain_ingest (el cierre ya se netea). Igual que en
@@ -196,15 +203,23 @@ export function computePortfolioValuation(
         }
       }
       // Rebalance: hereda cost basis del origen (depositedDelta) sin tocar total.
-      if (source === "rebalance_transfer" && positionId) {
+      if (isRebalanceTransfer && positionId) {
         const dd = toNum(asObject(tx.metadata)?.depositedDelta);
         if (dd !== 0) depositedByPosition.set(posKey, (depositedByPosition.get(posKey) ?? 0) + dd);
       }
       continue;
     }
 
+    const isRebalanceHarvestOut =
+      source === "rebalance_harvest_out" || reason === "rebalance_harvest_out";
+
     if (CAPITAL_OUT.has(type)) {
-      if (positionId && outSym) {
+      // El harvest arrastrado en un rebalanceo NO estaba en el balance de la
+      // posición (las filas `harvest` solo alimentan el pendiente), así que su
+      // salida solo descarga el pendiente —más abajo—. Restarlo también del
+      // balance borraba capital real cuando el token de recompensa es uno del
+      // par del pool. Mismo criterio que get-dashboard-data.ts.
+      if (positionId && outSym && !isRebalanceHarvestOut) {
         const k = `${posKey}::${outSym}`;
         const cur = balByPosSym.get(k) ?? { symbol: outSym, balance: 0 };
         cur.balance -= outAmt;
@@ -214,12 +229,12 @@ export function computePortfolioValuation(
         totalDepositedUsd -= outAmt * spot;
         depositedByPosition.set(posKey, (depositedByPosition.get(posKey) ?? 0) - outAmt * spot);
       }
-      if (source === "rebalance_transfer" && positionId) {
+      if (isRebalanceTransfer && positionId) {
         const dd = toNum(asObject(tx.metadata)?.depositedDelta);
         if (dd !== 0) depositedByPosition.set(posKey, (depositedByPosition.get(posKey) ?? 0) + dd);
       }
       // Harvest arrastrado al destino de un rebalance: sale del pending del origen.
-      if ((source === "rebalance_harvest_out" || reason === "rebalance_harvest_out") && positionId && outSym && outAmt > 0) {
+      if (isRebalanceHarvestOut && positionId && outSym && outAmt > 0) {
         const k = `${posKey}::${outSym}`;
         pendingByPosSym.set(k, (pendingByPosSym.get(k) ?? 0) - outAmt);
       }

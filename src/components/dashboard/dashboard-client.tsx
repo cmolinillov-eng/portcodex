@@ -18,6 +18,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
+// Las cifras nuevas del panel salen del formateador único del rediseño
+// (src/lib/format/figures.ts) para que decimales y separadores no dependan de
+// la pantalla que las pinte.
+import { money, tokenAmount } from "@/lib/format/figures";
 import type { DefiPosition, PositionSection } from "@/types/portfolio";
 import { HistoryModal } from "./modals/history-modal";
 import { QuickHarvestModal } from "./modals/quick-harvest-modal";
@@ -1542,6 +1546,13 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
         setErrorMessage("Indica el protocolo de la nueva posición destino.");
         return;
       }
+      // Origen ≠ destino: rebalancear una posición contra sí misma escribía la
+      // salida y la entrada en la misma posición (el depositado se anulaba,
+      // pero los tokens no) y la dejaba con un activo que no le corresponde.
+      if (!form.rebalanceTargetIsNew && form.rebalanceTargetKey === form.rebalanceSourceKey) {
+        setErrorMessage("El origen y el destino no pueden ser la misma posición.");
+        return;
+      }
       if (sourceType.includes("liquidity") || sourceType.includes("lp")) {
         const sourceAmountB = Number(form.rebalanceSourceLpAmountB);
         if (!form.rebalanceSourceTokenSymbol.trim() || !form.rebalanceSourceLpTokenSymbolB.trim()) {
@@ -1560,6 +1571,27 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
         if (!Number.isFinite(sourceAmount) || sourceAmount <= 0) {
           setErrorMessage("La cantidad origen del rebalanceo debe ser positiva.");
           return;
+        }
+        // SOBREGIRO en un Hold: ahí el saldo del panel es el saldo real
+        // (depósitos − retiradas, sin rendimiento que se acumule dentro sin
+        // dejar fila). Mover más dejaba la posición en negativo —desaparece
+        // del panel— y acreditaba en el destino tokens inexistentes.
+        // En LP/staking/lending NO se comprueba: su saldo contable y el real
+        // divergen de forma legítima (composición del AMM, tokens rebasing).
+        const sourcePosition = positionByKey.get(form.rebalanceSourceKey);
+        if (sourcePosition && (sourcePosition.positionType ?? "").toLowerCase().includes("hold")) {
+          const wantedSymbol = form.rebalanceSourceTokenSymbol.trim().toUpperCase();
+          const available = (sourcePosition.valueBreakdown ?? []).find(
+            (item) => item.tokenSymbol.toUpperCase() === wantedSymbol,
+          )?.amount;
+          // Tolerancia del 0,5 %: el saldo se copia de la cadena y trae más
+          // decimales que el libro.
+          if (typeof available === "number" && available > 0 && sourceAmount > available * 1.005) {
+            setErrorMessage(
+              `No puedes rebalancear más de lo que hay: la posición origen tiene ${tokenAmount(available)} ${wantedSymbol}.`,
+            );
+            return;
+          }
         }
       }
 
@@ -2575,6 +2607,12 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                           rebalanceSourceAmount: "",
                           rebalanceSourceLpAmountB: "",
                           portfolioId: source?.portfolioId ?? prev.portfolioId,
+                          // Si el destino elegido antes es ahora el origen, se
+                          // limpia: ya no aparece en la lista y quedaría un
+                          // desplegable con un valor invisible seleccionado.
+                          ...(prev.rebalanceTargetKey === key
+                            ? { rebalanceTargetKey: "", rebalanceTargetTokenSymbol: "", rebalanceTargetLpTokenSymbolB: "" }
+                            : {}),
                         }));
                       }}
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
@@ -2760,11 +2798,16 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       className="w-full rounded-lg border border-[var(--line)] bg-black/30 px-3 py-2"
                     >
                       <option value="">Selecciona destino</option>
-                      {baseDepositTargets.map((target) => (
-                        <option key={target.key} value={target.key}>
-                          {target.label}
-                        </option>
-                      ))}
+                      {/* La posición origen no se ofrece como destino: un
+                          rebalanceo contra sí misma no significa nada y la
+                          dejaba con tokens que no le corresponden. */}
+                      {baseDepositTargets
+                        .filter((target) => target.key !== form.rebalanceSourceKey)
+                        .map((target) => (
+                          <option key={target.key} value={target.key}>
+                            {target.label}
+                          </option>
+                        ))}
                       <option value="__new__">+ Crear nueva posición…</option>
                     </select>
                   </label>
@@ -3022,6 +3065,69 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       </div>
                     ) : null}
                   </div>
+                  {/* QUÉ VA A PASAR. El gestor firmaba a ciegas: el formulario
+                      solo enseñaba un «valor estimado» y el rebalanceo mueve
+                      capital entre posiciones y traslada base de coste. Aquí se
+                      dice en una frase qué se escribe, qué pasa con el
+                      depositado y cómo se anota fiscalmente. */}
+                  {(() => {
+                    const src = baseDepositTargets.find((item) => item.key === form.rebalanceSourceKey);
+                    if (!src || rebalancePreview.usd <= 0) return null;
+                    const tgt = baseDepositTargets.find((item) => item.key === form.rebalanceTargetKey);
+                    const srcLabel = `${src.positionType} · ${src.protocol}`;
+                    const tgtLabel = form.rebalanceTargetIsNew
+                      ? `${form.rebalanceTargetNewPositionType} · ${form.rebalanceTargetNewProtocol.trim() || "protocolo por indicar"} (nueva)`
+                      : tgt
+                        ? `${tgt.positionType} · ${tgt.protocol}`
+                        : "— destino por elegir —";
+                    const sourceAmountA = Number(form.rebalanceSourceAmount);
+                    const sourceAmountBNum = Number(form.rebalanceSourceLpAmountB);
+                    const outParts = [
+                      Number.isFinite(sourceAmountA) && sourceAmountA > 0 && form.rebalanceSourceTokenSymbol
+                        ? `${tokenAmount(sourceAmountA)} ${form.rebalanceSourceTokenSymbol}`
+                        : null,
+                      Number.isFinite(sourceAmountBNum) && sourceAmountBNum > 0 && form.rebalanceSourceLpTokenSymbolB
+                        ? `${tokenAmount(sourceAmountBNum)} ${form.rebalanceSourceLpTokenSymbolB}`
+                        : null,
+                    ].filter((part): part is string => part !== null);
+                    const inParts = rebalancePreview.isTargetLp
+                      ? [
+                          rebalancePreview.suggestedAmountA > 0 || Number(form.rebalanceTargetAmount) > 0
+                            ? `${tokenAmount(Number(form.rebalanceTargetAmount) > 0 ? Number(form.rebalanceTargetAmount) : rebalancePreview.suggestedAmountA)} ${form.rebalanceTargetTokenSymbol || "A"}`
+                            : null,
+                          rebalancePreview.suggestedAmountB > 0 || Number(form.rebalanceTargetLpAmountB) > 0
+                            ? `${tokenAmount(Number(form.rebalanceTargetLpAmountB) > 0 ? Number(form.rebalanceTargetLpAmountB) : rebalancePreview.suggestedAmountB)} ${form.rebalanceTargetLpTokenSymbolB || "B"}`
+                            : null,
+                        ].filter((part): part is string => part !== null)
+                      : rebalancePreview.targetAmount > 0
+                        ? [`${tokenAmount(rebalancePreview.targetAmount)} ${form.rebalanceTargetTokenSymbol || "destino"}`]
+                        : [];
+                    return (
+                      <div className="col-span-full rounded-lg border border-[var(--line)] bg-black/20 px-3 py-2 text-xs">
+                        <p className="mb-1 font-semibold text-[var(--fg)]">Qué se va a registrar</p>
+                        <ul className="space-y-0.5 text-[var(--muted)]">
+                          <li>
+                            Sale de <strong>{srcLabel}</strong>
+                            {outParts.length > 0 ? `: ${outParts.join(" + ")}` : ""} ({money(rebalancePreview.usd)}).
+                          </li>
+                          <li>
+                            Entra en <strong>{tgtLabel}</strong>
+                            {inParts.length > 0 ? `: ${inParts.join(" + ")}` : ""}.
+                          </li>
+                          <li>
+                            El depositado del origen viaja al destino en la misma proporción que lo que mueves: el
+                            rebalanceo no genera ganancia realizada ni cambia el total depositado de la cartera.
+                          </li>
+                          <li>
+                            Fiscalidad: se anota como movimiento interno (no imponible) y la base de coste se traslada
+                            por FIFO. Si el token cambia y tu asesor aplica el criterio DGT de permuta, la ganancia
+                            deberá calcularla aparte.
+                          </li>
+                          <li>Se puede deshacer entero desde «Actividad reciente».</li>
+                        </ul>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : null}
 

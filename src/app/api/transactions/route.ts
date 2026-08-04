@@ -1120,6 +1120,22 @@ async function buildRows(
     if (!targetIsNew && !targetPositionId) {
       throw new Error("Rebalanceo requiere posición destino o crear una nueva.");
     }
+    // ORIGEN ≠ DESTINO. Rebalancear una posición contra sí misma emitía una
+    // salida y una entrada en la MISMA posición: el depositedDelta negativo y
+    // el positivo se anulan, pero los balances por token no (sale token A y
+    // entra token B en la misma posición), así que quedaba una posición con
+    // tokens que no le corresponden y, si el origen era un LP, con un tercer
+    // token. No hay ningún caso legítimo: para cambiar de token dentro de una
+    // misma posición está la edición.
+    if (
+      !targetIsNew &&
+      targetPositionId === sourcePositionId &&
+      targetProtocol.toLowerCase() === sourceProtocol.toLowerCase()
+    ) {
+      throw new Error(
+        "Rebalanceo requiere posiciones distintas: el origen y el destino son la misma posición.",
+      );
+    }
 
     // Calcular rebalanceUsd primero (sin emitir filas todavía) — lo necesitamos
     // para derivar el "depositado heredado" antes de inyectarlo en las metadatas.
@@ -1169,55 +1185,108 @@ async function buildRows(
     //     `depositedDelta` heredado de rebalanceos previos.
     //   • Balances por token = depósitos − retiradas de TODAS las filas (incl.
     //     internas): un token que ya salió por un rebalanceo anterior no cuenta.
+    //     ÚNICA excepción: las salidas de harvest arrastrado
+    //     (`rebalance_harvest_out`), que nunca entraron al balance.
     const sourceCostBasis = await (async () => {
-      try {
-        const { data: srcTxs } = await client
-          .from("transactions")
-          .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
-          .eq("portfolio_id", portfolioId)
-          .eq("protocol", sourceProtocol)
-          .eq("position_id", sourcePositionId)
-          .is("deleted_at", null);
+      const { data: srcTxs, error: srcError } = await client
+        .from("transactions")
+        .select("type, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
+        .eq("portfolio_id", portfolioId)
+        .eq("protocol", sourceProtocol)
+        .eq("position_id", sourcePositionId)
+        .is("deleted_at", null);
 
-        const inSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
-        const outSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
-        let totalDeposited = 0;
-        let totalValue = 0;
-        const balances: Record<string, number> = {};
-        for (const tx of srcTxs ?? []) {
-          const t = ((tx.type ?? "") as string).trim();
-          if (t === "position_closed") continue;
-          const inAmt = toNumber(tx.token_in_amount);
-          const outAmt = toNumber(tx.token_out_amount);
-          const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
-          const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
-          const sp = toNumber(tx.spot_price);
-          const meta = parseObject(tx.metadata) ?? parseObject(tx.notes);
-          const reasonFlag = typeof meta?.reason === "string" ? (meta.reason as string) : null;
-          const sourceFlag = typeof meta?.source === "string" ? (meta.source as string) : null;
-          const isRebalanceRow = reasonFlag === "rebalance_transfer" || sourceFlag === "rebalance_transfer";
-          const isInternal =
-            isRebalanceRow || reasonFlag === "harvest_reinvest" || sourceFlag === "harvest_reinvest";
-          const depositedDelta = typeof meta?.depositedDelta === "number" ? (meta.depositedDelta as number) : null;
-          if (inSet.has(t)) {
-            if (inSym) balances[inSym] = (balances[inSym] ?? 0) + inAmt;
-            if (!isInternal) totalDeposited += inAmt * sp;
-            if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
-          } else if (outSet.has(t)) {
-            if (outSym) balances[outSym] = (balances[outSym] ?? 0) - outAmt;
-            if (!isInternal) totalDeposited -= outAmt * sp;
-            if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
-          }
-        }
-        for (const sym of Object.keys(balances)) {
-          const bal = Math.max(0, balances[sym] ?? 0);
-          totalValue += bal * spotPriceFor(sym);
-        }
-        return { totalDeposited: Math.max(0, totalDeposited), totalValue, balances };
-      } catch {
-        return { totalDeposited: 0, totalValue: 0, balances: {} as Record<string, number> };
+      // FALLO CERRADO: antes un error de lectura se tragaba en un catch y
+      // devolvía ceros. Con ceros, `tokenFraction` cae al método por valor,
+      // que con totalValue = 0 devuelve 1 → el rebalanceo se daba por CIERRE
+      // TOTAL de una posición cuyo estado real no se había podido leer, y
+      // emitía su snapshot `position_closed` con base 0. Preferimos no
+      // escribir nada y que el gestor reintente.
+      if (srcError) {
+        throw new Error(
+          "No se pudo leer el estado de la posición origen. No se ha registrado nada; inténtalo de nuevo.",
+        );
       }
+
+      const inSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
+      const outSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+      let totalDeposited = 0;
+      let totalValue = 0;
+      const balances: Record<string, number> = {};
+      for (const tx of srcTxs ?? []) {
+        const t = ((tx.type ?? "") as string).trim();
+        if (t === "position_closed") continue;
+        const inAmt = toNumber(tx.token_in_amount);
+        const outAmt = toNumber(tx.token_out_amount);
+        const inSym = ((tx.token_in_symbol ?? "") as string).toUpperCase();
+        const outSym = ((tx.token_out_symbol ?? "") as string).toUpperCase();
+        const sp = toNumber(tx.spot_price);
+        const meta = parseObject(tx.metadata) ?? parseObject(tx.notes);
+        const reasonFlag = typeof meta?.reason === "string" ? (meta.reason as string) : null;
+        const sourceFlag = typeof meta?.source === "string" ? (meta.source as string) : null;
+        const isRebalanceRow = reasonFlag === "rebalance_transfer" || sourceFlag === "rebalance_transfer";
+        // Salida del harvest pendiente arrastrado en un rebalanceo anterior.
+        // Esos tokens NUNCA entraron como capital (el harvest se contabiliza
+        // como rendimiento, no como depósito), así que su salida no puede
+        // restar del depositado NI del balance de la posición: si el token de
+        // recompensa es uno de los del pool (caso habitual), restarlo del
+        // balance se comía capital real y disparaba `tokenFraction` en el
+        // siguiente rebalanceo. Mismo criterio que el dashboard
+        // (get-dashboard-data.ts) y que el auto-cierre.
+        const isRebalanceHarvestOut =
+          reasonFlag === "rebalance_harvest_out" || sourceFlag === "rebalance_harvest_out";
+        const isInternal =
+          isRebalanceRow ||
+          isRebalanceHarvestOut ||
+          reasonFlag === "harvest_reinvest" ||
+          sourceFlag === "harvest_reinvest";
+        const depositedDelta = typeof meta?.depositedDelta === "number" ? (meta.depositedDelta as number) : null;
+        if (inSet.has(t)) {
+          if (inSym) balances[inSym] = (balances[inSym] ?? 0) + inAmt;
+          if (!isInternal) totalDeposited += inAmt * sp;
+          if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
+        } else if (outSet.has(t)) {
+          if (outSym && !isRebalanceHarvestOut) balances[outSym] = (balances[outSym] ?? 0) - outAmt;
+          if (!isInternal) totalDeposited -= outAmt * sp;
+          if (isRebalanceRow && depositedDelta !== null) totalDeposited += depositedDelta;
+        }
+      }
+      for (const sym of Object.keys(balances)) {
+        const bal = Math.max(0, balances[sym] ?? 0);
+        if (bal <= 0) continue;
+        // Sin precio para un token residual no abortamos el rebalanceo: ese
+        // token queda fuera de `totalValue` (solo se usa como método de
+        // reparto de reserva) en lugar de tumbar la operación entera.
+        let price = 0;
+        try {
+          price = spotPriceFor(sym);
+        } catch {
+          price = 0;
+        }
+        totalValue += bal * price;
+      }
+      return { totalDeposited: Math.max(0, totalDeposited), totalValue, balances };
     })();
+
+    // SOBREGIRO en posiciones Hold. En un Hold el balance del libro (depósitos
+    // − retiradas) ES el saldo real: no hay rendimiento que se acumule dentro
+    // de la posición sin dejar fila. Si se mueve más de lo que hay, la
+    // fracción se recorta a 1 (toda la base viaja) pero el balance queda
+    // NEGATIVO: la posición desaparece del panel y el destino recibe tokens
+    // que no existen → patrimonio inflado. Se bloquea antes de escribir nada.
+    // NO se aplica a LP/staking/lending: ahí el saldo del libro y el real
+    // divergen legítimamente (composición del AMM, tokens rebasing, aTokens),
+    // y bloquear impediría cerrar posiciones perfectamente válidas.
+    if (sourceMapping.normalizedPositionType === "Hold") {
+      const holdBalance = sourceCostBasis.balances[sourceToken] ?? 0;
+      // Tolerancia del 0,5 %: el gestor copia el saldo de la cadena, que trae
+      // más decimales que el libro.
+      if (holdBalance > 0 && sourceAmount > holdBalance * 1.005) {
+        throw new Error(
+          `Rebalanceo por encima del saldo: la posición origen tiene ${holdBalance} ${sourceToken} y estás moviendo ${sourceAmount}.`,
+        );
+      }
+    }
 
     // Fracción del origen que se mueve, MEDIDA POR CANTIDAD DE TOKEN (no por valor).
     // Es la forma robusta y consistente con cómo el dashboard reduce el cost basis

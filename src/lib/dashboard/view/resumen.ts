@@ -211,6 +211,9 @@ const OPERATION_LABEL: Record<string, string> = {
 
 function operationLabel(type: string, origin: string): string {
   if (origin === "harvest_reinvest") return "Reinversión de harvest";
+  // Las filas de un rebalanceo son retiradas y depósitos corrientes: sin
+  // decirlo, el listado daba a entender un movimiento de dinero del cliente.
+  if (origin === "rebalance") return "Rebalanceo";
   return OPERATION_LABEL[type] ?? capitalize(type.replace(/_/g, " "));
 }
 

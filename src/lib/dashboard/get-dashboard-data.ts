@@ -56,7 +56,13 @@ export type HarvestPositionSummary = {
 export type RecentActivityItem = {
   transactionDate: string;
   type: string;
-  movementOrigin: "harvest_reinvest" | "standard";
+  /**
+   * De qué operación del gestor viene la fila. Un rebalanceo se escribe como
+   * una retirada y un depósito normales: sin esta marca, la actividad reciente
+   * lo enseñaba como si el cliente hubiera sacado dinero y hecho otra
+   * aportación —dos hechos que no han ocurrido—.
+   */
+  movementOrigin: "harvest_reinvest" | "rebalance" | "standard";
   operationGroupId: string;
   /** Portfolio dueño de la operación; necesario para deshacerla con permisos. */
   portfolioId: string;
@@ -1025,6 +1031,16 @@ export async function getDashboardData(options?: {
     const isIn = capitalInSet.has(txType);
     const isOut = capitalOutSet.has(txType);
     if (!isIn && !isOut) continue;
+
+    // Salida del harvest pendiente arrastrado en un rebalanceo: esos tokens
+    // NUNCA entraron en el balance de la posición (las filas `harvest` no
+    // suman aquí, viven en `harvestByPosition.pendingByToken`). Restarlos del
+    // balance del pool era restar dos veces: una del pendiente —que sí toca— y
+    // otra del capital del pool, que se comía balance y cost basis reales
+    // cuando el token de recompensa coincidía con uno del par.
+    const balanceReason = getMetadataFlag(tx.metadata, tx.notes, "reason");
+    const balanceSource = getMetadataFlag(tx.metadata, tx.notes, "source");
+    if (balanceReason === "rebalance_harvest_out" || balanceSource === "rebalance_harvest_out") continue;
 
     const symbol = isIn ? inSymbol : outSymbol;
     if (!symbol) continue;
@@ -2132,13 +2148,24 @@ export async function getDashboardData(options?: {
       : null) ??
     (portfolioContexts[0] ?? null);
 
-  const recentActivity: RecentActivityItem[] = recentActivityRows.map((tx) => ({
+  const recentActivity: RecentActivityItem[] = recentActivityRows.map((tx) => {
+    // El rebalanceo marca la entrada con `source` y la salida con `reason`.
+    const activitySource = getMetadataFlag(tx.metadata, tx.notes, "source");
+    const activityReason = getMetadataFlag(tx.metadata, tx.notes, "reason");
+    const isRebalanceRow = [activitySource, activityReason].some(
+      (flag) => flag === "rebalance_transfer" || flag === "rebalance_harvest_out",
+    );
+    return {
       transactionDate: tx.transaction_date ?? "",
       type: (tx.type ?? "").trim(),
-      movementOrigin: getMetadataFlag(tx.metadata, tx.notes, "source") === "harvest_reinvest" ? "harvest_reinvest" : "standard",
+      movementOrigin: activitySource === "harvest_reinvest"
+        ? ("harvest_reinvest" as const)
+        : isRebalanceRow
+          ? ("rebalance" as const)
+          : ("standard" as const),
       operationGroupId: (tx.operation_group_id ?? "").trim(),
       portfolioId: (tx.portfolio_id ?? "").trim(),
-      reason: (getMetadataFlag(tx.metadata, tx.notes, "reason") ?? "").trim(),
+      reason: (activityReason ?? "").trim(),
       protocol: (tx.protocol ?? "Wallet").trim(),
       positionId: tx.position_id ?? "",
       positionType: normalizePositionType(tx.position_type),
@@ -2147,7 +2174,8 @@ export async function getDashboardData(options?: {
       tokenOutSymbol: (tx.token_out_symbol ?? "").toUpperCase(),
       tokenOutAmount: toNumber(tx.token_out_amount),
       spotPrice: toNumber(tx.spot_price),
-    }));
+    };
+  });
 
   return {
     summary,
