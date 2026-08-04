@@ -156,11 +156,22 @@ export function buildResumenView(data: DashboardData): ResumenView {
   // Contar todas decía «sin reclamar en 7 posiciones» cuando solo 2 tenían
   // rendimiento pendiente, que es sencillamente falso.
   const idlePositions = data.harvestByPosition.filter((h) => Number(h.pendingUsd) >= 0.01).length;
+  // El importe y el recuento NO salen del mismo sitio: el importe suma también
+  // `totalUnclaimedUsd`, que se lee del snapshot on-chain y no trae desglose por
+  // posición, mientras que el recuento solo sabe de `harvestByPosition` —el
+  // harvest ya cobrado y sin redesplegar—. Cuando todo lo ocioso está sin
+  // reclamar dentro del protocolo, el recuento vale 0 y la línea afirmaba
+  // «35,54 US$ generados sin reclamar en 0 posiciones»: una cifra y su negación
+  // en la misma frase. Sin desglose no se puede dar un número de posiciones, así
+  // que no se da ninguno en vez de dar uno falso.
   const idle =
     idleUsd >= 0.01
       ? {
           amount: money(idleUsd),
-          detail: `generados sin reclamar en ${plural(idlePositions, "posición", "posiciones")}`,
+          detail:
+            idlePositions > 0
+              ? `generados sin reclamar en ${plural(idlePositions, "posición", "posiciones")}`
+              : "generados y todavía sin reclamar",
         }
       : null;
 

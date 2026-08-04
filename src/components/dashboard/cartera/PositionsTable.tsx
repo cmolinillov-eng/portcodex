@@ -216,24 +216,34 @@ function PositionRow({
             </div>
           ))}
           {/* La deuda se separa MÁS de lo normal y va en rojo con signo: pegada
-              al colateral se leería como parte de él. */}
-          <div style={{ marginTop: 16 }}>
-            <GroupLabel>Deuda</GroupLabel>
-          </div>
-          {p.lending.debt.map((line) => (
-            <div
-              key={line}
-              className="tabular-nums"
-              style={{
-                fontSize: "var(--text-body)",
-                fontWeight: 500,
-                color: "var(--loss)",
-                marginTop: 4,
-              }}
-            >
-              {line}
-            </div>
-          ))}
+              al colateral se leería como parte de él.
+
+              El rótulo va CONDICIONADO a que haya deuda. Se pintaba siempre, así
+              que una posición de solo aporte —las cuatro de Aave y Kamino Lend
+              lo son hoy— enseñaba la palabra «Deuda» sin una sola cifra debajo:
+              una deuda sin importe se lee como una deuda desconocida, que es
+              justo lo contrario de no deber nada. */}
+          {p.lending.debt.length > 0 ? (
+            <>
+              <div style={{ marginTop: 16 }}>
+                <GroupLabel>Deuda</GroupLabel>
+              </div>
+              {p.lending.debt.map((line) => (
+                <div
+                  key={line}
+                  className="tabular-nums"
+                  style={{
+                    fontSize: "var(--text-body)",
+                    fontWeight: 500,
+                    color: "var(--loss)",
+                    marginTop: 4,
+                  }}
+                >
+                  {line}
+                </div>
+              ))}
+            </>
+          ) : null}
         </div>
       ) : (
         <div className="text-right" data-label="Saldo" style={{ whiteSpace: "nowrap" }}>
