@@ -150,7 +150,10 @@ function parseLeg(raw: unknown): Leg | null {
   const cut = raw.trim().lastIndexOf(" ");
   if (cut === -1) return null;
   const quantity = Number(raw.slice(0, cut));
-  const symbol = raw.slice(cut + 1).trim().toUpperCase();
+  const symbol = raw
+    .slice(cut + 1)
+    .trim()
+    .toUpperCase();
   if (!Number.isFinite(quantity) || quantity <= 0 || !symbol) return null;
   return { quantity, symbol };
 }
@@ -254,7 +257,9 @@ export default async function MovimientosPage({
     getSyncInfo(portfolioId),
   ]);
 
-  const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort((a, b) => b - a);
+  const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort(
+    (a, b) => b - a,
+  );
   // «todos» es explícito: sin parámetro se entra en el ejercicio en curso, que
   // es lo que viene a mirar el cliente, y el histórico completo se pide.
   const allYears = ejercicio === "todos";
@@ -294,7 +299,9 @@ export default async function MovimientosPage({
 
   // Las opciones salen del EJERCICIO elegido y no del histórico entero: ofrecer
   // «Aave V3» en un año en el que no hubo lending lleva a una tabla vacía.
-  const platforms = [...new Set(all.map((m) => m.platform))].sort((a, b) => a.localeCompare(b, "es"));
+  const platforms = [...new Set(all.map((m) => m.platform))].sort((a, b) =>
+    a.localeCompare(b, "es"),
+  );
   const types = [...new Set(sorted.map((e) => e.type))]
     .map((type) => ({ value: type, label: operationLabel(type) }))
     .sort((a, b) => a.label.localeCompare(b.label, "es"));
@@ -357,7 +364,10 @@ export default async function MovimientosPage({
       name: "Plataforma",
       label: platform || "Todas las plataformas",
       value: platform,
-      options: [{ value: "", label: "Todas las plataformas" }, ...platforms.map((p) => ({ value: p, label: p }))],
+      options: [
+        { value: "", label: "Todas las plataformas" },
+        ...platforms.map((p) => ({ value: p, label: p })),
+      ],
     },
     {
       key: "tipo",
@@ -380,7 +390,12 @@ export default async function MovimientosPage({
 
   return (
     <div className="pcx-screen" style={{ minHeight: "100vh" }}>
-      <TopNav portfolioName={ctx.portfolios.find((p) => p.id === portfolioId)?.name} />
+      <TopNav
+        portfolioName={ctx.portfolios.find((p) => p.id === portfolioId)?.name}
+        portfolios={ctx.portfolios
+          .filter((p) => p.id && p.name)
+          .map((p) => ({ id: p.id, name: p.name as string }))}
+      />
 
       <PageShell>
         <MovementsHeader
@@ -403,7 +418,9 @@ export default async function MovimientosPage({
               />
             ) : null
           }
-          syncStatus={<SyncStatus walletsLabel={sync.walletsLabel} syncedLabel={sync.syncedLabel} />}
+          syncStatus={
+            <SyncStatus walletsLabel={sync.walletsLabel} syncedLabel={sync.syncedLabel} />
+          }
         />
 
         <MovementFilters filters={filters} search={query} keep={{ portfolio }} />

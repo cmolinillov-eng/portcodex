@@ -47,6 +47,15 @@ interface TopNavProps {
   section?: string;
   /** Lo que sustituye al selector de cartera en esas pantallas: quién opera. */
   operatorName?: string;
+  /**
+   * Las carteras entre las que puede cambiar quien mira.
+   *
+   * Con dos o más, el chip pasa a ser un DESPLEGABLE de verdad. Con una o
+   * ninguna se pinta el nombre a secas, SIN el chevron: la caja llevaba un «▾»
+   * decorativo, sin menú ni manejador, así que prometía un desplegable que no
+   * existía y un gestor con seis carteras solo podía cambiar editando la URL.
+   */
+  portfolios?: Array<{ id: string; name: string }>;
 }
 
 export function TopNav({
@@ -55,6 +64,7 @@ export function TopNav({
   currencyLabel = "EUR · US$",
   section,
   operatorName,
+  portfolios,
 }: TopNavProps) {
   const pathname = usePathname();
   const root = basePath.replace(/\/$/, "");
@@ -93,57 +103,34 @@ export function TopNav({
           <span style={{ fontSize: "var(--text-body)", fontWeight: 500 }}>{section}</span>
         ) : (
           <div className="pcx-nav-scroll flex h-full items-center gap-[26px]">
-          {LINKS.map((link) => {
-            const href = link.segment ? `${root}/${link.segment}` : root || "/";
-            // Resumen es la raíz: solo está activo si la ruta ES la raíz, o la
-            // marcaría cualquier subsección.
-            const active = link.segment ? pathname.startsWith(href) : pathname === href;
-            return (
-              <Link
-                key={link.segment}
-                href={href}
-                className="flex h-full items-center"
-                style={{
-                  fontSize: "var(--text-body)",
-                  fontWeight: active ? 500 : 400,
-                  color: active ? "var(--foreground)" : "var(--muted)",
-                  // El filo inferior marca la sección activa. Va por box-shadow y
-                  // no por border para no descuadrar la altura de la barra.
-                  boxShadow: active ? "inset 0 -2px 0 var(--accent-primary)" : undefined,
-                }}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+            {LINKS.map((link) => {
+              const href = link.segment ? `${root}/${link.segment}` : root || "/";
+              // Resumen es la raíz: solo está activo si la ruta ES la raíz, o la
+              // marcaría cualquier subsección.
+              const active = link.segment ? pathname.startsWith(href) : pathname === href;
+              return (
+                <Link
+                  key={link.segment}
+                  href={href}
+                  className="flex h-full items-center"
+                  style={{
+                    fontSize: "var(--text-body)",
+                    fontWeight: active ? 500 : 400,
+                    color: active ? "var(--foreground)" : "var(--muted)",
+                    // El filo inferior marca la sección activa. Va por box-shadow y
+                    // no por border para no descuadrar la altura de la barra.
+                    boxShadow: active ? "inset 0 -2px 0 var(--accent-primary)" : undefined,
+                  }}
+                >
+                  {link.label}
+                </Link>
+              );
+            })}
           </div>
         )}
 
         <div className="ml-auto flex flex-none items-center gap-5">
-          {portfolioName ? (
-            <div
-              className="flex items-center gap-[9px] border"
-              style={{
-                padding: "5px 11px 5px 10px",
-                borderColor: "var(--line)",
-                // 6 px, no los 8 de `rounded-md`: es el radio de control
-                // pequeño que usan las maquetas para cajas de este tamaño.
-                borderRadius: "var(--radius-sm)",
-              }}
-            >
-              <span
-                className="h-[5px] w-[5px] rounded-full"
-                style={{ background: "var(--profit)" }}
-                aria-hidden="true"
-              />
-              <span style={{ fontSize: "var(--text-label)", fontWeight: 500 }}>
-                {portfolioName}
-              </span>
-              <span style={{ fontSize: "10px", color: "var(--faint)" }} aria-hidden="true">
-                ▾
-              </span>
-            </div>
-          ) : null}
+          {portfolioName ? <PortfolioChip name={portfolioName} portfolios={portfolios} /> : null}
           {/* En una pantalla de sección manda QUIÉN opera; la moneda es contexto
               de una cartera, y ahí no hay ninguna seleccionada. */}
           <span
@@ -158,5 +145,107 @@ export function TopNav({
         </div>
       </div>
     </nav>
+  );
+}
+
+/**
+ * El chip de la cartera activa.
+ *
+ * Con VARIAS carteras es un `<details>` con un enlace por cartera, igual que el
+ * selector de ejercicio de Fiscalidad: cambiar de cartera es navegar, cada una
+ * tiene su dirección (`?portfolio=`), y así funciona sin JavaScript y se puede
+ * compartir el enlace de una cartera concreta.
+ *
+ * Con UNA sola —el caso de casi todos los clientes— se pinta el nombre a secas.
+ * Antes llevaba siempre un «▾» decorativo, sin menú detrás: un chevron que no
+ * despliega miente igual que un botón que no hace nada, y encima dejaba al
+ * gestor sin más forma de cambiar de cartera que editar la URL a mano.
+ *
+ * El enlace conserva la ruta actual, así que cambiar de cartera desde
+ * Movimientos te deja en los movimientos de la otra, no te devuelve al Resumen.
+ */
+function PortfolioChip({
+  name,
+  portfolios,
+}: {
+  name: string;
+  portfolios?: Array<{ id: string; name: string }>;
+}) {
+  const pathname = usePathname();
+  const caja = {
+    padding: "5px 11px 5px 10px",
+    borderColor: "var(--line)",
+    // 6 px, no los 8 de `rounded-md`: es el radio de control pequeño que usan
+    // las maquetas para cajas de este tamaño.
+    borderRadius: "var(--radius-sm)",
+  } as const;
+
+  const contenido = (
+    <>
+      <span
+        className="h-[5px] w-[5px] rounded-full"
+        style={{ background: "var(--profit)" }}
+        aria-hidden="true"
+      />
+      <span style={{ fontSize: "var(--text-label)", fontWeight: 500 }}>{name}</span>
+    </>
+  );
+
+  if (!portfolios || portfolios.length <= 1) {
+    return (
+      <div className="flex items-center gap-[9px] border" style={caja}>
+        {contenido}
+      </div>
+    );
+  }
+
+  return (
+    <details className="pcx-year-picker" style={{ position: "relative" }}>
+      <summary
+        className="flex items-center gap-[9px] border"
+        aria-label={`Cartera: ${name}`}
+        style={{ ...caja, cursor: "pointer", listStyle: "none" }}
+      >
+        {contenido}
+        <span style={{ fontSize: "10px", color: "var(--faint)" }} aria-hidden="true">
+          ▾
+        </span>
+      </summary>
+
+      <div
+        style={{
+          position: "absolute",
+          top: "calc(100% + 6px)",
+          right: 0,
+          zIndex: "var(--z-overlay)",
+          minWidth: "100%",
+          padding: 4,
+          background: "var(--void-elevated)",
+          border: "1px solid var(--line-strong)",
+          borderRadius: "var(--radius-sm)",
+        }}
+      >
+        {portfolios.map((p) => {
+          const activa = p.name === name;
+          return (
+            <a
+              key={p.id}
+              href={`${pathname}?portfolio=${p.id}`}
+              style={{
+                display: "block",
+                padding: "6px 12px",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "var(--text-label)",
+                whiteSpace: "nowrap",
+                background: activa ? "var(--accent-soft)" : "transparent",
+                color: activa ? "var(--brand-soft)" : "var(--muted)",
+              }}
+            >
+              {p.name}
+            </a>
+          );
+        })}
+      </div>
+    </details>
   );
 }

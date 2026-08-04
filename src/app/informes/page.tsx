@@ -54,7 +54,12 @@ export default async function InformesPage({
 
   return (
     <div className="pcx-screen" style={{ minHeight: "100vh" }}>
-      <TopNav portfolioName={ctx.portfolios.find((p) => p.id === portfolioId)?.name} />
+      <TopNav
+        portfolioName={ctx.portfolios.find((p) => p.id === portfolioId)?.name}
+        portfolios={ctx.portfolios
+          .filter((p) => p.id && p.name)
+          .map((p) => ({ id: p.id, name: p.name as string }))}
+      />
 
       <PageShell>
         <ReportsHeader
