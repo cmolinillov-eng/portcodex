@@ -870,11 +870,30 @@ export async function getDashboardData(options?: {
     throw new Error("No autorizado para consultar portfolios de otros usuarios.");
   }
 
+  /*
+   * Sin cartera declarada se sirve UNA, no todas.
+   *
+   * Antes el último caso usaba `access.allowedPortfolioIds` entero, así que se
+   * traían las posiciones de TODAS las carteras a las que el viewer tiene
+   * acceso. El nombre que se pinta arriba, en cambio, sale de
+   * `portfolioContext`, que elige UNA. Resultado: un gestor con seis clientes
+   * veía las posiciones de los seis sumadas bajo el nombre de uno solo —una
+   * cartera con una posición en base de datos pintaba cuarenta y cinco—, con el
+   * patrimonio, el P&L y la composición correspondientemente inflados.
+   *
+   * A un cliente con una sola cartera nunca le afectó: su lista tiene un
+   * elemento. Le afectaba al gestor, que es quien mira varias.
+   *
+   * Se acota a la primera, que es exactamente la que `portfolioContext` iba a
+   * nombrar: así el rótulo y los datos hablan de lo mismo. Quien quiera otra la
+   * pide por `targetPortfolioId`, que es lo que ya hacen todas las pantallas de
+   * administración.
+   */
   const allowedPortfolioIds = targetPortfolioId
     ? [targetPortfolioId]
     : targetUserId
       ? await fetchPortfolioIdsForTargetUser(targetUserId)
-      : access.allowedPortfolioIds;
+      : access.allowedPortfolioIds.slice(0, 1);
 
   const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, usdToEurRate, depositOverrideRows] = await Promise.all([
     fetchLivePositions(allowedPortfolioIds),

@@ -46,12 +46,18 @@ export function CarteraHeader({
           >
             {total}
           </span>
+          {/* La CIFRA de arriba sí va en una línea —partirla sería ilegible—,
+              pero esta línea NO. Llevaba `nowrap` heredado de la maqueta, donde
+              el texto era corto («en 17 posiciones · leído hace 3 minutos»);
+              desde que además puede explicar la diferencia con la suma de
+              posiciones, mide 544 px y arrastraba la página entera 174 px a la
+              derecha en un móvil de 390. Y se rompía justo cuando había algo
+              importante que contar. */}
           <span
             style={{
               display: "block",
               fontSize: "var(--text-body)",
               color: "var(--muted)",
-              whiteSpace: "nowrap",
               marginTop: 10,
             }}
           >

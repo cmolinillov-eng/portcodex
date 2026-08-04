@@ -16,11 +16,22 @@ import { timeAgo } from "@/lib/format/figures";
  * Cuatro tablas con la MISMA rejilla, para poder recorrerlas en vertical y
  * comparar sin que la vista se reajuste en cada sección.
  */
-export default async function CarteraPage() {
+export default async function CarteraPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ portfolio?: string }>;
+}) {
   const access = await getViewerAccess();
   if (!access.isAuthenticated) redirect("/login");
 
-  const data = await getDashboardData();
+  // `?portfolio=` como en Movimientos y Fiscalidad. Sin él no había forma de
+  // cambiar de cartera desde esta pantalla: un gestor con seis clientes veía
+  // siempre la misma. El permiso lo comprueba `getDashboardData`, que rechaza
+  // una cartera que no esté entre las del viewer.
+  const { portfolio } = await searchParams;
+  const pedida = (portfolio ?? "").trim();
+
+  const data = await getDashboardData(pedida ? { targetPortfolioId: pedida } : undefined);
   const view = buildCarteraView(data);
   const sync = await getSyncInfo(data.portfolioContext?.portfolioId ?? "");
 
