@@ -52,7 +52,8 @@ export default async function FiscalidadPage({
     );
   }
 
-  const { entries, fxSource, unpricedCount } = await computeTraceability(portfolioId);
+  const { entries, fxSource, unpricedCount, uncoveredCount } =
+    await computeTraceability(portfolioId);
 
   // El Modelo 100 es ANUAL. El FIFO ya corrió sobre TODO el histórico —las
   // bases de coste vienen bien—; aquí solo se filtra qué operaciones suman.
@@ -236,6 +237,26 @@ export default async function FiscalidadPage({
             </strong>{" "}
             y {unpricedCount === 1 ? "queda" : "quedan"} fuera de este cálculo. Revísal
             {unpricedCount === 1 ? "a" : "as"} antes de declarar.
+          </DataProvenance>
+        ) : null}
+
+        {/* El aviso más importante de esta pantalla, y el que menos se veía.
+            Si falta histórico de compras, el coste que se puede imputar es
+            menor del real —en el peor caso, cero— y la ganancia se declara de
+            MÁS. Vivía solo en la nota de cada operación, que no se enseña en
+            ningún sitio. Desde que el rebalanceo con cambio de token tributa
+            como permuta pasan por aquí muchas más operaciones, así que sube. */}
+        {uncoveredCount > 0 ? (
+          <DataProvenance>
+            <strong>
+              {plural(
+                uncoveredCount,
+                "operación transmite un activo sin histórico de compra completo",
+                "operaciones transmiten activos sin histórico de compra completo",
+              )}
+            </strong>
+            : su ganancia sale <strong>sobrevalorada</strong>, porque no hay coste de adquisición
+            que restarle. Completa esas compras antes de declarar, o revísalas con tu asesor.
           </DataProvenance>
         ) : null}
 

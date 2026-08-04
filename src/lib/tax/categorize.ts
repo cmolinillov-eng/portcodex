@@ -346,25 +346,24 @@ function handleDeposit(
 
   // ─── CASO ESPECIAL: Destino de un rebalanceo ───────────────────────────
   // Si la fila viene marcada con `metadata.source === "rebalance_transfer"`,
-  // el activo se MATERIALIZA aquí por un rebalanceo. La app trata el
-  // rebalanceo como movimiento interno (la base viaja vía `depositedDelta`
-  // en USD), así que creamos un lote FIFO con esa base — convertida a EUR —
-  // para que una venta futura tenga lotes suficientes. Si no hay
-  // `depositedDelta`, caemos al FMV de recepción.
+  // el activo se MATERIALIZA aquí por un rebalanceo. Con CAMBIO de token es
+  // una permuta y tributa (ver applyReinvestSwapLegs); sin cambio de token es
+  // un movimiento interno y la base viaja con el lote original. Las filas
+  // legacy sin anotación conservan el traslado vía `depositedDelta`.
   const meta = tx.metadata ?? {};
   const rebalanceSource = typeof meta.source === "string" ? meta.source : null;
   if (rebalanceSource === "rebalance_transfer") {
     // Permuta implícita en el rebalanceo (metadata.swapLegs): el token que
-    // entra difiere del que salió del origen. Consumimos por FIFO los lotes
-    // del vendido y creamos el de este token con la base trasladada — la
-    // fila de salida del origen NO consume lotes, lo hace este leg.
+    // entra difiere del que salió del origen → hecho imponible. Consumimos por
+    // FIFO los lotes del entregado y realizamos la ganancia aquí; la fila de
+    // salida del origen NO tributa (sería doble imposición).
     const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, REBALANCE_CONTEXT_LABEL);
-    if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
+    if (rebalanceSwap.hasPermuta) {
       return reinvestSwapResult(rebalanceSwap, {
         symbol,
         amount,
         valueEur,
-        baseNote: `Destino de rebalanceo: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Movimiento interno; la base viaja del origen.`,
+        baseNote: `Destino de rebalanceo: ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €).`,
         walletKind,
         walletName,
       });
@@ -448,15 +447,17 @@ function handleDeposit(
   // ─── CASO ESPECIAL: reinversión de harvest con permuta implícita ────────
   // Reinversión manual hacia Hold en la que el token que entra difiere del
   // cobrado en el harvest (metadata.swapLegs): se consume el lote del cobrado
-  // y se traslada su base al que entra. NO es una compra nueva — sin este
-  // corte, la rama "buy" crearía un lote a FMV duplicando la base.
+  // y se realiza la permuta. NO es una compra nueva — sin este corte, la rama
+  // "buy" crearía un lote a FMV duplicando la base. Mismo criterio que el
+  // rebalanceo: la ventana cobro→reinversión es de minutos, así que la
+  // ganancia sale ≈ 0, pero el criterio fiscal es UNO solo y defendible.
   const depositSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate);
-  if (depositSwap.newLots.length > 0 || depositSwap.lotUpdates.length > 0) {
+  if (depositSwap.hasPermuta) {
     return reinvestSwapResult(depositSwap, {
       symbol,
       amount,
       valueEur,
-      baseNote: `Reinversión de harvest: entran ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €). Movimiento interno, sin hecho imponible.`,
+      baseNote: `Reinversión de harvest: entran ${amount} ${symbol} en ${walletName} (FMV ${valueEur} €).`,
       walletKind,
       walletName,
     });
@@ -633,12 +634,12 @@ function handleWithdrawal(
   }
 
   // ─── CASO ESPECIAL: salida de rebalanceo desde una posición Hold ────────
-  // Movimiento interno: el valor entra en la posición destino en la misma
-  // operación. Sin esta rama, un origen Hold en CEX se categorizaba como
-  // VENTA tributable (incoherente con handleLpWithdraw/handleDeposit, que sí
-  // tratan el rebalanceo como interno). Los lotes NO se consumen aquí: los
-  // consume la fila destino vía metadata.swapLegs si el token cambió, o
-  // siguen vivos y viajan si es el mismo token.
+  // Esta fila NUNCA tributa por sí sola: no es una venta a fiat, y si el
+  // rebalanceo cambió de token, la permuta (con su ganancia) se anota en la
+  // fila de DESTINO, que es la que lleva los `swapLegs` — anotarla también
+  // aquí sería doble imposición. Los lotes tampoco se consumen aquí: los
+  // consume la fila destino si hubo permuta, y si no, siguen vivos y viajan
+  // con la posición.
   const wMeta = tx.metadata ?? {};
   const wReason = typeof wMeta.reason === "string" ? wMeta.reason : null;
   if (wReason === "rebalance_transfer" || wReason === "rebalance_harvest_out") {
@@ -658,7 +659,7 @@ function handleWithdrawal(
         valueEur: rebalanceValueEur,
         costBasisEur: 0,
         realizedGainEur: 0,
-        notes: `Salida por rebalanceo: ${amount} ${symbol} desde ${walletName} (FMV ${rebalanceValueEur} €). La base se traslada al destino del rebalanceo.`,
+        notes: `Salida por rebalanceo: ${amount} ${symbol} desde ${walletName} (FMV ${rebalanceValueEur} €). Sin hecho imponible en esta fila: si el rebalanceo cambió de token, la permuta y su ganancia se anotan en la fila de destino; si no cambió, el lote FIFO viaja con la posición.`,
         taxable: false,
         humanLabel: getCategoryLabel("non_taxable_transfer"),
         humanDescription: rebalanceDescription,
@@ -871,19 +872,19 @@ function handleStakingMovement(
   const amount = Number(tx.tokenInAmount ?? tx.tokenOutAmount ?? 0);
   const action = txType === "staking_deposit" ? "Bloqueaste" : "Desbloqueaste";
   // Permuta implícita (metadata.swapLegs) al entrar un token distinto del de
-  // origen — por reinversión de harvest o por rebalanceo hacia staking:
-  // traslada la base del vendido al que entra.
+  // origen — por reinversión de harvest o por rebalanceo hacia staking: la
+  // permuta tributa; el bloqueo en staking en sí no.
   if (txType === "staking_deposit" && symbol) {
     const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
     const contextLabel = isRebalanceIn ? REBALANCE_CONTEXT_LABEL : "la reinversión";
     const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
-    if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
+    if (swap.hasPermuta) {
       const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
       return reinvestSwapResult(swap, {
         symbol,
         amount,
         valueEur,
-        baseNote: `${isRebalanceIn ? "Destino de rebalanceo" : "Reinversión de harvest"}: bloqueaste ${amount} ${symbol} en staking (${walletName}, FMV ${valueEur} €). No hay cambio de titularidad.`,
+        baseNote: `${isRebalanceIn ? "Destino de rebalanceo" : "Reinversión de harvest"}: bloqueaste ${amount} ${symbol} en staking (${walletName}, FMV ${valueEur} €). El bloqueo no cambia la titularidad.`,
         walletKind,
         walletName,
       });
@@ -911,12 +912,12 @@ function handleLendingMovement(
   const action = txType === "lending_supply" ? "Depositaste" : "Retiraste";
   // Permuta implícita (metadata.swapLegs) al entrar colateral distinto del
   // token de origen — por reinversión de harvest o por rebalanceo hacia
-  // lending: traslada la base del vendido al colateral que entra.
+  // lending: la permuta tributa; el supply de colateral en sí no.
   if (txType === "lending_supply" && symbol) {
     const isRebalanceIn = (tx.metadata?.source as string | undefined) === "rebalance_transfer";
     const contextLabel = isRebalanceIn ? REBALANCE_CONTEXT_LABEL : "la reinversión";
     const swap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, contextLabel);
-    if (swap.newLots.length > 0 || swap.lotUpdates.length > 0) {
+    if (swap.hasPermuta) {
       const valueEur = roundEur(usdToEur(amount * Number(tx.spotPriceUsd ?? 0), rate));
       return reinvestSwapResult(swap, {
         symbol,
@@ -1013,18 +1014,19 @@ function handleLpDeposit(
   const lpMeta = tx.metadata ?? {};
   if (typeof lpMeta.source === "string" && lpMeta.source === "rebalance_transfer") {
     // Permuta implícita en el rebalanceo (metadata.swapLegs): este token del
-    // LP destino no salió del origen — se compró vendiendo lo que sí salió.
-    // Consumimos los lotes del vendido y creamos el de este token con base
-    // trasladada; la rotación del futuro lp_withdraw lo encontrará. Sin legs
-    // (mismo token o fila legacy) se mantiene el comportamiento de siempre:
-    // sin lote, la base viaja con los lotes originales.
+    // LP destino no salió del origen — se compró entregando lo que sí salió.
+    // Es permuta y tributa: se consumen los lotes del entregado, se realiza la
+    // ganancia y nace el lote de este token a FMV (la rotación del futuro
+    // lp_withdraw lo encontrará). Sin legs (mismo token o fila legacy) se
+    // mantiene el movimiento interno de siempre: sin lote, la base viaja con
+    // los lotes originales.
     const rebalanceSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate, REBALANCE_CONTEXT_LABEL);
-    if (rebalanceSwap.newLots.length > 0 || rebalanceSwap.lotUpdates.length > 0) {
+    if (rebalanceSwap.hasPermuta) {
       return reinvestSwapResult(rebalanceSwap, {
         symbol,
         amount,
         valueEur,
-        baseNote: `Aportación al LP recibida vía rebalanceo (${amount} ${symbol} en ${walletName}, FMV ${valueEur} €). Movimiento interno.`,
+        baseNote: `Aportación al LP recibida vía rebalanceo (${amount} ${symbol} en ${walletName}, FMV ${valueEur} €).`,
         walletKind,
         walletName,
       });
@@ -1058,11 +1060,22 @@ function handleLpDeposit(
   }
 
   // ─── PERMUTA IMPLÍCITA EN REINVERSIÓN (metadata.swapLegs) ───────────────
-  const {
-    newLots: swapNewLots,
-    lotUpdates: swapLotUpdates,
-    notes: swapNotes,
-  } = applyReinvestSwapLegs(tx, symbol, currentLots, rate);
+  // Si el token que entra al pool NO es el que se cobró en el harvest, hubo
+  // permuta: tributa (art. 37.1.h), igual que en el rebalanceo y que en la
+  // ruta on-chain. La aportación de liquidez en sí sigue sin computarse; lo
+  // que se anota es la permuta previa que la financió.
+  const reinvestSwap = applyReinvestSwapLegs(tx, symbol, currentLots, rate);
+  if (reinvestSwap.hasPermuta) {
+    return reinvestSwapResult(reinvestSwap, {
+      symbol,
+      amount,
+      valueEur,
+      baseNote: `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). La aportación en sí no materializa ganancia hasta retirar la liquidez.`,
+      walletKind,
+      walletName,
+    });
+  }
+  const { newLots: swapNewLots, lotUpdates: swapLotUpdates, notes: swapNotes } = reinvestSwap;
 
   const notes = `LP provide: aportaste ${amount} ${symbol} al pool en ${walletName} (FMV ${valueEur} €). No se materializa ganancia/pérdida hasta retirar la liquidez. Si tu asesor aplica criterio DGT de permuta, deberá calcularse aparte.${swapNotes}`;
 
@@ -1096,25 +1109,84 @@ function handleLpDeposit(
 }
 
 /**
- * PERMUTA IMPLÍCITA EN REINVERSIÓN (metadata.swapLegs).
+ * PERMUTA IMPLÍCITA (metadata.swapLegs) — REBALANCEO Y REINVERSIÓN.
  *
- * En una reinversión de harvest el token que entra a la posición destino
- * puede diferir del cobrado: parte del harvest se permutó dentro de la misma
- * operación. Los legs los anotan el ingestor on-chain
- * (src/app/api/onchain/events/route.ts) y el flujo manual de reinversión
- * (src/app/api/transactions/route.ts). Cada leg consume por FIFO los lotes
- * del token VENDIDO y crea un lote del token COMPRADO (el de esta fila) con
- * la base trasladada. Sin esto el lote del vendido quedaría vivo y los
- * tokens comprados saldrían de la posición sin lote (base a FMV): base
- * duplicada. Coherente con la filosofía del módulo, NO se materializa
- * ganancia aquí (permuta a criterio del asesor; la ventana
- * harvest→redepósito es de minutos, diferencia ≈ 0).
+ * Cuando el token que ENTRA a la posición destino difiere del que salió del
+ * origen, dentro de la misma operación hubo una permuta cripto-cripto. Los
+ * legs los anotan el ingestor on-chain (src/app/api/onchain/events/route.ts) y
+ * el flujo manual de rebalanceo/reinversión (src/app/api/transactions/route.ts)
+ * en `metadata.swapLegs`.
+ *
+ * CRITERIO FISCAL (decisión de producto, 2026-08): la permuta cripto-cripto ES
+ * hecho imponible (art. 37.1.h LIRPF, criterio DGT), también cuando ocurre
+ * dentro de un rebalanceo o de una reinversión de harvest. Antes esta función
+ * solo TRASLADABA la base y devolvía ganancia 0, mientras la MISMA operación
+ * detectada on-chain (`source: onchain_swap`) sí tributaba: dos resultados
+ * distintos para el mismo hecho económico. Ahora las dos rutas coinciden.
+ *
+ * Qué hace cada leg:
+ *   1. Consume por FIFO los lotes del token ENTREGADO (art. 37.2: FIFO
+ *      obligatorio; el cálculo vive en fifo.ts y aquí no se toca).
+ *   2. Realiza ganancia/pérdida = valor de transmisión − base FIFO consumida,
+ *      donde el valor de transmisión es el FMV de lo entregado menos la
+ *      comisión (art. 35). Emite un `swap_out` por token entregado, idéntico
+ *      al que emite la ruta on-chain en handleWithdrawal.
+ *   3. Crea el lote del token RECIBIDO con base = FMV de la permuta.
+ *
+ * POR QUÉ LA BASE NUEVA ES EL FMV Y NO LA HEREDADA (el punto donde es fácil
+ * equivocarse): si se realiza la ganancia AHORA y además el token nuevo se
+ * quedara con la base antigua del entregado, esa misma plusvalía volvería a
+ * aflorar al vender el token nuevo — contada dos veces. Fijando la base nueva
+ * en el FMV de la permuta la cadena queda estanca:
+ *   (FMV − base vieja) + (precio de venta − FMV) = precio de venta − base vieja,
+ * que es exactamente la plusvalía del recorrido completo, ni un euro más.
+ * La comisión se resta UNA sola vez, del valor de transmisión (igual que en la
+ * ruta on-chain, cuya fila de recepción lleva fee 0 y toma el FMV como base).
+ *
+ * Se usa el FMV de lo ENTREGADO (soldAmount × soldPriceUsd) tanto para la
+ * ganancia como para la base nueva. En una permuta equilibrada coincide con el
+ * FMV de lo recibido; cuando el reparto de cestas deja un desajuste de
+ * céntimos, usar el mismo número en los dos lados evita crear o destruir
+ * ganancia dentro de la propia fila.
  */
 /** Etiqueta que usan los handlers cuando la permuta viene de un rebalanceo. */
 const REBALANCE_CONTEXT_LABEL = "el rebalanceo";
 
-function isRebalanceContext(contextLabel: string): boolean {
-  return contextLabel === REBALANCE_CONTEXT_LABEL;
+interface ReinvestSwapOutcome {
+  newLots: CategorizationResult["newLots"];
+  lotUpdates: CategorizationResult["consumedLotUpdates"];
+  taxEvents: TaxEvent[];
+  notes: string;
+  /** True si la fila lleva legs válidos: hay permuta que tributar. */
+  hasPermuta: boolean;
+  /** Valor de transmisión en EUR (FMV de lo entregado − comisión). */
+  proceedsEur: number;
+  /** Base FIFO consumida del token entregado. */
+  costBasisEur: number;
+  realizedGainEur: number;
+  /** Token entregado (el primero, si hubo varios) para la descripción. */
+  soldSymbol: string;
+  soldAmount: number;
+  /** "1.00000000 BTC + 500.00000000 USDC" para las notas. */
+  soldLabel: string;
+}
+
+/** Sin permuta. Se construye en cada llamada: devolver una constante
+ *  compartida expondría sus arrays a que un consumidor los mutara. */
+function noSwapOutcome(): ReinvestSwapOutcome {
+  return {
+    newLots: [],
+    lotUpdates: [],
+    taxEvents: [],
+    notes: "",
+    hasPermuta: false,
+    proceedsEur: 0,
+    costBasisEur: 0,
+    realizedGainEur: 0,
+    soldSymbol: "",
+    soldAmount: 0,
+    soldLabel: "",
+  };
 }
 
 function applyReinvestSwapLegs(
@@ -1123,65 +1195,110 @@ function applyReinvestSwapLegs(
   currentLots: TaxLot[],
   rate: number,
   contextLabel: string = "la reinversión",
-): {
-  newLots: CategorizationResult["newLots"];
-  lotUpdates: CategorizationResult["consumedLotUpdates"];
-  notes: string;
-} {
+): ReinvestSwapOutcome {
+  const swapLegs = parseSwapLegs((tx.metadata ?? {}).swapLegs);
+  if (swapLegs.length === 0) return noSwapOutcome();
+
+  // Primera pasada: FIFO del entregado y FMV de cada leg.
+  const computed = swapLegs.map((leg) => ({
+    leg,
+    fifo: applyFifo(leg.soldSymbol, leg.soldAmount, currentLots, tx.transactionDate),
+    fmvEur: roundEur(usdToEur(leg.soldAmount * leg.soldPriceUsd, rate)),
+  }));
+
+  const boughtAmount = computed.reduce((sum, c) => sum + c.leg.boughtAmount, 0);
+  if (boughtAmount <= 1e-9) return noSwapOutcome();
+
+  const fmvSoldEur = roundEur(computed.reduce((sum, c) => sum + c.fmvEur, 0));
+  // Comisión de la fila (art. 35): resta del valor de transmisión, repartida
+  // entre los legs a prorrata de su FMV.
+  const feeEur = feeEurOf(tx, rate);
+
   const newLots: CategorizationResult["newLots"] = [];
   const lotUpdates: CategorizationResult["consumedLotUpdates"] = [];
-  const swapLegs = parseSwapLegs((tx.metadata ?? {}).swapLegs);
-  let notes = "";
-  if (swapLegs.length > 0) {
-    let boughtAmount = 0;
-    let carriedEur = 0;
-    let uncoveredNote = "";
-    const soldParts: string[] = [];
-    for (const leg of swapLegs) {
-      const fifo = applyFifo(leg.soldSymbol, leg.soldAmount, currentLots, tx.transactionDate);
-      lotUpdates.push(...fifo.lotUpdates);
-      const uncovered = Math.max(0, leg.soldAmount - fifo.consumedAmount);
-      const uncoveredEur = roundEur(usdToEur(uncovered * leg.soldPriceUsd, rate));
-      carriedEur += fifo.consumedCostEur + uncoveredEur;
-      if (uncovered > 1e-9) {
-        uncoveredNote = ` ⚠️ Lotes FIFO insuficientes en ${leg.soldSymbol}; la parte sin lote se valora a FMV.`;
-      }
-      boughtAmount += leg.boughtAmount;
-      soldParts.push(`${leg.soldAmount.toFixed(8)} ${leg.soldSymbol}`);
+  const taxEvents: TaxEvent[] = [];
+  let proceedsEur = 0;
+  let costBasisEur = 0;
+  let realizedGainEur = 0;
+  let uncoveredNote = "";
+  const soldParts: string[] = [];
+
+  for (const { leg, fifo, fmvEur } of computed) {
+    lotUpdates.push(...fifo.lotUpdates);
+    const legFeeEur = fmvSoldEur > 0 ? roundEur((feeEur * fmvEur) / fmvSoldEur) : 0;
+    const legProceedsEur = roundEur(fmvEur - legFeeEur);
+    const legGainEur = calculateRealizedGain(legProceedsEur, fifo.consumedCostEur);
+    proceedsEur = roundEur(proceedsEur + legProceedsEur);
+    costBasisEur = roundEur(costBasisEur + fifo.consumedCostEur);
+    realizedGainEur = roundEur(realizedGainEur + legGainEur);
+    soldParts.push(`${leg.soldAmount.toFixed(8)} ${leg.soldSymbol}`);
+
+    // Lotes insuficientes: mismo tratamiento que la ruta on-chain — la base
+    // que falta NO se inventa a FMV (eso escondía plusvalía real). Se declara
+    // con la base que hay y se avisa para que el gestor complete el histórico.
+    if (fifo.insufficientLots) {
+      uncoveredNote = ` ⚠️ Lotes FIFO insuficientes en ${leg.soldSymbol} (${fifo.consumedAmount.toFixed(8)} de ${leg.soldAmount.toFixed(8)}): la ganancia sale sobrevalorada mientras falte histórico por registrar.`;
     }
-    if (boughtAmount > 1e-9) {
-      newLots.push({
-        tokenSymbol: boughtSymbol,
-        amount: boughtAmount,
-        costBasisEur: roundEur(carriedEur),
-        acquiredAt: tx.transactionDate,
-        acquiredViaEvent: "swap_in",
-        acquiredViaTransactionId: tx.id ?? null,
-      });
-      // AVISO EXPLÍCITO EN EL REBALANCEO. En una reinversión de harvest la
-      // ventana cobro→redepósito es de minutos y la ganancia latente ≈ 0, así
-      // que no anotar nada es defendible. En un REBALANCEO no: el activo que
-      // sale puede llevar años en cartera y su plusvalía latente es real. La
-      // app mantiene el criterio de movimiento interno (la base viaja), pero
-      // la anotación debe decirlo para que el asesor no lo pase por alto —
-      // mismo aviso que ya lleva el lp_provide.
-      const dgtWarning = isRebalanceContext(contextLabel)
-        ? " ⚠️ Criterio: la app trata el rebalanceo como movimiento interno y NO calcula ganancia aquí. Si tu asesor aplica el criterio DGT de permuta (art. 37.1.h LIRPF), esta operación tributa y la ganancia debe calcularse aparte."
-        : "";
-      notes = ` Incluye permuta implícita en ${contextLabel}: ${soldParts.join(" + ")} → ${boughtAmount.toFixed(8)} ${boughtSymbol}; lotes del vendido consumidos por FIFO y base trasladada de ${roundEur(carriedEur)} € al comprado.${uncoveredNote}${dgtWarning}`;
-    }
+
+    const legNotes = `Permuta en ${contextLabel}: ${leg.soldAmount.toFixed(8)} ${leg.soldSymbol} → ${leg.boughtAmount.toFixed(8)} ${boughtSymbol}. Valor de transmisión ${legProceedsEur} €, base FIFO ${fifo.consumedCostEur} €, ganancia ${legGainEur} €.`;
+    taxEvents.push(
+      buildTaxEvent({
+        tx,
+        eventType: "swap_out",
+        proceedsEur: legProceedsEur,
+        costBasisEur: fifo.consumedCostEur,
+        realizedGainEur: legGainEur,
+        incomeType: legGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
+        tokenSymbol: leg.soldSymbol,
+        tokenAmount: leg.soldAmount,
+        lotsConsumed: fifo.lotsConsumed,
+        notes: legNotes,
+      }),
+    );
   }
-  return { newLots, lotUpdates, notes };
+
+  newLots.push({
+    tokenSymbol: boughtSymbol,
+    amount: boughtAmount,
+    // Base del token nuevo = FMV en el momento de la permuta (ver cabecera).
+    costBasisEur: fmvSoldEur,
+    acquiredAt: tx.transactionDate,
+    acquiredViaEvent: "swap_in",
+    acquiredViaTransactionId: tx.id ?? null,
+  });
+
+  const notes = ` Permuta cripto-cripto en ${contextLabel} (art. 37.1.h LIRPF): ${soldParts.join(" + ")} → ${boughtAmount.toFixed(8)} ${boughtSymbol}. Lotes del entregado consumidos por FIFO: base ${costBasisEur} €; valor de transmisión ${proceedsEur} €; ganancia realizada ${realizedGainEur} €. El lote del token recibido nace con base ${fmvSoldEur} € (valor de mercado de la permuta), no con la base heredada: así la plusvalía no se cuenta dos veces al venderlo.${uncoveredNote}`;
+
+  return {
+    newLots,
+    lotUpdates,
+    taxEvents,
+    notes,
+    hasPermuta: true,
+    proceedsEur,
+    costBasisEur,
+    realizedGainEur,
+    soldSymbol: computed[0].leg.soldSymbol,
+    soldAmount: computed[0].leg.soldAmount,
+    soldLabel: soldParts.join(" + "),
+  };
 }
 
 /**
- * Resultado para un depósito/supply de reinversión con permuta implícita:
- * movimiento interno (non_taxable_transfer) cuyo único efecto en lotes es el
- * traslado de base calculado por applyReinvestSwapLegs. NO crea lote a FMV
- * del token que entra (lo crea el propio leg con la base del vendido).
+ * Resultado para una fila de destino (depósito / supply / aportación a LP) que
+ * lleva una permuta implícita: se anota como `swap_out` TRIBUTABLE — misma
+ * categoría, misma casilla AEAT (1800-1814) y misma ganancia que la ruta
+ * on-chain para la operación equivalente.
+ *
+ * `valueEur` es el valor de transmisión de la permuta (FMV de lo entregado),
+ * no el FMV de la fila: es el importe que corresponde al hecho imponible. El
+ * FMV de lo que entra a la posición queda recogido en la nota.
+ *
+ * Sin legs (mismo token: el rebalanceo NO es permuta) se mantiene el
+ * movimiento interno no imponible de siempre.
  */
 function reinvestSwapResult(
-  swap: ReturnType<typeof applyReinvestSwapLegs>,
+  swap: ReinvestSwapOutcome,
   args: {
     symbol: string;
     amount: number;
@@ -1191,29 +1308,71 @@ function reinvestSwapResult(
     walletName: string;
   },
 ): CategorizationResult {
-  return {
-    annotation: {
-      category: "non_taxable_transfer",
-      incomeType: "none",
-      valueEur: args.valueEur,
-      costBasisEur: 0,
-      realizedGainEur: 0,
-      notes: `${args.baseNote}${swap.notes}`,
-      taxable: false,
-      humanLabel: getCategoryLabel("non_taxable_transfer"),
-      humanDescription: buildHumanDescription({
+  if (!swap.hasPermuta) {
+    return {
+      annotation: {
         category: "non_taxable_transfer",
+        incomeType: "none",
+        valueEur: args.valueEur,
+        costBasisEur: 0,
+        realizedGainEur: 0,
+        notes: `${args.baseNote}${swap.notes}`,
+        taxable: false,
+        humanLabel: getCategoryLabel("non_taxable_transfer"),
+        humanDescription: buildHumanDescription({
+          category: "non_taxable_transfer",
+          walletKind: args.walletKind,
+          walletName: args.walletName,
+          tokenSymbol: args.symbol,
+          amount: args.amount,
+          valueEur: args.valueEur,
+        }),
+        inferred: true,
+        walletKind: args.walletKind,
+      },
+      newLots: swap.newLots,
+      taxEvents: [],
+      consumedLotUpdates: swap.lotUpdates,
+    };
+  }
+
+  const incomeType: IncomeType =
+    swap.realizedGainEur >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial";
+  // Descripción desde el lado ENTREGADO (es lo que tributa). Con varios tokens
+  // entregados se listan todos, en vez de fingir que fue uno solo.
+  const humanDescription = swap.soldLabel.includes(" + ")
+    ? `Entregaste ${swap.soldLabel} y recibiste ${args.amount} ${args.symbol} en ${args.walletName} (permuta).${
+        swap.realizedGainEur >= 0
+          ? ` Ganancia patrimonial: ${swap.realizedGainEur.toFixed(2)} €.`
+          : ` Pérdida patrimonial: ${Math.abs(swap.realizedGainEur).toFixed(2)} €.`
+      }`
+    : buildHumanDescription({
+        category: "swap_out",
         walletKind: args.walletKind,
         walletName: args.walletName,
-        tokenSymbol: args.symbol,
-        amount: args.amount,
-        valueEur: args.valueEur,
-      }),
+        tokenSymbol: swap.soldSymbol,
+        amount: swap.soldAmount,
+        valueEur: swap.proceedsEur,
+        costBasisEur: swap.costBasisEur,
+        realizedGainEur: swap.realizedGainEur,
+      });
+
+  return {
+    annotation: {
+      category: "swap_out",
+      incomeType,
+      valueEur: swap.proceedsEur,
+      costBasisEur: swap.costBasisEur,
+      realizedGainEur: swap.realizedGainEur,
+      notes: `${args.baseNote}${swap.notes}`,
+      taxable: true,
+      humanLabel: getCategoryLabel("swap_out"),
+      humanDescription,
       inferred: true,
       walletKind: args.walletKind,
     },
     newLots: swap.newLots,
-    taxEvents: [],
+    taxEvents: swap.taxEvents,
     consumedLotUpdates: swap.lotUpdates,
   };
 }
@@ -1288,7 +1447,7 @@ function handleLpWithdraw(
     const noteSuffix =
       withdrawReason === "rebalance_harvest_out"
         ? "Harvest pendiente materializado en el destino."
-        : "La base se traslada al destino del rebalanceo.";
+        : "Sin hecho imponible en esta fila: si el rebalanceo cambió de token, la permuta y su ganancia se anotan en la fila de destino; si no cambió, el lote FIFO viaja con la posición.";
     return {
       annotation: {
         category: "non_taxable_transfer",

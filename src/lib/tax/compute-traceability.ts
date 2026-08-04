@@ -38,6 +38,8 @@ export interface TraceabilityResult {
    *  NO se pudieron valorar por falta de precio → quedan fuera del cómputo
    *  fiscal. Si > 0, la UI avisa para que no desaparezcan en silencio. */
   unpricedCount: number;
+  /** Operaciones cuya ganancia sale sobrevalorada por faltar lotes FIFO. */
+  uncoveredCount: number;
 }
 
 function getClient(): SupabaseClient {
@@ -71,7 +73,7 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
   }
 
   if (!rows || rows.length === 0) {
-    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0, fxSource: "current", unpricedCount: 0 };
+    return { entries: [], walletSummary: [], eurRate: (await fetchCurrentEurRate()) ?? 0.92, total: 0, fxSource: "current", unpricedCount: 0, uncoveredCount: 0 };
   }
 
   // Catálogo fiscal de custodios desde BD (las clasificaciones hechas por el
@@ -161,5 +163,36 @@ export async function computeTraceability(portfolioId: string): Promise<Traceabi
     return VALUE_TYPES.has((t.type ?? "").trim().toLowerCase()) && amount > 0 && Number(t.spotPriceUsd ?? 0) <= 0;
   }).length;
 
-  return { entries, walletSummary, eurRate, total: entries.length, fxSource, unpricedCount };
+  /*
+   * Operaciones cuya ganancia sale SOBREVALORADA por falta de histórico.
+   *
+   * Cuando se transmite un token del que no hay lotes FIFO suficientes —porque
+   * faltan compras por registrar—, el coste de adquisición que se le puede
+   * imputar es menor del real, y en el peor caso cero: entonces se declara como
+   * ganancia el importe ÍNTEGRO de la transmisión. El motor ya lo marca con «⚠️
+   * Lotes FIFO insuficientes» en la nota de esa operación.
+   *
+   * Ese aviso vivía SOLO en el texto de la nota, que no se enseña en ninguna
+   * pantalla. Así que alguien podía leer una base del ahorro inflada sin nada
+   * que se lo advirtiera. Desde que el rebalanceo con cambio de token tributa
+   * como permuta, además, muchas más operaciones pasan por este camino, así que
+   * el aviso tiene que subir a la superficie.
+   *
+   * Se cuenta por la marca de la nota y no por un campo nuevo a propósito: la
+   * marca la ponen ya los tres sitios que consumen lotes (venta, permuta y
+   * permuta implícita), y un campo obligaría a tocar el motor en los tres.
+   */
+  const uncoveredCount = entries.filter((e) =>
+    (e.fiscal.notes ?? "").includes("Lotes FIFO insuficientes"),
+  ).length;
+
+  return {
+    entries,
+    walletSummary,
+    eurRate,
+    total: entries.length,
+    fxSource,
+    unpricedCount,
+    uncoveredCount,
+  };
 }
