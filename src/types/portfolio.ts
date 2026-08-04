@@ -43,6 +43,17 @@ export type DefiPosition = {
   valueBreakdown: Array<{
     tokenSymbol: string;
     valueUsd: number;
+    /**
+     * CANTIDAD de token, no su valor. Las dos cosas viven juntas —como ya
+     * hacían `collateralBreakdown` y `debtBreakdown`— porque sin la cantidad la
+     * Cartera imprimía los dólares con el ticker pegado y un pool de 615,58 US$
+     * en SOL se leía como «615,58 SOL» teniendo 2,54.
+     *
+     * `null` cuando la entrada es SINTÉTICA y no la respalda ningún token: en
+     * lending el símbolo es compuesto («USDC/SOL») y no existe una cantidad que
+     * corresponda al valor neto.
+     */
+    amount: number | null;
   }>;
   collateralBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;
   debtBreakdown: Array<{ tokenSymbol: string; amount: number; valueUsd: number }>;

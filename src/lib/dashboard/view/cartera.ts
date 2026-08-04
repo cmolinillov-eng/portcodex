@@ -6,7 +6,14 @@ import type {
   YieldEntry,
 } from "@/components/dashboard/cartera/PositionsTable";
 import { resolveNetwork, UNKNOWN_NETWORK } from "@/lib/dashboard/networks";
-import { money, signedMoney, signedPercent, tokenAmount, plural } from "@/lib/format/figures";
+import {
+  money,
+  signedMoney,
+  signedPercent,
+  tokenAmount,
+  plainNumber,
+  plural,
+} from "@/lib/format/figures";
 
 /**
  * Traduce el modelo financiero a las tablas de la Cartera.
@@ -170,47 +177,151 @@ function riskOf(p: DefiPosition): CarteraPosition["risk"] {
     const position = Math.min(100, (hf / 3) * 100);
     return {
       position,
-      label: `Factor de salud ${hf.toLocaleString("es-ES", { maximumFractionDigits: 2 })}`,
+      label: `Factor de salud ${plainNumber(hf)}`,
       atRisk: p.healthStatus === "warning" || p.healthStatus === "critical",
     };
   }
 
-  if (p.lpRangeLabel) {
-    const atRisk = p.lpRangeStatus === "out_of_range";
-    return {
-      position: lpRangePosition(p),
-      label: p.lpRangeLabel,
-      atRisk,
-    };
+  // Solo hay barra si hay RANGO que medir, y eso lo dice `lpRangeStatus`, no
+  // `lpRangeLabel`: ese campo también vale «Pool correlacionado» y «Rango no
+  // disponible (falta metadata LP)». Filtrando por el label se pintaba una
+  // barra con el punto al 50 % justo en las posiciones de las que NO se sabe
+  // nada — un indicador de riesgo fabricado sobre la ausencia de datos. Si hay
+  // barra es riesgo, así que su ausencia también informa.
+  if (p.lpRangeStatus === "in_range" || p.lpRangeStatus === "out_of_range") {
+    return lpRisk(p);
   }
 
   return undefined;
 }
 
-/**
- * Dónde cae el precio actual dentro del rango, en tanto por ciento.
- *
- * `lpRangeLabel` viene ya formateado («Rango 0,995 – 1,005 · actual 1,000»), y
- * de ahí se sacan los tres números. Si no se puede leer, la barra se pone al
- * medio: es más honesto que fingir una precisión que no se tiene.
- */
-function lpRangePosition(p: DefiPosition): number {
-  if (p.lpRangeStatus === "out_of_range") return 100;
-  const numbers = (p.lpRangeLabel ?? "").match(/[\d.,]+/g);
-  if (!numbers || numbers.length < 3) return 50;
+/** Rango de un pool: «Rango 0,995 – 1,005 · actual 1,000», con el punto donde toca. */
+function lpRisk(p: DefiPosition): CarteraPosition["risk"] {
+  const range = parseLpRange(p.lpRangeLabel);
+  const current = parseLpCurrentPrice(p.currentPriceLabel);
+  // Sin los tres números no hay nada que medir: antes que una barra al 50 %
+  // —que el cliente lee como «a mitad de rango, tranquilo»— es mejor no pintar
+  // ninguna. Pasa en los LP de un solo token, donde el núcleo no escribe label.
+  if (!range || current === null) return undefined;
 
-  const [lower, upper, current] = numbers.slice(0, 3).map((n) => Number(n.replace(/\./g, "").replace(",", ".")));
-  if (![lower, upper, current].every(Number.isFinite) || upper <= lower) return 50;
+  const position = Math.max(
+    0,
+    Math.min(100, ((current.value - range.lower) / (range.upper - range.lower)) * 100),
+  );
 
-  return Math.max(0, Math.min(100, ((current - lower) / (upper - lower)) * 100));
+  const outOfRange = p.lpRangeStatus === "out_of_range";
+  const atEdge = !outOfRange && (position <= EDGE_MARGIN || position >= 100 - EDGE_MARGIN);
+  const state = outOfRange ? " · fuera de rango" : atEdge ? " · al borde" : "";
+
+  // Los tres números con los MISMOS decimales, los que trae el dato. Comparar
+  // «0,029» con «0,0355» cuesta; «0,0290 – 0,0355» se lee de un vistazo. El par
+  // de tokens que el núcleo mete en el label se descarta: ya está en el nombre
+  // de la fila, y repetirlo dentro de 108 px no cabe.
+  const decimals = Math.max(range.lowerDecimals, range.upperDecimals, current.decimals);
+  const n = (value: number) => plainNumber(value, decimals);
+
+  return {
+    position,
+    label: `Rango ${n(range.lower)} – ${n(range.upper)} · actual ${n(current.value)}${state}`,
+    atRisk: outOfRange || atEdge,
+  };
 }
 
+/**
+ * A partir de aquí el precio está «al borde», en tanto por ciento del rango.
+ *
+ * Es una decisión de presentación, no un dato: a menos de un décimo del
+ * extremo, un movimiento pequeño saca la posición de rango y deja de generar
+ * comisiones. Es lo que hace ámbar la fila del par volátil de la maqueta.
+ */
+const EDGE_MARGIN = 10;
+
+/**
+ * Los dos extremos del rango, leídos de `lpRangeLabel`.
+ *
+ * El núcleo escribe **«Rango 1.148 - 1.196»**: dos números, en en-US, SIN par de
+ * tokens y SIN dos puntos. Verificado sobre el único sitio que lo construye; las
+ * otras dos formas del campo son texto («Pool correlacionado», «Rango no
+ * disponible»), que aquí no casan y devuelven null, como debe ser.
+ *
+ * Este parseo se ha equivocado ya dos veces, en direcciones opuestas, y las dos
+ * pasaron desapercibidas porque el fallo era silencioso:
+ *
+ *  1. Buscaba TRES números con coma decimal. No casaba nunca y devolvía 50 fijo,
+ *     así que todos los pools parecían estar a mitad de rango.
+ *  2. Al arreglarlo se exigió «Rango TOKEN/TOKEN: n - n», un formato que no
+ *     existe. Tampoco casaba nunca y esta vez desaparecía la barra entera.
+ *
+ * Por eso el prefijo de tokens es OPCIONAL: si algún día el núcleo lo añade, la
+ * barra no se vuelve a caer en silencio. Y por eso hay prueba con la cadena
+ * literal del núcleo, no con una inventada.
+ */
+function parseLpRange(
+  label: string | null,
+): { lower: number; upper: number; lowerDecimals: number; upperDecimals: number } | null {
+  if (!label) return null;
+  const match = label.match(/Rango\s+(?:\S+:\s*)?([\d.,]+)\s*-\s*([\d.,]+)/);
+  if (!match) return null;
+
+  const lower = enUsNumber(match[1]);
+  const upper = enUsNumber(match[2]);
+  if (!Number.isFinite(lower) || !Number.isFinite(upper) || upper <= lower) return null;
+
+  return {
+    lower,
+    upper,
+    lowerDecimals: enUsDecimals(match[1]),
+    upperDecimals: enUsDecimals(match[2]),
+  };
+}
+
+/**
+ * El precio actual, de `currentPriceLabel`. El núcleo escribe «Actual
+ * JITOSOL/SOL: 1.161» —aquí el par de tokens SÍ va, con dos puntos—, pero se
+ * acepta también sin él por la misma razón que en el rango: que un cambio de
+ * formato en el núcleo no borre la barra sin que nadie se entere.
+ */
+function parseLpCurrentPrice(label: string | null): { value: number; decimals: number } | null {
+  if (!label) return null;
+  const match = label.match(/Actual\s+(?:\S+:\s*)?([\d.,]+)/);
+  if (!match) return null;
+
+  const value = enUsNumber(match[1]);
+  return Number.isFinite(value) ? { value, decimals: enUsDecimals(match[1]) } : null;
+}
+
+/**
+ * Número en en-US: la coma es MILLAR y el punto es decimal — justo al revés que
+ * en la pantalla. Quitar solo las comas es lo único correcto: cambiar la coma
+ * por punto convertiría «3,456.78» en «3.456.78», que se lee como 3,456.
+ */
+function enUsNumber(raw: string): number {
+  return Number(raw.replace(/,/g, ""));
+}
+
+/** Cuántos decimales trae el dato de verdad, para no fingir precisión ni perderla. */
+function enUsDecimals(raw: string): number {
+  const dot = raw.indexOf(".");
+  return dot === -1 ? 0 : raw.length - dot - 1;
+}
+
+/**
+ * Saldo de la posición: CANTIDAD de token, nunca su valor en dólares.
+ *
+ * `valueBreakdown[].valueUsd` son dólares, y usarlo aquí hacía que un pool con
+ * 2,54 SOL enseñara «615,58 SOL». En stablecoins no se notaba —un USDC vale un
+ * dólar—, así que el fallo pasó desapercibido hasta que hubo un par volátil.
+ * La cantidad buena es `amount`. `balanceLabel` no vale: viene formateado en
+ * en-US, y «4,216.61» en una pantalla en español son cuatro tokens y pico.
+ */
 function balancesOf(p: DefiPosition): string[] {
-  if (p.valueBreakdown.length > 1) {
-    return p.valueBreakdown.map((v) => `${tokenAmount(v.valueUsd)} ${v.tokenSymbol}`);
+  const withAmount = p.valueBreakdown.filter(
+    (v): v is typeof v & { amount: number } => typeof v.amount === "number",
+  );
+  if (withAmount.length > 0) {
+    return withAmount.map((v) => `${tokenAmount(v.amount)} ${v.tokenSymbol}`);
   }
-  const label = p.balanceLabel ?? `${tokenAmount(Number(p.currentBalance) || 0)} ${p.tokenSymbol}`;
-  return [label];
+  return [`${tokenAmount(Number(p.currentBalance) || 0)} ${p.tokenSymbol}`];
 }
 
 /** Colateral y deuda SEPARADOS. La deuda con signo, para que no se sume. */

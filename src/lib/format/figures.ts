@@ -111,6 +111,23 @@ export function tokenAmount(value: number): string {
   return withMinus(group(value, 0, decimals));
 }
 
+/**
+ * Número suelto: el que no es dinero, ni porcentaje, ni cantidad de token. Hoy
+ * solo el factor de salud de un lending («Factor de salud 2,14»).
+ *
+ * Existe para que NINGUNA cifra del producto se formatee a mano en un
+ * componente: un `toLocaleString` suelto es por donde se cuela un punto decimal
+ * inglés en una pantalla en español.
+ *
+ * Aquí los decimales SÍ se rellenan, al revés que en `tokenAmount`: estas
+ * cifras se comparan entre ellas —«2,10» y «2,14» son la misma lectura a dos
+ * decimales— y no son cantidades, donde el cero de relleno sobra.
+ */
+export function plainNumber(value: number, decimals = 2): string {
+  if (!Number.isFinite(value)) return "0";
+  return withMinus(group(value, decimals, decimals));
+}
+
 /** Fecha corta de fila: «27 jul». Sin año, que lo da el contexto de la pantalla. */
 export function shortDate(iso: string): string {
   const t = Date.parse(iso);
@@ -120,17 +137,34 @@ export function shortDate(iso: string): string {
     .replace(".", "");
 }
 
+/** Solo la hora, en 24 h: «13:43». */
+function hourOf(t: number): string {
+  return new Intl.DateTimeFormat("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(t));
+}
+
 /** Fecha y hora: «27 jul · 09:41». El punto medio separa mejor que la coma. */
 export function dateTime(iso: string): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return iso;
-  const d = new Date(t);
-  const time = new Intl.DateTimeFormat("es-ES", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).format(d);
-  return `${shortDate(iso)} · ${time}`;
+  return `${shortDate(iso)} · ${hourOf(t)}`;
+}
+
+/**
+ * Fecha y hora del PIE de procedencia: «28 jul, 13:43».
+ *
+ * Va con coma y no con el punto medio de `dateTime()` porque el pie ya usa
+ * « · » para separar sus tres datos («4 wallets conectadas · 17 posiciones
+ * leídas · última lectura …»): con punto medio, la hora se leería como un
+ * cuarto dato suelto. Es lo que hacen las maquetas de Resumen y Cartera.
+ */
+export function shortDateTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return `${shortDate(iso)}, ${hourOf(t)}`;
 }
 
 /** Fecha con año, para cabeceras de grupo y documentos: «27 jul 2026». */

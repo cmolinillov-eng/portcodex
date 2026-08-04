@@ -1154,7 +1154,10 @@ export async function getDashboardData(options?: {
         costBasisUsd: txData && txData.costUsd > 0 ? txData.costUsd : null,
         totalHarvested: toNumber(row.total_harvested),
         isActive: row.is_active === true,
-        valueBreakdown: [{ tokenSymbol, valueUsd: currentValue }],
+        // `amount` es el saldo ya calculado arriba; se expone junto al valor
+        // para que la pantalla pueda enseñar la CANTIDAD de token y no dólares
+        // con el ticker pegado.
+        valueBreakdown: [{ tokenSymbol, valueUsd: currentValue, amount: currentBalance }],
         collateralBreakdown: [],
         debtBreakdown: [],
         lendingDetails: null,
@@ -1364,9 +1367,15 @@ export async function getDashboardData(options?: {
     const balanceLabel = Object.entries(finalBalanceByToken)
       .map(([tokenSymbol, amount]) => `${amount.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${tokenSymbol}`)
       .join(" + ");
+    // El valor Y la cantidad de cada token del par. Los dos salen de mapas ya
+    // calculados (`finalValueByToken` / `finalBalanceByToken`, que el bloque de
+    // rango de arriba deja en su estado definitivo): aquí no se calcula nada,
+    // solo se exponen juntos. `balanceLabel` no sirve para la pantalla porque
+    // viene formateado en en-US y unido con « + ».
     const valueBreakdown = Object.entries(finalValueByToken).map(([tokenSymbol, valueUsd]) => ({
       tokenSymbol,
       valueUsd,
+      amount: finalBalanceByToken[tokenSymbol] ?? null,
     }));
 
     return {
@@ -1558,7 +1567,11 @@ export async function getDashboardData(options?: {
       isAggregatePosition: false,
       balanceLabel,
       costBasisUsd: costBasisUsd > 0 ? costBasisUsd : null,
-      valueBreakdown: [{ tokenSymbol: tokenSymbol || "LENDING", valueUsd: currentValue }],
+      // `amount: null` a propósito: el símbolo es COMPUESTO («USDC / SOL») y el
+      // valor es el neto (colateral − deuda). No hay ninguna cantidad de token
+      // que corresponda a esa cifra, y fabricar una sería inventarse un saldo.
+      // El desglose real de lending va en `collateralBreakdown`/`debtBreakdown`.
+      valueBreakdown: [{ tokenSymbol: tokenSymbol || "LENDING", valueUsd: currentValue, amount: null }],
       collateralBreakdown,
       debtBreakdown,
       lendingDetails: buildLendingDetails(collateralBreakdown, debtBreakdown),

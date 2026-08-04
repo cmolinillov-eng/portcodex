@@ -2,7 +2,7 @@ import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabas
 import { getPortfolioSnapshots } from "@/lib/snapshots/capture";
 import { buildSnapshotSeries, type SnapshotPoint } from "@/lib/snapshots/metrics";
 import type { EvolutionPoint } from "@/components/dashboard/resumen/EvolutionChart";
-import { timeAgoShort, shortDate, plural } from "@/lib/format/figures";
+import { timeAgoShort, shortDate, shortDateTime, plural } from "@/lib/format/figures";
 
 /**
  * Datos que rodean a las pantallas: de dónde salen las cifras y cuándo se
@@ -59,8 +59,12 @@ export async function getSyncInfo(portfolioId: string): Promise<SyncInfo> {
 
 /** Pie de procedencia: quién dice esto y desde cuándo. */
 export function provenanceLine(sync: SyncInfo, positionsLabel: string): string {
+  // Con la HORA, no solo el día. Un producto que lee solo tiene que decir
+  // cuándo leyó, y «28 jul» a las nueve de la noche no distingue una lectura de
+  // hace diez minutos de una de esta mañana. Es lo que piden las dos maquetas
+  // que llevan pie: «última lectura 28 jul, 13:43».
   const read = sync.lastSyncIso
-    ? `última lectura ${shortDate(sync.lastSyncIso)}`
+    ? `última lectura ${shortDateTime(sync.lastSyncIso)}`
     : "sin lecturas registradas";
   return `${plural(sync.walletCount, "wallet conectada", "wallets conectadas")} · ${positionsLabel} · ${read}`;
 }

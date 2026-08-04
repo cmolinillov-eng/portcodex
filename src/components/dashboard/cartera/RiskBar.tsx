@@ -63,7 +63,17 @@ export function RiskBar({
       </div>
       <div style={{ height: 16, marginTop: 5 }}>
         {hovered ? (
-          <span style={{ fontSize: "var(--text-meta)", color: "var(--faint)" }}>{label}</span>
+          // En ámbar cuando hay riesgo, igual que el punto: si el color solo
+          // estuviera en un círculo de 7 px, el detalle que lo explica —«al
+          // borde», «fuera de rango»— se leería como una nota más.
+          <span
+            style={{
+              fontSize: "var(--text-meta)",
+              color: atRisk ? "var(--warn)" : "var(--faint)",
+            }}
+          >
+            {label}
+          </span>
         ) : null}
       </div>
     </>
