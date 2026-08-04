@@ -47,7 +47,13 @@ export function RecentMovements({
   historyHref,
 }: {
   movements: MovementRow[];
-  historyHref: string;
+  /**
+   * Sin destino no se pinta el enlace. Pasa cuando un gestor mira la cartera de
+   * un cliente: /movimientos resuelve la cartera por la SESIÓN, no por la URL,
+   * así que ese enlace le habría enseñado los movimientos de su propia cartera
+   * bajo el nombre de otra persona. Antes que un enlace que miente, ninguno.
+   */
+  historyHref?: string | null;
 }) {
   return (
     <section style={{ paddingTop: 48 }}>
@@ -55,9 +61,11 @@ export function RecentMovements({
         title="Últimos movimientos"
         spacing={4}
         action={
-          <Link href={historyHref} style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}>
-            Ver historial completo →
-          </Link>
+          historyHref ? (
+            <Link href={historyHref} style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}>
+              Ver historial completo →
+            </Link>
+          ) : null
         }
       />
 
