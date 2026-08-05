@@ -165,7 +165,16 @@
 
   /* ── MEDIDAS DE PÁGINA ────────────────────────────────────────────────────
      Tomadas de las maquetas aprobadas (web/design/), no estimadas. */
-  --shell-max: 1240px;    /* ancho útil de página */
+  /* Ancho útil de página.
+     Las maquetas se dibujaron sobre un lienzo de 1240 px, así que allí llenaban
+     la pantalla de lado a lado. Fijar ese número en el navegador hacía lo
+     contrario de lo que la maqueta enseñaba: en un monitor de 1920 dejaba 340 px
+     muertos a cada lado y el producto parecía una columna estrecha flotando.
+     1240 era la MEDIDA DEL LIENZO, no una decisión de composición.
+     Se sube a 1800: llena una pantalla de portátil y de escritorio, y sigue
+     poniendo tope en un ultrapanorámico, donde una tabla de seis columnas
+     estirada a 2560 px obliga a barrer la cabeza para seguir una fila. */
+  --shell-max: 1800px;
   /* Margen lateral. Las maquetas NO se ponen de acuerdo: Resumen usa 64, y
      Movimientos, Fiscalidad, Informes, Administración y Editar usuario usan 48
      (Cartera llega a mezclar 64 en la barra con 48 en el contenido, que es un

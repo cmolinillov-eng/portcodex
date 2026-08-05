@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { TopNav } from "@/components/shell/TopNav";
 import { unstable_noStore as noStore } from "next/cache";
 import { ResumenScreen } from "@/components/dashboard/resumen/ResumenScreen";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
@@ -90,11 +91,29 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
      de cinco enlaces porque el gestor no está navegando SU producto: está
      mirando la cartera de otro, y lo que necesita saber es de quién. */
   const barraDeContexto = (
-    <div
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 40,
+    <>
+      {/* Las CINCO pestañas, acotadas a la cartera del cliente.
+       *
+       * Faltaban por completo: al servir aquí el Resumen diseñado se sustituyó
+       * la navegación por esta barra de contexto en vez de poner las dos, así
+       * que desde la ficha de un cliente no había forma de llegar a su Cartera,
+       * sus Movimientos ni su Fiscalidad.
+       *
+       * Los enlaces llevan `?portfolio=`: sin él, las pantallas resuelven la
+       * cartera por la SESIÓN y el gestor habría aterrizado en la suya con el
+       * nombre del cliente todavía arriba. Y «Resumen» apunta a esta misma
+       * página, porque esta página ES el Resumen de esta cartera; mandarlo a
+       * «/» le devolvería a su propio panel. */}
+      <TopNav
+        portfolioName={displayName}
+        portfolioQuery={selectedPortfolioId ? `?portfolio=${selectedPortfolioId}` : undefined}
+        resumenHref={`/admin/users/${userId}${selectedPortfolioId ? `?portfolioId=${selectedPortfolioId}` : ""}`}
+      />
+      <div
+        style={{
+          position: "sticky",
+          top: 0,
+          zIndex: 40,
         background: "var(--void-surface)",
         borderBottom: "1px solid var(--line)",
         padding: "12px var(--shell-pad)",
@@ -161,7 +180,8 @@ export default async function AdminUserPortfolioPage({ params, searchParams }: P
           Editar usuario
         </Link>
       </div>
-    </div>
+      </div>
+    </>
   );
 
   /* La MISMA pantalla de Resumen que ve el cliente, no una versión de gestor.

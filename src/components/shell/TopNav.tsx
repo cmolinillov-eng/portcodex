@@ -56,6 +56,23 @@ interface TopNavProps {
    * existía y un gestor con seis carteras solo podía cambiar editando la URL.
    */
   portfolios?: Array<{ id: string; name: string }>;
+  /**
+   * Se añade a los cuatro enlaces de sección para acotarlos a UNA cartera:
+   * «?portfolio=<id>».
+   *
+   * Sin esto, un gestor que pulsara «Cartera» desde la ficha de un cliente
+   * aterrizaba en SU propia cartera —las pantallas resuelven la cartera por la
+   * sesión— con el nombre del cliente todavía en la barra.
+   */
+  portfolioQuery?: string;
+  /**
+   * Dónde vive el «Resumen» cuando NO es la raíz.
+   *
+   * Un gestor mirando la cartera de un cliente ya está en su Resumen: esa
+   * página de administración ES el Resumen de esa cartera. Mandarlo a «/» le
+   * devolvería a su propio panel, que es justo lo contrario de lo que pide.
+   */
+  resumenHref?: string;
 }
 
 export function TopNav({
@@ -65,6 +82,8 @@ export function TopNav({
   section,
   operatorName,
   portfolios,
+  portfolioQuery,
+  resumenHref,
 }: TopNavProps) {
   const pathname = usePathname();
   const root = basePath.replace(/\/$/, "");
@@ -104,10 +123,20 @@ export function TopNav({
         ) : (
           <div className="pcx-nav-scroll flex h-full items-center gap-[26px]">
             {LINKS.map((link) => {
-              const href = link.segment ? `${root}/${link.segment}` : root || "/";
+              // El Resumen puede vivir fuera de la raíz: cuando un gestor mira la
+              // cartera de un cliente, el Resumen ES esa página de admin, y "/"
+              // le devolvería a su propio panel.
+              const base = link.segment ? `${root}/${link.segment}` : (resumenHref ?? root ?? "/");
+              // `portfolioQuery` acota los cinco enlaces a UNA cartera. Sin él,
+              // un gestor que pulsara «Cartera» desde la ficha de un cliente
+              // aterrizaba en SU cartera, con el nombre del cliente todavía
+              // arriba: la navegación se llevaba consigo el contexto perdido.
+              const href = portfolioQuery && link.segment ? `${base}${portfolioQuery}` : base;
               // Resumen es la raíz: solo está activo si la ruta ES la raíz, o la
               // marcaría cualquier subsección.
-              const active = link.segment ? pathname.startsWith(href) : pathname === href;
+              const active = link.segment
+                ? pathname.startsWith(`${root}/${link.segment}`)
+                : pathname === (resumenHref ?? root ?? "/") || pathname === (root || "/");
               return (
                 <Link
                   key={link.segment}
