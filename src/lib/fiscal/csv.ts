@@ -56,7 +56,20 @@ export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
       cls.casilla,
       cls.base ?? "—",
       e.fiscal.taxable ? "Si" : "No",
-      (e.notes ?? e.fiscal.notes ?? "").replace(/[\r\n;]+/g, " "),
+      /*
+       * Manda la nota FISCAL, y la del operador se añade detrás.
+       *
+       * Estaba al revés (`e.notes ?? e.fiscal.notes`), y `transactions.notes` la
+       * rellena SIEMPRE la ingesta on-chain, así que en la práctica la nota
+       * fiscal no llegaba nunca al fichero. Con ella se perdía el aviso «⚠️
+       * Lotes FIFO insuficientes», que es justo el que dice que esa ganancia
+       * sale sobrevalorada por faltar histórico de compra.
+       *
+       * Medido: la pantalla avisaba de una operación así y el CSV de 52 filas
+       * no contenía ni una ocurrencia del aviso. Este fichero es el que se le
+       * entrega al asesor: es el último sitio donde debe faltar.
+       */
+      [e.fiscal.notes, e.notes].filter(Boolean).join(" · ").replace(/[\r\n;]+/g, " "),
     ];
   });
   return toCsv(header, rows);
@@ -109,7 +122,20 @@ export function buildCointrackingCsv(entries: TraceabilityEntry[]): string {
       "",
       e.protocol,
       e.positionType,
-      (e.notes ?? e.fiscal.notes ?? "").replace(/[\r\n;]+/g, " "),
+      /*
+       * Manda la nota FISCAL, y la del operador se añade detrás.
+       *
+       * Estaba al revés (`e.notes ?? e.fiscal.notes`), y `transactions.notes` la
+       * rellena SIEMPRE la ingesta on-chain, así que en la práctica la nota
+       * fiscal no llegaba nunca al fichero. Con ella se perdía el aviso «⚠️
+       * Lotes FIFO insuficientes», que es justo el que dice que esa ganancia
+       * sale sobrevalorada por faltar histórico de compra.
+       *
+       * Medido: la pantalla avisaba de una operación así y el CSV de 52 filas
+       * no contenía ni una ocurrencia del aviso. Este fichero es el que se le
+       * entrega al asesor: es el último sitio donde debe faltar.
+       */
+      [e.fiscal.notes, e.notes].filter(Boolean).join(" · ").replace(/[\r\n;]+/g, " "),
       formatDate(e.transactionDate),
       e.tokenInSymbol ? e.fiscal.valueEur.toFixed(2) : "",
       e.tokenOutSymbol ? e.fiscal.valueEur.toFixed(2) : "",

@@ -656,6 +656,27 @@ async function fetchLpMetadataRows(allowedPortfolioIds: string[]): Promise<LpMet
 }
 
 async function fetchPortfolioTransactions(portfolioIds: string[]): Promise<PortfolioTransactionRow[]> {
+  /*
+   * El ORDEN es parte del cálculo, no una comodidad.
+   *
+   * Estas filas se recorren acumulando saldo: cada depósito suma y cada retirada
+   * resta. Se pedían SIN `.order(...)`, y Postgres no promete ningún orden — el
+   * que salga depende del plan de la consulta. Si una retirada se procesa antes
+   * que los depósitos que la respaldan, el saldo se va en negativo, la línea
+   * `if (entry.balance < 0) entry.balance = 0` lo recorta en silencio, y el
+   * importe de esa retirada se PIERDE: los depósitos posteriores quedan como
+   * saldo que ya no existe.
+   *
+   * Medido en una cartera real: una retirada de 33,41 SOL se aplicaba sobre un
+   * acumulado de 2,74, se recortaba a cero, y la posición acababa enseñando
+   * 30,68 SOL —unos 2.230 US$— cuando el saldo verdadero era 0,0186 SOL. La
+   * lectura on-chain, la vista de analítica y el motor canónico coincidían en el
+   * valor bueno; solo esta función lo inventaba.
+   *
+   * Mismo orden que usa `computeTraceability` para el FIFO: fecha y, a igualdad,
+   * id — porque dos operaciones del mismo instante también necesitan un
+   * desempate estable, o el resultado cambia entre dos cargas iguales.
+   */
   if (portfolioIds.length === 0) return [];
 
   const publicClient = getSupabaseServerClient();
@@ -663,7 +684,9 @@ async function fetchPortfolioTransactions(portfolioIds: string[]): Promise<Portf
     .from("transactions")
     .select("portfolio_id, protocol, position_id, type, position_type, transaction_date, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
     .in("portfolio_id", portfolioIds)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .order("transaction_date", { ascending: true })
+    .order("id", { ascending: true });
   const publicData = (publicQuery.data ?? null) as PortfolioTransactionRow[] | null;
   const publicError = publicQuery.error;
 
@@ -678,7 +701,9 @@ async function fetchPortfolioTransactions(portfolioIds: string[]): Promise<Portf
     .from("transactions")
     .select("portfolio_id, protocol, position_id, type, position_type, transaction_date, token_in_symbol, token_in_amount, token_out_symbol, token_out_amount, spot_price, metadata, notes")
     .in("portfolio_id", portfolioIds)
-    .is("deleted_at", null);
+    .is("deleted_at", null)
+    .order("transaction_date", { ascending: true })
+    .order("id", { ascending: true });
   const serviceData = (serviceQuery.data ?? null) as PortfolioTransactionRow[] | null;
   const serviceError = serviceQuery.error;
 
@@ -1032,7 +1057,36 @@ export async function getDashboardData(options?: {
   // Compute accurate balance and avg entry price from active transactions (not VIEW).
   // Importante: las withdrawals usan token_out_symbol (token_in_symbol viene null),
   // por lo que el símbolo de la clave depende del tipo de operación.
-  const txBalanceByTokenPosition = new Map<string, { balance: number; costUsd: number; depositedAmount: number }>();
+  const txBalanceByTokenPosition = new Map<
+    string,
+    {
+      balance: number;
+      costUsd: number;
+      depositedAmount: number;
+      /** Cuánto saldo se ha recortado por quedar en negativo. > 0 significa que
+       *  las cuentas de esa posición no cuadran: ver el recorte más abajo. */
+      descuadre?: number;
+    }
+  >();
+  /**
+   * Cuánto saldo se ha tenido que recortar en una posición por quedar negativo.
+   *
+   * Suma el descuadre de TODOS los tokens de la posición, porque la clave del
+   * acumulador lleva el símbolo al final y un pool tiene dos.
+   */
+  const descuadreDeLaPosicion = (posKey: string): number => {
+    let total = 0;
+    for (const [k, v] of txBalanceByTokenPosition) {
+      if (k.startsWith(`${posKey}::`)) total += v.descuadre ?? 0;
+    }
+    return total;
+  };
+
+  /** Cantidad suelta, sin ceros de relleno. No usa `figures.ts` porque este
+   *  módulo es el NÚCLEO y no debe depender de la capa de presentación. */
+  const tokenAmountPlano = (n: number): string =>
+    n.toLocaleString("es-ES", { maximumFractionDigits: 6 });
+
   const capitalInSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
   const capitalOutSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
   for (const tx of portfolioTransactions) {
@@ -1084,7 +1138,23 @@ export async function getDashboardData(options?: {
         entry.depositedAmount -= entry.depositedAmount * fraction;
       }
       entry.balance -= outAmount;
-      if (entry.balance < 0) entry.balance = 0;
+      /*
+       * Un saldo negativo NO es un número que haya que redondear: es la señal de
+       * que las cuentas de esa posición no cuadran —falta un depósito por
+       * registrar, o sobra una retirada—. Recortarlo a cero en silencio lo
+       * convierte en lo contrario de una señal: el importe sobrante desaparece,
+       * los movimientos siguientes se acumulan sobre una base falsa, y la
+       * pantalla acaba enseñando un saldo que no existe con toda naturalidad.
+       *
+       * Se recorta igual, porque un saldo negativo tampoco se puede pintar; pero
+       * se anota cuánto se ha perdido, y esa marca sube a la posición como
+       * problema de calidad de dato. Prefiero una posición que avise de que no
+       * cuadra a una que mienta con aplomo.
+       */
+      if (entry.balance < 0) {
+        entry.descuadre = (entry.descuadre ?? 0) + Math.abs(entry.balance);
+        entry.balance = 0;
+      }
     }
   }
 
@@ -1428,7 +1498,14 @@ export async function getDashboardData(options?: {
       currentPriceLabel,
       dataQualityIssue: hasCorruptedTokenCount
         ? `LP corrupto: ${distinctTokensWithBalance.length} tokens en una misma posición (${distinctTokensWithBalance.join(", ")}). Un pool solo puede tener 2 tokens. Modifica la posición indicando solo los 2 correctos — los huérfanos se limpiarán automáticamente.`
-        : null,
+        : // Saldo recortado por quedar en negativo: las retiradas registradas
+          // superan a los depósitos. El importe sobrante se pierde del cómputo,
+          // así que la cifra de esta posición se queda POR ENCIMA de la real y
+          // no hay forma de saber cuánto sin completar el histórico. Antes se
+          // recortaba en silencio y la posición se pintaba como cualquier otra.
+          descuadreDeLaPosicion(lpKey) > 1e-9
+          ? `Las cuentas de esta posición no cuadran: hay ${tokenAmountPlano(descuadreDeLaPosicion(lpKey))} de retiradas sin depósito que las respalde. El saldo mostrado puede ser mayor que el real; falta histórico por registrar.`
+          : null,
       isAggregatePosition: true,
       balanceLabel,
       costBasisUsd: costBasisUsd > 0 ? costBasisUsd : null,
