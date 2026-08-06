@@ -127,7 +127,12 @@ export async function GET(request: NextRequest) {
       movement_origin: getMovementOrigin(row.metadata, row.notes),
     }));
 
-    return NextResponse.json({ rows });
+    // `no-store`: esto es el histórico de operaciones de una persona.
+    // Salía con `public, max-age=0, must-revalidate` —el valor por defecto de
+    // Next—, y `public` autoriza a una caché COMPARTIDA (un proxy, una CDN) a
+    // guardarlo. `max-age=0` obliga a revalidar, que no es lo mismo que a no
+    // almacenar.
+    return NextResponse.json({ rows }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") console.error("Export error:", error);
     return NextResponse.json({ error: "Error inesperado exportando transacciones." }, { status: 500 });

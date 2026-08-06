@@ -51,8 +51,28 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Petición bloqueada por seguridad de origen." }, { status: 403 });
   }
 
+  /*
+   * Redirección abierta. Comprobado explotable en producción antes de este
+   * arreglo:
+   *
+   *   /api/auth/logout?redirectTo=//example.com/x  →  307 a https://example.com/x
+   *
+   * El filtro era `startsWith("/")`, y «//example.com» empieza por «/». Pero el
+   * navegador NO lo lee como una ruta: `//host` es una URL protocolo-relativa, y
+   * `new URL()` la resuelve al dominio ajeno conservando el esquema. La forma
+   * absoluta («https://…») sí se rechazaba; esta se colaba.
+   *
+   * Importa porque es la ruta de CERRAR SESIÓN: un enlace con portcodex.com a
+   * la vista le borra la sesión al cliente y lo deposita en un login falso,
+   * justo cuando espera ver un login. Y llega sin `referer` desde un correo, así
+   * que la comprobación de origen de arriba no lo frena.
+   *
+   * Se exige una barra NO seguida de otra barra ni de contra-barra —Chrome
+   * normaliza «/\» a «//»—, es decir, una ruta interna de verdad.
+   */
   const redirectTo = request.nextUrl.searchParams.get("redirectTo") ?? "/login";
-  const target = redirectTo.startsWith("/") ? redirectTo : "/login";
+  const esRutaInterna = /^\/(?![/\\])/.test(redirectTo);
+  const target = esRutaInterna ? redirectTo : "/login";
   const response = NextResponse.redirect(new URL(target, request.url));
   response.headers.set("cache-control", "no-store");
   clearSessionCookies(response);

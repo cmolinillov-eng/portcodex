@@ -56,7 +56,13 @@ export async function GET(request: NextRequest) {
     // el Resumen, que pinta la misma serie en servidor.
     const { points, metrics } = buildSnapshotSeries(snapshots);
 
-    return NextResponse.json({ snapshots: points, metrics });
+    // `no-store`: es la curva de patrimonio de una persona. Salía con el
+    // `public, max-age=0, must-revalidate` por defecto de Next, y `public`
+    // autoriza a una caché compartida a guardarla.
+    return NextResponse.json(
+      { snapshots: points, metrics },
+      { headers: { "Cache-Control": "no-store, max-age=0" } },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Error inesperado.";
     return NextResponse.json({ error: message }, { status: 500 });
