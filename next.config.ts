@@ -103,6 +103,25 @@ const nextConfig: NextConfig = {
         source: "/:path*",
         headers: securityHeaders,
       },
+      {
+        /*
+         * NINGUNA respuesta de la API se guarda en caché compartida.
+         *
+         * Next pone por defecto `public, max-age=0, must-revalidate`, y ahí lo
+         * que importa es el `public`: autoriza a un proxy o a una CDN a
+         * ALMACENAR la respuesta. El `max-age=0` solo obliga a revalidar, que no
+         * es lo mismo. Por esa puerta salían el histórico de operaciones y la
+         * curva de patrimonio de personas concretas.
+         *
+         * Va aquí y no ruta por ruta a propósito: poner la cabecera a mano en
+         * cada respuesta funciona hasta que alguien añade una y se olvida, y el
+         * olvido no se nota —la respuesta es correcta, solo que además queda
+         * guardada—. Por debajo de esta regla, cada ruta puede seguir afinando
+         * lo suyo; lo que no puede es quedarse sin ella.
+         */
+        source: "/api/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, max-age=0" }],
+      },
     ];
   },
 
