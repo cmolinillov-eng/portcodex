@@ -395,6 +395,11 @@ export default async function MovimientosPage({
         portfolios={ctx.portfolios
           .filter((p) => p.id && p.name)
           .map((p) => ({ id: p.id, name: p.name as string }))}
+        /* La cartera VIAJA entre pestañas. Sin esto, un gestor que entraba por
+           Administración a la cartera de un cliente y pulsaba «Movimientos»
+           acababa mirando otra cartera sin ningún aviso: los enlaces salían
+           pelados y cada pantalla resolvía por la sesión. */
+        portfolioQuery={portfolioId ? `?portfolio=${portfolioId}` : undefined}
       />
 
       <PageShell>

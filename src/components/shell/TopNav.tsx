@@ -126,7 +126,14 @@ export function TopNav({
               // El Resumen puede vivir fuera de la raíz: cuando un gestor mira la
               // cartera de un cliente, el Resumen ES esa página de admin, y "/"
               // le devolvería a su propio panel.
-              const base = link.segment ? `${root}/${link.segment}` : (resumenHref ?? root ?? "/");
+              // `root || "/"` y NO `root ?? "/"`: con `basePath` por defecto,
+              // `root` es la CADENA VACÍA, que no es nullish, así que `??` la
+              // daba por buena y el enlace salía como href="" —o sea, apuntando
+              // a la página actual—. El Resumen dejó de llevar a ninguna parte
+              // en las cuatro pantallas de cliente. Fue una regresión al
+              // introducir `resumenHref`: la línea de al lado siempre usó `||`.
+              const raiz = resumenHref || root || "/";
+              const base = link.segment ? `${root}/${link.segment}` : raiz;
               // `portfolioQuery` acota los cinco enlaces a UNA cartera. Sin él,
               // un gestor que pulsara «Cartera» desde la ficha de un cliente
               // aterrizaba en SU cartera, con el nombre del cliente todavía
@@ -136,7 +143,7 @@ export function TopNav({
               // marcaría cualquier subsección.
               const active = link.segment
                 ? pathname.startsWith(`${root}/${link.segment}`)
-                : pathname === (resumenHref ?? root ?? "/") || pathname === (root || "/");
+                : pathname === raiz || pathname === (root || "/");
               return (
                 <Link
                   key={link.segment}
