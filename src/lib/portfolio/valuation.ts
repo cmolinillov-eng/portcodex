@@ -287,11 +287,31 @@ export function computePortfolioValuation(
     const symbol = k.slice(k.lastIndexOf("::") + 2);
     pendingBySymbol.set(symbol, (pendingBySymbol.get(symbol) ?? 0) + amount);
   }
+  /*
+   * Los símbolos SOBRE-REINVERTIDOS se NETEAN, no se descartan.
+   *
+   * Un pendiente negativo significa que se reinvirtió más de ese token del que
+   * se cosechó. Este motor descartaba esos símbolos (`if (amount <= 0)
+   * continue`), mientras el del dashboard los neteaba: dos cifras distintas de
+   * «rendimiento sin reclamar» para la misma cartera, y las dos visibles.
+   *
+   * Se resuelve neteando, por dos razones:
+   *
+   *  1. Ese exceso salió de algún sitio, y lo más probable es que salga de la
+   *     OTRA recompensa cosechada —convertida al reinvertir—. Contarla además
+   *     como pendiente dice que hay un dinero disponible que en realidad ya está
+   *     desplegado dentro de la posición.
+   *  2. Esta cifra SUMA al patrimonio total. Entre un criterio que lo infla y
+   *     otro que no, ante la duda no se promete dinero que no está.
+   *
+   * El suelo es cero: un rendimiento pendiente negativo no significa nada, y
+   * restarlo del patrimonio sería inventar una deuda que no existe.
+   */
   let pendingHarvestUsd = 0;
   for (const [symbol, amount] of pendingBySymbol) {
-    if (amount <= 0) continue;
     pendingHarvestUsd += amount * priceOf(symbol);
   }
+  if (pendingHarvestUsd < 0) pendingHarvestUsd = 0;
 
   const byPosition = [...byPosMap.values()].sort((a, b) => b.valueUsd - a.valueUsd);
   const positionsValue = byPosition.reduce((s, p) => s + p.valueUsd, 0);

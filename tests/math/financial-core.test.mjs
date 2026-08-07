@@ -271,12 +271,6 @@ test("reinvertir un harvest no suma capital depositado", () => {
 
 test(
   "harvest pendiente: el token sobre-reinvertido descuenta a precio de mercado",
-  {
-    todo:
-      "FALLA con el código real: valuation.ts ignora los símbolos con saldo negativo " +
-      "(`if (amount <= 0) continue`) en vez de netearlos. get-dashboard-data.ts sí los " +
-      "netea (Math.max(0, Σ amount×precio)). Divergencia reportada, no la arregla esta tarea.",
-  },
   () => {
     // Cosechado 157,624 USDC + 0,8595 SOL; reinvertido 1,414427 SOL.
     // Pendiente por token: USDC +157,624 y SOL −0,554927.
