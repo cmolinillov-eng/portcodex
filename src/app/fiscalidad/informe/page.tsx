@@ -56,15 +56,23 @@ export default async function InformeFiscalPage({
   const portfolioId = ctx.activePortfolioId;
   if (!portfolioId) notFound();
 
-  const { entries, fxSource, unpricedCount } = await computeTraceability(portfolioId);
+  const { entries, fxSource, unpricedCount, uncoveredCount } =
+    await computeTraceability(portfolioId);
 
   // ── Bloque idéntico al de app/fiscalidad/page.tsx ─────────────────────────
+  //
+  // Y ahora sí lo es. Este fichero decía «bloque idéntico» y no lo era: la
+  // pantalla tomaba por defecto el AÑO EN CURSO y el documento el último año CON
+  // OPERACIONES. Con la última operación en 2024, la pantalla titulaba
+  // «Ejercicio 2026» y su propio PDF hablaba de 2024, sin que ninguno de los dos
+  // dijera nada. Un comentario que promete que dos cosas coinciden es
+  // exactamente lo que impide que alguien las compare.
   const years = [...new Set(entries.map((e) => getTaxYear(e.transactionDate)))].sort((a, b) => b - a);
   const requested = Number(ejercicio);
   const selectedYear =
     Number.isInteger(requested) && years.includes(requested)
       ? requested
-      : (years[0] ?? new Date().getFullYear());
+      : new Date().getFullYear();
   const yearEntries = entries.filter((e) => getTaxYear(e.transactionDate) === selectedYear);
 
   const bucketInputs: AeatBucketInput[] = yearEntries.map((e) => ({
@@ -111,6 +119,7 @@ export default async function InformeFiscalPage({
     },
     fxSource,
     unpricedCount,
+    uncoveredCount,
   });
 
   return (

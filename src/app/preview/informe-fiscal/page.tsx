@@ -66,6 +66,7 @@ export default function PreviewInformeFiscal() {
     },
     fxSource: "historical",
     unpricedCount: 0,
+    uncoveredCount: 0,
   });
 
   return <FiscalReportDocument report={report} />;

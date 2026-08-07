@@ -642,6 +642,25 @@ function Method({ report }: { report: FiscalReport }) {
             señalan aquí para que su ausencia no pase por un cero.
           </NoteItem>
         ) : null}
+        {/* El aviso que más le importa a quien lea esto. Sin histórico de compra
+            no hay coste de adquisición que restar, y la ganancia sale POR
+            ENCIMA de la real. La pantalla ya lo enseña; este documento es el que
+            acaba en la mesa del asesor, así que es el último sitio donde puede
+            faltar. */}
+        {input.uncoveredCount > 0 ? (
+          <NoteItem title="Ganancias sobrevaloradas por falta de histórico">
+            {plural(
+              input.uncoveredCount,
+              "operación transmite un activo",
+              "operaciones transmiten activos",
+            )}{" "}
+            del que no consta la compra completa. Sin lotes de adquisición que consumir, el coste
+            imputable es menor del real —en el peor caso, cero—, de modo que la ganancia declarada
+            para {input.uncoveredCount === 1 ? "esa operación" : "esas operaciones"} está{" "}
+            <strong>por encima de la verdadera</strong>. Las filas afectadas llevan la marca «Lotes
+            FIFO insuficientes» en su nota. Debe completarse el histórico antes de presentar.
+          </NoteItem>
+        ) : null}
         <NoteItem title="Modelo 721">
           El saldo en custodios no residentes se estima acumulando el flujo neto de adquisiciones y
           transmisiones en plataformas clasificadas como no residentes hasta el 31 de diciembre del

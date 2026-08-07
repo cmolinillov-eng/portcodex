@@ -96,6 +96,15 @@ export interface FiscalReportInput {
   /** Operaciones con cantidad pero sin precio: quedan FUERA del cómputo y hay
    *  que decirlo, no dejarlas desaparecer en silencio. */
   unpricedCount: number;
+  /**
+   * Operaciones que transmiten un activo sin histórico de compra completo.
+   *
+   * Sin lotes FIFO que consumir, el coste de adquisición imputable es menor del
+   * real —en el peor caso, cero— y la ganancia se declara de MÁS. Este documento
+   * es el que acaba en manos del asesor: es el último sitio donde ese aviso
+   * puede faltar. La pantalla ya lo enseña.
+   */
+  uncoveredCount: number;
 }
 
 /**
