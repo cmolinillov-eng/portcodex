@@ -73,12 +73,13 @@ export default async function CarteraPage({
           </p>
         )}
 
-        {/* Aquí pesa más que en el Resumen: esta pantalla enseña el valor de
-            CADA posición, y con una lectura vieja todas las cifras de la
-            columna son de hace horas, no solo el total. */}
-        {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
-
-        <DataProvenance>{provenanceLine(sync, view.provenance)}</DataProvenance>
+        <DataProvenance>
+          {/* Aquí pesa más que en el Resumen: esta pantalla enseña el valor de
+              CADA posición, y con una lectura vieja todas las cifras de la
+              columna son de hace horas, no solo el total. */}
+          {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
+          {provenanceLine(sync, view.provenance)}
+        </DataProvenance>
       </PageShell>
     </div>
   );

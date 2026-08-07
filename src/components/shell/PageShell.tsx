@@ -65,10 +65,15 @@ export function DataProvenance({ children }: { children: ReactNode }) {
  *
  * Dice DESDE CUÁNDO, con antigüedad y fecha: «hace 14 horas» sitúa, «6 ago,
  * 21:12» es lo que se compara con la última operación.
+ *
+ * NO trae envoltorio propio: va DENTRO del `DataProvenance` de la página, como
+ * un renglón más. Envuelto en su propio pie salían dos bloques con filo y 52 px
+ * de hueco entre ellos —dos pies apilados donde el diseño tiene uno—, y además
+ * el aviso quedaba separado de la línea de procedencia que precisamente matiza.
  */
 export function StaleReadNotice({ lastSyncIso }: { lastSyncIso: string | null }) {
   return (
-    <DataProvenance>
+    <p style={{ margin: "0 0 8px" }}>
       {lastSyncIso ? (
         <>
           <strong>Estas cifras son de la última lectura, {timeAgo(lastSyncIso)}</strong> (
@@ -81,6 +86,6 @@ export function StaleReadNotice({ lastSyncIso }: { lastSyncIso: string | null })
           sale solo de lo que hay guardado, sin comprobar nada contra las redes.
         </>
       )}
-    </DataProvenance>
+    </p>
   );
 }

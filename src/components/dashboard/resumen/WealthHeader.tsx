@@ -20,7 +20,9 @@ interface WealthHeaderProps {
   /** Con signo: "−754,89 US$" y "−6,32 %". */
   changeAmount: string;
   changePercent: string;
-  isPositive: boolean;
+  /** Tres estados. El PLANO va en tinta secundaria: pintar de color un
+   *  «0,00 US$» afirmaría una dirección que la cifra no tiene. */
+  pnlTone: "profit" | "loss" | "flat";
   pricesUpdatedLabel: string;
   onRefresh?: ReactNode;
   deposited: string;
@@ -36,7 +38,7 @@ export function WealthHeader({
   currency,
   changeAmount,
   changePercent,
-  isPositive,
+  pnlTone,
   pricesUpdatedLabel,
   onRefresh,
   deposited,
@@ -45,7 +47,8 @@ export function WealthHeader({
   pnlPercent,
   syncStatus,
 }: WealthHeaderProps) {
-  const changeColor = isPositive ? "var(--profit)" : "var(--loss)";
+  const changeColor =
+    pnlTone === "flat" ? "var(--muted)" : pnlTone === "profit" ? "var(--profit)" : "var(--loss)";
 
   return (
     <header style={{ paddingTop: 56 }}>

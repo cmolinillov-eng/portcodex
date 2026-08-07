@@ -293,15 +293,15 @@ export function EvolutionChart({
                       strokeWidth={1}
                       vectorEffect="non-scaling-stroke"
                     />
-                    <circle
-                      cx={g.x(hover)}
-                      cy={g.y(hovered.value)}
-                      r={3.5}
-                      fill="var(--background)"
-                      stroke="var(--accent-primary)"
-                      strokeWidth={1.75}
-                      vectorEffect="non-scaling-stroke"
-                    />
+                    {/* El marcador NO va aquí: ver la capa HTML justo debajo del
+                        SVG. Un `<circle>` dentro de un lienzo con
+                        `preserveAspectRatio="none"` se estira con él, y
+                        `non-scaling-stroke` solo protege el GROSOR del trazo, no
+                        la forma. Medido a 1800 px: la escala en X es 1,59 y en Y
+                        1,00, así que el punto de 3,5 de radio salía como una
+                        elipse de 11,1 × 7,0 px. Se notó al ensanchar la página;
+                        antes, con el lienzo casi a su tamaño, pasaba
+                        desapercibido. */}
                   </g>
                 ) : null}
                 {/* Zona de captura: cubre todo el lienzo, así que el punto más
@@ -321,6 +321,32 @@ export function EvolutionChart({
                   onMouseLeave={() => setHover(null)}
                 />
               </svg>
+
+              {/* El marcador del punto bajo el cursor, FUERA del SVG.
+                  Se coloca en porcentaje sobre el eje X —que es el que el
+                  lienzo estira— y en píxeles sobre el Y, que no se deforma
+                  porque el alto del SVG es exactamente el del `viewBox`. Así el
+                  punto es redondo a cualquier ancho de página, que es lo que un
+                  círculo dentro del lienzo no puede garantizar. */}
+              {hovered && hover !== null ? (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: "absolute",
+                    left: `${(g.x(hover) / W) * 100}%`,
+                    top: g.y(hovered.value),
+                    width: 7,
+                    height: 7,
+                    marginLeft: -3.5,
+                    marginTop: -3.5,
+                    borderRadius: "50%",
+                    background: "var(--background)",
+                    border: "1.75px solid var(--accent-primary)",
+                    boxSizing: "border-box",
+                    pointerEvents: "none",
+                  }}
+                />
+              ) : null}
 
               {xTicks.map((t) => (
                 <span

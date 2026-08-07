@@ -32,7 +32,7 @@ export default function PreviewResumen() {
           currency="US$"
           changeAmount="−754,89 US$"
           changePercent="−6,32 %"
-          isPositive={false}
+          pnlTone="loss"
           pricesUpdatedLabel="Precios actualizados hace 8 minutos"
           onRefresh={
             <button type="button" style={{ fontSize: "var(--text-label)", color: "var(--muted)" }}>

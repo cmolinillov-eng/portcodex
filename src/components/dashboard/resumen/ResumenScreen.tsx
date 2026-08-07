@@ -61,7 +61,7 @@ export async function ResumenScreen({
           currency={view.currency}
           changeAmount={view.changeAmount}
           changePercent={view.changePercent}
-          isPositive={view.isPositive}
+          pnlTone={view.pnlTone}
           pricesUpdatedLabel={`Precios actualizados ${timeAgo(data.pricesLastUpdatedAt)}`}
           deposited={view.deposited}
           yieldTotal={view.yieldTotal}
@@ -107,11 +107,11 @@ export async function ResumenScreen({
 
         <NetworkDistribution note={view.networksNote} networks={view.networks} />
 
-        {/* Antes del pie, porque lo MATIZA: el pie dice cuándo se leyó y este
-            dice que ese «cuándo» ya es viejo para la cifra de arriba. */}
-        {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
-
         <DataProvenance>
+          {/* Dentro del pie y encima de la línea de procedencia, porque la
+              MATIZA: el pie dice cuándo se leyó y esto dice que ese «cuándo» ya
+              es viejo para la cifra de arriba. */}
+          {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
           {provenanceLine(sync, view.provenance)}
           {provenanceExtra}
         </DataProvenance>

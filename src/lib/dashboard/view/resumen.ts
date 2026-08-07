@@ -47,7 +47,8 @@ export interface ResumenView {
   currency: string;
   changeAmount: string;
   changePercent: string;
-  isPositive: boolean;
+  /** Tres estados, no dos: un P&L de cero no es ganancia ni pérdida. */
+  pnlTone: "profit" | "loss" | "flat";
   deposited: string;
   yieldTotal: string;
   pnl: string;
@@ -175,14 +176,29 @@ export function buildResumenView(data: DashboardData): ResumenView {
         }
       : null;
 
-  const pnlPositive = Number(summary.pnlUsd) >= 0;
+  /*
+   * Un P&L de CERO no es una ganancia.
+   *
+   * Era `>= 0`, así que un patrimonio exactamente en su coste se pintaba en
+   * verde — y encima contradecía al texto de al lado: `signedMoney` ya imprime
+   * «0,00 US$» sin signo precisamente para no afirmar una dirección que no
+   * existe. La Cartera lleva los tres estados desde hace tiempo; el Resumen se
+   * había quedado con dos.
+   *
+   * Medio céntimo de umbral, el mismo que usa `signedMoney`: por debajo, la
+   * cifra se imprime «0,00» y pintarla de color afirmaría un movimiento que no
+   * se ve.
+   */
+  const pnlUsd = Number(summary.pnlUsd);
+  const pnlTone: "profit" | "loss" | "flat" =
+    Math.abs(pnlUsd) < 0.005 ? "flat" : pnlUsd > 0 ? "profit" : "loss";
 
   return {
     totalValue: money(Number(summary.totalValueUsd)).replace(" US$", ""),
     currency: "US$",
     changeAmount: signedMoney(Number(summary.pnlUsd)),
     changePercent: signedPercent(Number(summary.pnlPercent)),
-    isPositive: pnlPositive,
+    pnlTone,
     deposited: moneyRound(Number(summary.totalDepositedUsd)),
     yieldTotal: moneyRound(Number(summary.totalHarvestUsd)),
     pnl: moneyRound(Number(summary.pnlUsd)),
