@@ -1,524 +1,336 @@
+/**
+ * Motor de categorización fiscal — pruebas contra el código REAL.
+ *
+ * QUÉ CUBRE: `categorizeTransaction` de `src/lib/tax/categorize.ts`, importado
+ * de verdad. Se comprueba, para cada combinación (tipo de movimiento × tipo de
+ * custodio), la categoría fiscal, si tributa, el valor y la base en euros, los
+ * lotes FIFO que se crean o se consumen y los eventos fiscales emitidos.
+ *
+ * Antes este fichero traía dentro una versión reducida del motor —unas 200
+ * líneas que imitaban a las 1.700 reales— «para no depender de TypeScript». Lo
+ * que comprobaba era esa imitación: el motor de verdad podía romperse entero
+ * sin que ninguna prueba se enterara. El ayudante `../helpers/ts-resolve.mjs`
+ * quita esa dependencia y permite cargar el módulo real.
+ *
+ * QUÉ NO CUBRE: `categorizeTransactionsSequence` (encadenado de varias
+ * transacciones con lotes vivos entre ellas), la resolución del custodio
+ * (`wallet-classification.ts` consulta el catálogo en base de datos: aquí el
+ * `walletProtocol` se pasa a mano) y la persistencia de lotes y eventos.
+ *
+ * Ejecutar: `node --test tests/tax/*.test.mjs`
+ */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import "../helpers/ts-resolve.mjs";
 
-/**
- * Tests del motor de categorización fiscal.
- *
- * Replicamos la lógica esencial de categorize.ts en este archivo para tests
- * aislados sin depender de TypeScript. Verifica que cada combinación
- * (txType, walletKind) se mapea correctamente.
- */
+const { categorizeTransaction } = await import("../../src/lib/tax/categorize.ts");
 
-const EPSILON = 1e-9;
+const FECHA = "2026-01-15T00:00:00.000Z";
+const RATE = 0.92; // USD → EUR
 
-function roundEur(v) {
-  if (!Number.isFinite(v)) return 0;
-  return Math.round(v * 100) / 100;
+/** Custodio con la forma de `WalletProtocolMeta` (src/lib/tax/types.ts). */
+function wallet(walletKind, name = "Protocolo") {
+  return { name, walletKind, countryCode: null, isForeign: false, custodial: false };
 }
 
-function usdToEur(usd, rate) {
-  if (!Number.isFinite(usd) || !Number.isFinite(rate) || rate <= 0) return 0;
-  return usd * rate;
-}
-
-function applyFifo(token, amountToConsume, lots) {
-  const upper = token.trim().toUpperCase();
-  if (amountToConsume <= EPSILON) {
-    return { consumedCostEur: 0, consumedAmount: 0, insufficientLots: false, lotsConsumed: [], lotUpdates: [] };
-  }
-  const active = lots
-    .filter((l) => l.tokenSymbol.toUpperCase() === upper && l.exhaustedAt === null && l.amount > EPSILON)
-    .sort((a, b) => Date.parse(a.acquiredAt) - Date.parse(b.acquiredAt));
-  let remaining = amountToConsume;
-  let consumedCostEur = 0;
-  let consumedAmount = 0;
-  const lotsConsumed = [];
-  for (const lot of active) {
-    if (remaining <= EPSILON) break;
-    if (lot.amount <= remaining + EPSILON) {
-      consumedCostEur += lot.costBasisEur;
-      consumedAmount += lot.amount;
-      remaining -= lot.amount;
-      lotsConsumed.push({ lotId: lot.id, amountConsumed: lot.amount, costBasisConsumedEur: roundEur(lot.costBasisEur) });
-    } else {
-      const fraction = remaining / lot.amount;
-      const cost = lot.costBasisEur * fraction;
-      consumedCostEur += cost;
-      consumedAmount += remaining;
-      lotsConsumed.push({ lotId: lot.id, amountConsumed: remaining, costBasisConsumedEur: roundEur(cost) });
-      remaining = 0;
-    }
-  }
+/** Transacción con la forma de `CategorizeInput`. */
+function tx(fields) {
   return {
-    consumedCostEur: roundEur(consumedCostEur),
-    consumedAmount,
-    insufficientLots: remaining > EPSILON,
-    lotsConsumed,
+    portfolioId: "p1",
+    type: "deposit",
+    protocol: "Protocolo",
+    positionType: "Hold",
+    tokenInSymbol: null,
+    tokenInAmount: null,
+    tokenOutSymbol: null,
+    tokenOutAmount: null,
+    spotPriceUsd: 0,
+    transactionDate: FECHA,
+    metadata: null,
+    ...fields,
   };
 }
 
-// ─── Decisiones por tipo de wallet ─────────────────────────────────────────
-
-function decideDepositCategory(walletKind) {
-  if (walletKind === null) return "buy";
-  switch (walletKind) {
-    case "cex_es": case "cex_foreign":
-    case "broker_es": case "broker_foreign":
-    case "payment_app":
-      return "buy";
-    case "hot_wallet": case "cold_wallet":
-    case "paper_wallet": case "smart_contract_wallet":
-    case "dex":
-      return "non_taxable_transfer";
-    case "other":
-    default:
-      return "buy";
-  }
+/** Lote con la forma de `TaxLot`. */
+function lote(id, token, amount, costEur, date) {
+  return {
+    id,
+    portfolioId: "p1",
+    tokenSymbol: token,
+    amount,
+    costBasisEur: costEur,
+    originalAmount: amount,
+    originalCostBasisEur: costEur,
+    acquiredAt: date,
+    acquiredViaTransactionId: null,
+    acquiredViaEvent: "buy",
+    exhaustedAt: null,
+  };
 }
 
-function decideWithdrawalCategory(walletKind) {
-  if (walletKind === null) return "sell";
-  switch (walletKind) {
-    case "cex_es": case "cex_foreign":
-    case "broker_es": case "broker_foreign":
-    case "payment_app":
-      return "sell";
-    case "hot_wallet": case "cold_wallet":
-    case "paper_wallet": case "smart_contract_wallet":
-    case "dex":
-      return "non_taxable_transfer";
-    case "other":
-    default:
-      return "sell";
+const categorizar = (fields, { lots = [], walletKind = "dex" } = {}) =>
+  categorizeTransaction(tx(fields), {
+    fxRateUsdToEur: RATE,
+    currentLots: lots,
+    walletProtocol: walletKind === null ? null : wallet(walletKind),
+  });
+
+// ─── Entradas: depende de quién custodia ───────────────────────────────────
+
+test("entrada en un exchange extranjero es una compra y crea lote", () => {
+  const r = categorizar(
+    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000 },
+    { walletKind: "cex_foreign" },
+  );
+  assert.equal(r.annotation.category, "buy");
+  assert.equal(r.annotation.taxable, false, "comprar no genera ganancia");
+  assert.equal(r.annotation.valueEur, 27600); // 0,5 × 60.000 × 0,92
+  assert.equal(r.annotation.walletKind, "cex_foreign");
+  assert.equal(r.newLots.length, 1, "la compra crea el lote FIFO");
+  assert.equal(r.newLots[0].costBasisEur, 27600);
+  assert.equal(r.newLots[0].tokenSymbol, "BTC");
+});
+
+test("entrada en un exchange español también es una compra", () => {
+  const r = categorizar(
+    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.1, spotPriceUsd: 60000 },
+    { walletKind: "cex_es" },
+  );
+  assert.equal(r.annotation.category, "buy");
+  assert.equal(r.newLots.length, 1);
+});
+
+test("entrada en wallet propia es una transferencia interna, no una compra", () => {
+  for (const kind of ["hot_wallet", "cold_wallet", "smart_contract_wallet"]) {
+    const r = categorizar(
+      { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000 },
+      { walletKind: kind },
+    );
+    assert.equal(r.annotation.category, "non_taxable_transfer", `fallo con ${kind}`);
+    assert.equal(r.annotation.taxable, false);
+    assert.equal(r.newLots.length, 0, `${kind}: el lote real vive en el origen, no se duplica aquí`);
   }
-}
+});
 
-// ─── Categorizador simplificado ───────────────────────────────────────────
+// ─── Salidas ───────────────────────────────────────────────────────────────
 
-function categorize(tx, { rate, lots, walletKind }) {
-  const t = (tx.type ?? "").trim().toLowerCase();
-  const positionType = (tx.positionType ?? "").trim().toLowerCase();
+test("salida de un exchange se trata como venta con ganancia patrimonial", () => {
+  const r = categorizar(
+    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000 },
+    { lots: [lote("L1", "BTC", 1, 50000, "2024-01-01")], walletKind: "cex_foreign" },
+  );
+  assert.equal(r.annotation.category, "sell");
+  assert.equal(r.annotation.taxable, true);
+  assert.equal(r.annotation.incomeType, "ganancia_patrimonial");
+  assert.equal(r.annotation.valueEur, 32200);      // 0,5 × 70.000 × 0,92
+  assert.equal(r.annotation.costBasisEur, 25000);  // la mitad del lote por FIFO
+  assert.equal(r.annotation.realizedGainEur, 7200);
+  assert.equal(r.taxEvents.length, 1);
+  assert.equal(r.taxEvents[0].eventType, "sell");
+  assert.equal(r.taxEvents[0].taxYear, 2026, "el ejercicio sale de la fecha del movimiento");
+});
 
-  // Transferencias detectadas on-chain: siempre movimiento de wallet propia.
-  const isOnchainIngest = tx.metadata?.source === "onchain_ingest";
-
-  if (t === "deposit") {
-    const symbol = tx.tokenInSymbol?.toUpperCase();
-    const amount = tx.tokenInAmount ?? 0;
-    const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const category = isOnchainIngest ? "non_taxable_transfer" : decideDepositCategory(walletKind);
-    if (category === "buy") {
-      return {
-        category: "buy",
-        incomeType: "none",
-        taxable: false,
-        valueEur,
-        realizedGainEur: 0,
-        inferred: true,
-        walletKind,
-        newLot: { tokenSymbol: symbol, amount, costBasisEur: valueEur },
-      };
-    }
-    return {
-      category: "non_taxable_transfer",
-      incomeType: "none",
-      taxable: false,
-      valueEur,
-      realizedGainEur: 0,
-      inferred: true,
-      walletKind,
-    };
+test("salida hacia wallet propia o DEX no es una venta", () => {
+  for (const kind of ["cold_wallet", "hot_wallet", "dex"]) {
+    const r = categorizar(
+      { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000 },
+      { lots: [lote("L1", "BTC", 1, 50000, "2024-01-01")], walletKind: kind },
+    );
+    assert.equal(r.annotation.category, "non_taxable_transfer", `fallo con ${kind}`);
+    assert.equal(r.annotation.taxable, false);
+    assert.equal(r.annotation.realizedGainEur, 0);
+    assert.equal(r.taxEvents.length, 0);
   }
+});
 
-  if (t === "withdrawal") {
-    const symbol = tx.tokenOutSymbol?.toUpperCase();
-    const amount = tx.tokenOutAmount ?? 0;
-    const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const category = isOnchainIngest ? "non_taxable_transfer" : decideWithdrawalCategory(walletKind);
-    if (category === "sell") {
-      const fifo = applyFifo(symbol, amount, lots);
-      const gain = roundEur(valueEur - fifo.consumedCostEur);
-      return {
-        category: "sell",
-        incomeType: gain >= 0 ? "ganancia_patrimonial" : "perdida_patrimonial",
-        taxable: true,
-        valueEur,
-        costBasisEur: fifo.consumedCostEur,
-        realizedGainEur: gain,
-        inferred: true,
-        walletKind,
-      };
-    }
-    return {
-      category: "non_taxable_transfer",
-      incomeType: "none",
-      taxable: false,
-      valueEur,
-      realizedGainEur: 0,
-      inferred: true,
-      walletKind,
-    };
+test("salida sin custodio catalogado asume venta (criterio conservador)", () => {
+  const r = categorizar(
+    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000 },
+    { lots: [lote("L1", "BTC", 1, 50000, "2024-01-01")], walletKind: null },
+  );
+  assert.equal(r.annotation.category, "sell");
+  assert.equal(r.annotation.walletKind, null);
+});
+
+// ─── Rendimientos ──────────────────────────────────────────────────────────
+
+test("el harvest se clasifica según dónde se genera", () => {
+  const casos = [
+    { positionType: "Staking", esperado: "staking_reward" },
+    { positionType: "Lending", esperado: "lending_interest" },
+    { positionType: "Liquidity Pool", esperado: "lp_reward" },
+  ];
+  for (const { positionType, esperado } of casos) {
+    const r = categorizar(
+      { type: "harvest", tokenInSymbol: "USDC", tokenInAmount: 100, spotPriceUsd: 1, positionType },
+      { walletKind: "dex" },
+    );
+    assert.equal(r.annotation.category, esperado, `fallo con ${positionType}`);
+    assert.equal(r.annotation.incomeType, "rendimiento_capital_mobiliario");
+    assert.equal(r.annotation.taxable, true);
+    assert.equal(r.annotation.valueEur, 92);
+    assert.equal(r.annotation.realizedGainEur, 92, "la recompensa tributa por su valor íntegro");
   }
-
-  if (t === "lp_deposit") {
-    // NUEVO COMPORTAMIENTO: LP deposit es solo trazabilidad.
-    // NO calculamos ganancia/pérdida — el usuario no entiende ver +200€ sobre
-    // un simple depósito. Se materializa en lp_withdraw.
-    const symbol = tx.tokenInSymbol?.toUpperCase();
-    const amount = tx.tokenInAmount ?? 0;
-    const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    return {
-      category: "lp_provide",
-      incomeType: "none",
-      taxable: false,
-      valueEur,
-      costBasisEur: 0,
-      realizedGainEur: 0,
-      inferred: true,
-      walletKind,
-    };
-  }
-
-  if (t === "lp_withdraw") {
-    // ROTACIÓN DE LOTES: consume por FIFO los lotes del token y traslada su
-    // base al lote de salida (sin duplicación). Lo no cubierto, a FMV.
-    const symbol = tx.tokenInSymbol?.toUpperCase();
-    const amount = tx.tokenInAmount ?? 0;
-    const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    const fifo = applyFifo(symbol, amount, lots);
-    const uncovered = Math.max(0, amount - fifo.consumedAmount);
-    const uncoveredEur = roundEur(usdToEur(uncovered * tx.spotPriceUsd, rate));
-    const carried = roundEur(fifo.consumedCostEur + uncoveredEur);
-    return {
-      category: "lp_remove",
-      incomeType: "none",
-      taxable: false,
-      valueEur,
-      costBasisEur: carried,
-      realizedGainEur: 0,
-      inferred: true,
-      walletKind,
-      newLot: { tokenSymbol: symbol, amount, costBasisEur: carried },
-      lotsConsumed: fifo.lotsConsumed,
-    };
-  }
-
-  if (t === "harvest") {
-    const symbol = tx.tokenInSymbol?.toUpperCase();
-    const amount = tx.tokenInAmount ?? 0;
-    let category;
-    if (positionType.includes("lending")) category = "lending_interest";
-    else if (positionType.includes("liquidity") || positionType.includes("pool") || positionType.includes("lp"))
-      category = "lp_reward";
-    else category = "staking_reward";
-    const valueEur = roundEur(usdToEur(amount * tx.spotPriceUsd, rate));
-    return {
-      category,
-      incomeType: "rendimiento_capital_mobiliario",
-      taxable: true,
-      valueEur,
-      realizedGainEur: valueEur,
-      inferred: true,
-      walletKind,
-      newLot: { tokenSymbol: symbol, amount, costBasisEur: valueEur },
-    };
-  }
-
-  if (t === "staking_deposit" || t === "staking_withdrawal" || t === "lending_supply" || t === "lending_withdraw" || t === "lending_borrow") {
-    return { category: "non_taxable_transfer", incomeType: "none", taxable: false, valueEur: 0, realizedGainEur: 0, inferred: true, walletKind };
-  }
-
-  return { category: "non_taxable_technical", incomeType: "none", taxable: false, valueEur: 0, realizedGainEur: 0, inferred: true, walletKind };
-}
-
-function makeLot(id, token, amount, costEur, date) {
-  return { id, portfolioId: "p1", tokenSymbol: token, amount, costBasisEur: costEur, acquiredAt: date, exhaustedAt: null };
-}
-
-// ─── Tests por tipo de wallet ──────────────────────────────────────────────
-
-test("Deposit en CEX (Binance) → buy, crea lote, marca inferred", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "cex_foreign" },
-  );
-  assert.equal(r.category, "buy");
-  assert.equal(r.taxable, false);
-  assert.equal(r.valueEur, 27600);
-  assert.equal(r.inferred, true);
-  assert.equal(r.walletKind, "cex_foreign");
-  assert.ok(r.newLot, "Debe crear un lote nuevo (compra real)");
 });
 
-test("Deposit en Hot Wallet (MetaMask) → non_taxable_transfer, NO crea lote", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "hot_wallet" },
-  );
-  assert.equal(r.category, "non_taxable_transfer", "Entrada en wallet self-custody = transferencia interna, NO compra");
-  assert.equal(r.taxable, false);
-  assert.equal(r.realizedGainEur, 0);
-  assert.ok(!r.newLot, "No debe crear lote (el lote real vive en la wallet de origen)");
-});
-
-test("Deposit en Cold Wallet (Ledger) → non_taxable_transfer", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.1, spotPriceUsd: 60000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "cold_wallet" },
-  );
-  assert.equal(r.category, "non_taxable_transfer");
-  assert.equal(r.taxable, false);
-});
-
-test("Deposit en CEX España (Bit2Me) → buy", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "EUR", tokenInAmount: 1000, spotPriceUsd: 1.08, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "cex_es" },
-  );
-  assert.equal(r.category, "buy");
-});
-
-test("Deposit en Smart Contract Wallet (Safe) → non_taxable_transfer", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "smart_contract_wallet" },
-  );
-  assert.equal(r.category, "non_taxable_transfer");
-});
-
-test("Withdrawal en CEX → sell, tributa, ganancia patrimonial", () => {
-  const lots = [makeLot("L1", "BTC", 1, 50000, "2024-01-01")];
-  const r = categorize(
-    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: "cex_foreign" },
-  );
-  assert.equal(r.category, "sell");
-  assert.equal(r.taxable, true);
-  assert.equal(r.incomeType, "ganancia_patrimonial");
-  assert.equal(r.valueEur, 32200);
-  assert.equal(r.costBasisEur, 25000);
-  assert.equal(r.realizedGainEur, 7200);
-});
-
-test("Withdrawal en Cold Wallet → non_taxable_transfer (transferencia interna)", () => {
-  const lots = [makeLot("L1", "BTC", 1, 50000, "2024-01-01")];
-  const r = categorize(
-    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: "cold_wallet" },
-  );
-  assert.equal(r.category, "non_taxable_transfer", "Salida de cold wallet = transferencia, no venta");
-  assert.equal(r.taxable, false);
-  assert.equal(r.realizedGainEur, 0, "No hay ganancia patrimonial en transferencia interna");
-});
-
-test("Withdrawal en DEX → non_taxable_transfer", () => {
-  const lots = [makeLot("L1", "ETH", 1, 1500, "2024-01-01")];
-  const r = categorize(
-    { type: "withdrawal", tokenOutSymbol: "ETH", tokenOutAmount: 0.5, spotPriceUsd: 2000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: "dex" },
-  );
-  assert.equal(r.category, "non_taxable_transfer");
-});
-
-test("Withdrawal sin walletKind (null) → fallback a sell", () => {
-  const lots = [makeLot("L1", "BTC", 1, 50000, "2024-01-01")];
-  const r = categorize(
-    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: null },
-  );
-  assert.equal(r.category, "sell", "Sin wallet clasificado: fallback conservador → asume venta");
-});
-
-test("Harvest staking en cualquier wallet → staking_reward (rendimiento)", () => {
-  const r = categorize(
+test("la recompensa cobrada crea lote con base igual a su valor", () => {
+  // Si no creara lote, al venderla después se declararía otra vez entera.
+  const r = categorizar(
     { type: "harvest", tokenInSymbol: "ADA", tokenInAmount: 10, spotPriceUsd: 0.5, positionType: "Staking" },
-    { rate: 0.92, lots: [], walletKind: "hot_wallet" },
+    { walletKind: "hot_wallet" },
   );
-  assert.equal(r.category, "staking_reward");
-  assert.equal(r.incomeType, "rendimiento_capital_mobiliario");
-  assert.equal(r.valueEur, 4.6);
+  assert.equal(r.annotation.valueEur, 4.6);
+  assert.equal(r.newLots.length, 1);
+  assert.equal(r.newLots[0].costBasisEur, 4.6);
+  assert.equal(r.newLots[0].acquiredViaEvent, "staking_reward");
 });
 
-test("Harvest en posición lending → lending_interest", () => {
-  const r = categorize(
-    { type: "harvest", tokenInSymbol: "USDC", tokenInAmount: 100, spotPriceUsd: 1, positionType: "Lending" },
-    { rate: 0.92, lots: [], walletKind: "dex" },
+// ─── Pools de liquidez: la base viaja, no se duplica ───────────────────────
+
+test("aportar a un pool no genera ganancia (solo trazabilidad)", () => {
+  const r = categorizar(
+    { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2200, positionType: "Liquidity Pool" },
+    { lots: [lote("L1", "ETH", 1, 1500, "2024-01-01")], walletKind: "dex" },
   );
-  assert.equal(r.category, "lending_interest");
-  assert.equal(r.valueEur, 92);
+  assert.equal(r.annotation.category, "lp_provide");
+  assert.equal(r.annotation.taxable, false);
+  assert.equal(r.annotation.realizedGainEur, 0);
+  assert.equal(r.annotation.valueEur, 2024, "el valor sí se informa");
+  assert.equal(r.newLots.length, 0, "aportar no crea lote: el original sigue vivo");
 });
 
-test("LP deposit → lp_provide, SOLO trazabilidad (sin ganancia ficticia)", () => {
-  // Decisión: aunque DGT considera permuta, NO calculamos ganancia ficticia
-  // sobre un simple depósito. Se materializa al hacer lp_withdraw.
-  const lots = [makeLot("L1", "ETH", 1.0, 1500, "2024-01-01")];
-  const r = categorize(
-    { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2200, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots, walletKind: "dex" },
+test("retirar de un pool rota el lote: consume el original y traslada su base", () => {
+  const r = categorizar(
+    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2173.91, positionType: "Liquidity Pool" },
+    { lots: [lote("L1", "ETH", 1, 1000, "2024-01-01")], walletKind: "dex" },
   );
-  assert.equal(r.category, "lp_provide");
-  assert.equal(r.taxable, false, "LP deposit NO tributa en el momento del depósito");
-  assert.equal(r.realizedGainEur, 0, "NO debe mostrarse ganancia patrimonial sobre un simple depósito");
-  assert.equal(r.valueEur, 2024, "El valor EUR sí se informa");
+  assert.equal(r.annotation.category, "lp_remove");
+  assert.equal(r.annotation.taxable, false);
+  assert.equal(r.newLots.length, 1);
+  assert.equal(r.newLots[0].costBasisEur, 1000, "la base viaja; no se revaloriza a precio de mercado");
+  assert.equal(r.consumedLotUpdates.length, 1, "el lote original se consume");
+  assert.equal(r.consumedLotUpdates[0].lotId, "L1");
+  assert.equal(r.consumedLotUpdates[0].newAmount, 0);
 });
 
-test("Harvest sobre LP → lp_reward (NO staking_reward)", () => {
-  // Orca, Uniswap farms, Raydium no tienen staking — tienen LP rewards.
-  const r = categorize(
-    { type: "harvest", tokenInSymbol: "ORCA", tokenInAmount: 10, spotPriceUsd: 1.5, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots: [], walletKind: "dex" },
-  );
-  assert.equal(r.category, "lp_reward", "Harvest sobre LP debe ser lp_reward, NO staking_reward");
-  assert.equal(r.incomeType, "rendimiento_capital_mobiliario");
-});
-
-test("Harvest sobre Staking nativo → staking_reward", () => {
-  const r = categorize(
-    { type: "harvest", tokenInSymbol: "SOL", tokenInAmount: 2, spotPriceUsd: 100, positionType: "Staking" },
-    { rate: 0.92, lots: [], walletKind: "dex" },
-  );
-  assert.equal(r.category, "staking_reward");
-});
-
-test("LP withdraw → lp_remove, ROTA lotes: consume el original y traslada su base", () => {
-  // Compraste 1 ETH por 1.000 € → lp_deposit (lote sigue vivo) → lp_withdraw
-  // cuando vale 2.000 €. El lote de salida hereda la base de 1.000 € y el
-  // original queda consumido: la base total NO se duplica (antes: 3.000 €).
-  const lots = [makeLot("L1", "ETH", 1.0, 1000, "2024-01-01")];
-  const r = categorize(
-    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2173.91, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots, walletKind: "dex" },
-  );
-  assert.equal(r.category, "lp_remove");
-  assert.equal(r.taxable, false);
-  assert.equal(r.newLot.costBasisEur, 1000, "la base del lote original se traslada, no se usa FMV");
-  assert.equal(r.lotsConsumed.length, 1, "el lote original se consume (rotación)");
-});
-
-test("LP withdraw sin lotes previos → la parte no cubierta entra a FMV (anotada)", () => {
-  // Token aparecido por IL o rebalanceo cuya base viajó por otra vía.
-  const r = categorize(
+test("retirar de un pool sin lote previo valora a precio de mercado", () => {
+  // Token aparecido por impermanent loss o cuya base llegó por un rebalanceo.
+  const r = categorizar(
     { type: "lp_withdraw", tokenInSymbol: "USDC", tokenInAmount: 500, spotPriceUsd: 1, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots: [], walletKind: "dex" },
+    { lots: [], walletKind: "dex" },
   );
-  assert.equal(r.category, "lp_remove");
-  assert.equal(r.newLot.costBasisEur, 460, "sin lote previo, la única base disponible es el FMV");
+  assert.equal(r.annotation.category, "lp_remove");
+  assert.equal(r.newLots[0].costBasisEur, 460, "sin lote previo la única base disponible es el mercado");
+  assert.match(r.annotation.notes, /revisar si procede/, "queda anotado para revisión");
 });
 
-test("Ciclo completo buy→lp_deposit→lp_withdraw NO duplica la base total", () => {
-  // buy 1 ETH a 1.000 €
-  const lots = [makeLot("L1", "ETH", 1.0, 1000, "2024-01-01")];
-  // lp_deposit no consume el lote (base viaja con los tokens)
-  const dep = categorize(
-    { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 1500, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots, walletKind: "dex" },
+test("ciclo comprar → aportar → retirar: la base total no se duplica", () => {
+  const lots = [lote("L1", "ETH", 1, 1000, "2024-01-01")];
+  const aportar = categorizar(
+    { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 1500, positionType: "Liquidity Pool" },
+    { lots, walletKind: "dex" },
   );
-  assert.equal(dep.newLot, undefined, "lp_deposit no crea lote");
-  // lp_withdraw rota: consume L1 y crea lote con la misma base
-  const wit = categorize(
-    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1.0, spotPriceUsd: 2000, positionType: "Liquidity Pool" },
-    { rate: 0.92, lots, walletKind: "dex" },
+  assert.equal(aportar.newLots.length, 0);
+  const retirar = categorizar(
+    { type: "lp_withdraw", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Liquidity Pool" },
+    { lots, walletKind: "dex" },
   );
-  const totalBasis = wit.newLot.costBasisEur; // el lote L1 quedó consumido
-  assert.equal(totalBasis, 1000, "base total tras el ciclo = base original (sin fantasma)");
+  // El lote original queda consumido y el nuevo hereda su base: 1.000 €, no 2.000.
+  assert.equal(retirar.newLots[0].costBasisEur, 1000);
+  assert.equal(retirar.consumedLotUpdates[0].newAmount, 0);
 });
 
-test("Transferencia on-chain (onchain_ingest) NUNCA es venta, ni con protocolo sin catalogar", () => {
-  // Retirada de BTC del Ledger detectada por el escáner: protocolo "Bitcoin"
-  // no está en el catálogo → antes caía en "other" → venta imponible ficticia.
-  const lots = [makeLot("L1", "BTC", 0.5, 10000, "2024-01-01")];
-  const r = categorize(
+test("la retirada de pool se entiende venga en token_in (manual) o token_out (on-chain)", () => {
+  const porTokenOut = categorizar(
+    { type: "lp_withdraw", tokenOutSymbol: "ETH", tokenOutAmount: 1, spotPriceUsd: 2000, positionType: "Liquidity Pool" },
+    { lots: [lote("L1", "ETH", 1, 1000, "2024-01-01")], walletKind: "dex" },
+  );
+  assert.equal(porTokenOut.annotation.category, "lp_remove");
+  assert.equal(porTokenOut.newLots[0].costBasisEur, 1000, "sin esto la base no se trasladaría");
+});
+
+// ─── Movimientos internos ──────────────────────────────────────────────────
+
+test("aportar a staking o a lending nunca tributa", () => {
+  for (const type of ["staking_deposit", "lending_supply"]) {
+    const r = categorizar(
+      { type, tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Staking" },
+      { walletKind: "cex_foreign" },
+    );
+    assert.equal(r.annotation.category, "non_taxable_transfer", `fallo con ${type}`);
+    assert.equal(r.annotation.taxable, false);
+    assert.equal(r.taxEvents.length, 0);
+  }
+});
+
+test("un movimiento detectado on-chain nunca es compra ni venta, aunque el protocolo no esté catalogado", () => {
+  // El escáner ve salir BTC de una wallet propia: el protocolo "Bitcoin" no
+  // está en el catálogo y cae en "other". Sin esta regla se declaraba una venta
+  // imponible que nunca ocurrió.
+  const salida = categorizar(
     {
-      type: "withdrawal",
-      tokenOutSymbol: "BTC",
-      tokenOutAmount: 0.5,
-      spotPriceUsd: 60000,
-      positionType: "Hold",
+      type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 60000,
       metadata: { source: "onchain_ingest" },
     },
-    { rate: 0.92, lots, walletKind: "other" },
+    { lots: [lote("L1", "BTC", 0.5, 10000, "2024-01-01")], walletKind: "other" },
   );
-  assert.equal(r.category, "non_taxable_transfer", "transferencia entre wallets propias, no venta");
-  assert.equal(r.taxable, false);
-});
+  assert.equal(salida.annotation.category, "non_taxable_transfer");
+  assert.equal(salida.annotation.taxable, false);
+  assert.equal(salida.taxEvents.length, 0);
 
-test("Entrada on-chain (onchain_ingest) en protocolo sin catalogar NO es compra", () => {
-  const r = categorize(
+  const entrada = categorizar(
     {
-      type: "deposit",
-      tokenInSymbol: "BTC",
-      tokenInAmount: 0.01,
-      spotPriceUsd: 60000,
-      positionType: "Hold",
+      type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.01, spotPriceUsd: 60000,
       metadata: { source: "onchain_ingest" },
     },
-    { rate: 0.92, lots: [], walletKind: "other" },
+    { walletKind: "other" },
   );
-  assert.equal(r.category, "non_taxable_transfer");
+  assert.equal(entrada.annotation.category, "non_taxable_transfer");
+  assert.equal(entrada.newLots.length, 0);
 });
 
-test("Staking deposit → non_taxable_transfer en cualquier wallet", () => {
-  const r = categorize(
-    { type: "staking_deposit", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Staking" },
-    { rate: 0.92, lots: [], walletKind: "cex_foreign" },
-  );
-  assert.equal(r.category, "non_taxable_transfer");
-});
+// ─── Invariantes de la anotación ───────────────────────────────────────────
 
-test("Lending supply → non_taxable_transfer", () => {
-  const r = categorize(
-    { type: "lending_supply", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Lending" },
-    { rate: 0.92, lots: [], walletKind: "dex" },
-  );
-  assert.equal(r.category, "non_taxable_transfer");
-});
-
-test("TODAS las anotaciones llevan inferred: true por defecto", () => {
-  const cases = [
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000, positionType: "Hold" },
-    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000, positionType: "Hold" },
+test("toda anotación se marca como inferida y arrastra el tipo de custodio", () => {
+  const casos = [
+    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000 },
+    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 0.5, spotPriceUsd: 70000 },
     { type: "harvest", tokenInSymbol: "ADA", tokenInAmount: 10, spotPriceUsd: 0.5, positionType: "Staking" },
     { type: "lp_deposit", tokenInSymbol: "ETH", tokenInAmount: 1, spotPriceUsd: 2000, positionType: "Liquidity Pool" },
   ];
-  for (const tx of cases) {
-    const r = categorize(tx, { rate: 0.92, lots: [makeLot("L1", "BTC", 1, 50000, "2024-01-01"), makeLot("L2", "ETH", 1, 1500, "2024-01-01")], walletKind: "cex_foreign" });
-    assert.equal(r.inferred, true, `Anotación de ${tx.type} debe llevar inferred=true`);
+  const lots = [lote("L1", "BTC", 1, 50000, "2024-01-01"), lote("L2", "ETH", 1, 1500, "2024-01-01")];
+  for (const caso of casos) {
+    const r = categorizar(caso, { lots, walletKind: "cex_foreign" });
+    assert.equal(r.annotation.inferred, true, `${caso.type} debe quedar marcado para revisión`);
+    assert.equal(r.annotation.walletKind, "cex_foreign", `${caso.type} debe arrastrar el custodio`);
+    assert.ok(r.annotation.humanLabel.length > 0, `${caso.type} necesita etiqueta legible`);
+    assert.ok(r.annotation.humanDescription.length > 0, `${caso.type} necesita descripción legible`);
   }
 });
 
-test("walletKind se propaga a la anotación", () => {
-  const r = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 0.5, spotPriceUsd: 60000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "cold_wallet" },
+test("escenario real: comprar en un exchange y mover a un hardware wallet", () => {
+  const compra = categorizar(
+    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 1, spotPriceUsd: 50000 },
+    { walletKind: "cex_foreign" },
   );
-  assert.equal(r.walletKind, "cold_wallet");
-});
+  assert.equal(compra.annotation.category, "buy");
+  assert.equal(compra.newLots[0].costBasisEur, 46000);
 
-test("Escenario realista: cliente con CEX + Cold Wallet (transferencia entre ellas no tributa)", () => {
-  // Día 1: Compra 1 BTC en Binance (CEX)
-  const buy = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 1, spotPriceUsd: 50000, positionType: "Hold" },
-    { rate: 0.92, lots: [], walletKind: "cex_foreign" },
+  const lots = [lote("L1", "BTC", 1, 46000, "2025-01-01")];
+
+  // La salida del exchange se asume venta (el motor no sabe a dónde va)…
+  const salidaExchange = categorizar(
+    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 1, spotPriceUsd: 50000 },
+    { lots, walletKind: "cex_foreign" },
   );
-  assert.equal(buy.category, "buy");
-  assert.equal(buy.newLot.costBasisEur, 46000);
+  assert.equal(salidaExchange.annotation.category, "sell");
 
-  const lots = [{ ...makeLot("L1", "BTC", 1, 46000, "2025-01-01") }];
-
-  // Día 2: Saca 1 BTC de Binance → debería ser "sell"
-  const cexOut = categorize(
-    { type: "withdrawal", tokenOutSymbol: "BTC", tokenOutAmount: 1, spotPriceUsd: 50000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: "cex_foreign" },
+  // …y la entrada en el hardware wallet como transferencia interna. El gestor
+  // ve las dos filas y puede recategorizar la salida a mano.
+  const entradaLedger = categorizar(
+    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 1, spotPriceUsd: 50000 },
+    { lots, walletKind: "cold_wallet" },
   );
-  assert.equal(cexOut.category, "sell", "Salida de Binance se categoriza como venta (asunción conservadora)");
-
-  // Mismo día: Entrada en Ledger → debería ser "non_taxable_transfer"
-  const ledgerIn = categorize(
-    { type: "deposit", tokenInSymbol: "BTC", tokenInAmount: 1, spotPriceUsd: 50000, positionType: "Hold" },
-    { rate: 0.92, lots, walletKind: "cold_wallet" },
-  );
-  assert.equal(ledgerIn.category, "non_taxable_transfer", "Entrada en Ledger se categoriza como transferencia interna");
-  assert.equal(ledgerIn.realizedGainEur, 0);
-  // ↑ En este escenario el gestor verá ambas y podrá CONFIRMAR que es una transferencia
-  // recategorizando manualmente la salida de Binance también como non_taxable_transfer.
+  assert.equal(entradaLedger.annotation.category, "non_taxable_transfer");
+  assert.equal(entradaLedger.annotation.realizedGainEur, 0);
 });
