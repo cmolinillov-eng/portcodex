@@ -3,6 +3,7 @@ import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access
 import { checkServiceAuth } from "@/lib/auth/service-auth";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 import { capturePortfolioSnapshot } from "@/lib/snapshots/capture";
+import { validateCsrf } from "@/lib/security/csrf";
 import { computeReinvestSplit, type ReinvestSplit, type SwapLeg } from "@/lib/onchain/reinvest-split";
 
 /**
@@ -111,6 +112,25 @@ function resolveLinkByLabel(
     if (pid === label || pid.startsWith(`${label}-`)) hits.push({ onchainId, link });
   }
   return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Índice SÍMBOLO → enlace del hold contable de ese token.
+ *
+ * El position_id de un hold lo escribe siempre el mismo formato
+ * (`${SÍMBOLO}-${onchain_id.slice(-24)}`, ver emitHoldArrivals en
+ * scripts/onchain-cache.mjs y la rama de permuta de más abajo), así que el
+ * símbolo es lo que va delante del primer guión. Con dos holds del mismo token
+ * gana el primero: son la misma moneda en la misma wallet.
+ */
+async function holdLinksBySymbol(portfolioId: string): Promise<Map<string, LinkInfo>> {
+  const holdBySymbol = new Map<string, LinkInfo>();
+  for (const l of (await getLinks(portfolioId)).values()) {
+    const pid = (l.position_id ?? "").trim().toUpperCase();
+    const sym = pid.includes("-") ? pid.slice(0, pid.indexOf("-")) : pid;
+    if ((l.position_type ?? "") === "Hold" && sym && !holdBySymbol.has(sym)) holdBySymbol.set(sym, l);
+  }
+  return holdBySymbol;
 }
 
 /**
@@ -553,12 +573,7 @@ async function performIngest(
       .like("event_key", `${ev.event_key}:in:%`)
       .limit(1);
     if (!siblings || siblings.length === 0) {
-      const holdBySymbol = new Map<string, LinkInfo>();
-      for (const l of (await getLinks(portfolioId)).values()) {
-        const pid = (l.position_id ?? "").trim().toUpperCase();
-        const sym = pid.includes("-") ? pid.slice(0, pid.indexOf("-")) : pid;
-        if ((l.position_type ?? "") === "Hold" && sym && !holdBySymbol.has(sym)) holdBySymbol.set(sym, l);
-      }
+      const holdBySymbol = await holdLinksBySymbol(portfolioId);
       for (const t of usable) {
         const sym = t.symbol.toUpperCase();
         const hold = holdBySymbol.get(sym);
@@ -590,6 +605,108 @@ async function performIngest(
             nftId: ev.position_ref,
             // Traza: de qué retirada es esta llegada (auditoría/depuración).
             holdArrivalOf: ev.event_key,
+          },
+        } as unknown as ReturnType<typeof buildRow>);
+      }
+    }
+  }
+
+  // ─── SALIDA DEL CAPITAL DEL HOLD en un depósito/apertura ────────────────
+  // Simétrico del bloque anterior. Meter dinero en un pool NO crea capital: sale
+  // de la wallet y entra en la posición. De la vuelta (retirada) hay emisor —el
+  // worker emite las llegadas al hold—, pero de la IDA no hay ninguno: el
+  // `lp_deposit` entraba solo, el hold conservaba su saldo, y el mismo capital
+  // se veía en los dos sitios (un depósito de 4.840,12 USDC sin retirada que lo
+  // acompañara). El patrimonio salía inflado por el importe rotado.
+  //
+  // Se emite en la MISMA operación (mismo operation_group_id) para que
+  // "Deshacer" revierta la rotación ENTERA, no media.
+  //
+  // Marca `reason: "rebalance_transfer"`: es la MISMA que escribe la rotación
+  // MANUAL hold→posición (rama `rebalance` de /api/transactions), y es la que
+  // hace que los dos motores de valoración traten la fila como movimiento
+  // INTERNO. Es imprescindible: el depósito de destino ya está compensado
+  // contra el hold (`isRotationDeposit` en get-dashboard-data.ts y en
+  // portfolio/valuation.ts), así que sin la marca esta salida restaría el
+  // capital por SEGUNDA vez y el Total Depositado se hundiría. Con ella cambia
+  // solo lo que tenía que cambiar: el SALDO del hold. Fiscalmente es inerte
+  // (handleWithdrawal la clasifica como transferencia no sujeta y no consume
+  // lotes FIFO), igual que ya lo era con `onchain_ingest`.
+  //
+  // Solo para eventos kind="deposit", que son los que tienen espejo: su
+  // retirada (kind="withdraw") sí abona el hold. Los `lending_supply`
+  // EXPLÍCITOS (eventos de Aave) se quedan fuera a propósito: su retirada
+  // (kind="lending_withdraw") no abona el hold, y debitar solo la ida haría
+  // desaparecer el capital al deshacer la posición.
+  const ROTATION_TX_TYPES = new Set(["lp_deposit", "staking_deposit", "lending_supply"]);
+  if (kind === "deposit") {
+    // Filas de capital GENUINO: la porción REINVERTIDA de un harvest no salió
+    // del hold —nunca entró en él, el rendimiento se cobra dentro de la
+    // posición—, así que solo se debita lo marcado `onchain_ingest`. Es
+    // exactamente el mismo criterio que usan los motores para decidir qué es
+    // una rotación, leído de las filas ya construidas para no duplicarlo.
+    const rotationRows = [...rows].filter(
+      (r) =>
+        ROTATION_TX_TYPES.has(String(r.type)) &&
+        (r.metadata as { source?: string })?.source === "onchain_ingest" &&
+        Number(r.token_in_amount) > 0,
+    );
+    if (rotationRows.length > 0) {
+      const holdBySymbol = await holdLinksBySymbol(portfolioId);
+      // ¿Ya hay una salida registrada del hold para esta MISMA transacción?
+      // (p.ej. el escáner de wallet vio la pata saliente como `transfer_out`).
+      // No se debita dos veces el mismo movimiento.
+      const yaDebitado = new Set<string>();
+      if (ev.tx_hash) {
+        const { data: previas } = await client
+          .from("transactions")
+          .select("type, position_id, token_out_symbol")
+          .eq("portfolio_id", portfolioId)
+          .is("deleted_at", null)
+          .contains("metadata", { txHash: ev.tx_hash });
+        const OUT_TYPES = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
+        for (const p of previas ?? []) {
+          if (!OUT_TYPES.has(String(p.type ?? ""))) continue;
+          yaDebitado.add(`${p.position_id ?? ""}::${String(p.token_out_symbol ?? "").toUpperCase()}`);
+        }
+      }
+      for (const r of rotationRows) {
+        const sym = String(r.token_in_symbol ?? "").toUpperCase();
+        const hold = holdBySymbol.get(sym);
+        // Sin hold contable de ese token, el capital NO viene de la wallet
+        // monitorizada: es una aportación nueva desde fuera y debe sumar. No se
+        // inventa un origen.
+        if (!hold) continue;
+        // Destino = origen (no debería pasar con LP/staking/lending): sería una
+        // fila que se anula a sí misma.
+        if (hold.position_id === positionId && hold.protocol === protocol) continue;
+        if (yaDebitado.has(`${hold.position_id}::${sym}`)) continue;
+        rows.push({
+          portfolio_id: portfolioId,
+          type: "withdrawal",
+          operation_group_id: operationGroupId,
+          token_in_symbol: null,
+          token_in_amount: null,
+          token_out_symbol: sym,
+          token_out_amount: Number(r.token_in_amount),
+          spot_price: Number(r.spot_price),
+          fee_amount: 0,
+          notes: `Salida de la wallet hacia ${ev.label ?? "la posición"} (on-chain)`,
+          transaction_date: timestamp,
+          protocol: hold.protocol,
+          position_id: hold.position_id,
+          position_type: hold.position_type || "Hold",
+          metadata: {
+            source: "onchain_ingest",
+            // Movimiento interno para el capital (ver comentario de arriba).
+            reason: "rebalance_transfer",
+            onchainIngest: true,
+            eventId: ev.id,
+            txHash: ev.tx_hash,
+            chain: ev.chain,
+            nftId: ev.position_ref,
+            // Traza: a qué posición fue este capital (auditoría/depuración).
+            holdDepartureTo: `${protocol}::${positionId}`,
           },
         } as unknown as ReturnType<typeof buildRow>);
       }
@@ -639,7 +756,21 @@ async function performIngest(
   return { ok: true, inserted: rows.length };
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * Cuerpo compartido por `GET` (solo lectura) y `POST` (lectura + ingesta).
+ *
+ * Estaba todo colgado del `GET`, y el `GET` no solo leía: con permiso de
+ * escritura ingería eventos en la contabilidad y disparaba un snapshot. Eso lo
+ * convertía en la única escritura del proyecto sin comprobación de origen, y
+ * además en una URL NAVEGABLE: `SameSite=Lax` bloquea el POST entre sitios,
+ * pero NO la navegación de nivel superior por GET. Bastaba con que un gestor
+ * pulsara `https://portcodex.com/api/onchain/events?portfolioId=<uuid>` desde
+ * un correo o un WhatsApp para ejecutar la ingesta sobre la cartera de un
+ * cliente con su propia sesión.
+ *
+ * Ahora la ingesta desde el navegador exige `POST` + `validateCsrf`.
+ */
+async function manejarEventos(request: NextRequest, permitirEscritura: boolean) {
   const portfolioId = (request.nextUrl.searchParams.get("portfolioId") ?? "").trim();
   // Bypass de SERVICIO (worker/cron): con el secreto compartido, la ingesta
   // automática corre SIN sesión de operador → la contabilidad avanza sola
@@ -647,6 +778,11 @@ export async function GET(request: NextRequest) {
   // Acotado a la cartera concreta, en tiempo constante, y con la ESCRITURA
   // detrás de un secreto distinto: un worker que solo lee no tiene por qué
   // poder ingerir operaciones. Ver lib/auth/service-auth.ts.
+  //
+  // El servicio SÍ puede escribir por GET: presenta un secreto explícito en una
+  // cabecera, no una cookie ambiental, así que el CSRF no le aplica —un
+  // navegador no puede fabricar esa petición— y `scripts/onchain-ingest.mjs`
+  // sigue funcionando sin tocarlo.
   const service = checkServiceAuth(request.headers.get("x-cron-secret"), portfolioId);
   let canWrite = false;
   if (service.isService) {
@@ -655,7 +791,8 @@ export async function GET(request: NextRequest) {
     const access = await getViewerAccess();
     const check = ensurePortfolioAccess(access, portfolioId, false);
     if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status });
-    canWrite = ensurePortfolioAccess(access, portfolioId, true).ok;
+    // Con sesión de navegador, escribir exige haber entrado por POST.
+    canWrite = permitirEscritura && ensurePortfolioAccess(access, portfolioId, true).ok;
   }
 
   const { data, error } = await getClient()
@@ -826,7 +963,26 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ events, autoIngested });
 }
 
+/** Bandeja de eventos pendientes. SOLO LECTURA para una sesión de navegador. */
+export async function GET(request: NextRequest) {
+  return manejarEventos(request, false);
+}
+
+/**
+ * Igual que el GET, pero además INGIERE los eventos pendientes de posiciones
+ * enlazadas. Es la única vía por la que el panel escribe, y lleva comprobación
+ * de origen porque un POST entre sitios sí trae cabecera `Origin`.
+ */
+export async function POST(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+  return manejarEventos(request, true);
+}
+
 export async function PATCH(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   let body: {
     portfolioId?: string;
     eventId?: string;
@@ -866,7 +1022,11 @@ export async function PATCH(request: NextRequest) {
       .from("onchain_events")
       .update({ status: "dismissed", ingested_at: new Date().toISOString() })
       .eq("id", eventId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      // Detalle de Postgres al log del servidor; al navegador, genérico.
+      console.error("onchain/events PATCH dismiss:", error.message);
+      return NextResponse.json({ error: "No se pudo descartar el evento." }, { status: 500 });
+    }
     return NextResponse.json({ ok: true });
   }
 

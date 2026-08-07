@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
+import { validateCsrf } from "@/lib/security/csrf";
 
 /**
  * ADOPCIÓN de una posición on-chain preexistente (migración).
@@ -83,6 +84,9 @@ const TX_TYPE_BY_KIND: Record<string, { txType: string; positionType: string }> 
 };
 
 export async function POST(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   let body: {
     portfolioId?: string;
     onchainId?: string;

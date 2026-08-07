@@ -7,7 +7,7 @@ import {
   isProductionEnvironment,
 } from "@/lib/auth/session";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type RegisterBody = {
   fullName?: string;
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const ipLimit = checkRateLimit(`auth-register:ip:${clientIp}`, { limit: 10, windowMs: 60_000 });
     if (!ipLimit.allowed) {
       return NextResponse.json(

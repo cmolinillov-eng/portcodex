@@ -4,7 +4,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { recordAdminAudit } from "@/lib/security/admin-audit";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type UpdateManagerBody = {
   portfolioId?: string;
@@ -56,7 +56,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `admin-assign-manager:${access.userId ?? "anon"}:${clientIp}`,
       { limit: 30, windowMs: 60_000 },

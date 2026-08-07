@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type ResetPasswordBody = {
   accessToken?: string;
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "La nueva contraseña debe tener al menos 8 caracteres." }, { status: 400 });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const ipLimit = checkRateLimit(`auth-reset-password:ip:${clientIp}`, { limit: 20, windowMs: 60_000 });
     if (!ipLimit.allowed) {
       return NextResponse.json(

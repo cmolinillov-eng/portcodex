@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
+import { validateCsrf } from "@/lib/security/csrf";
 
 /**
  * Gestión de wallets on-chain del portfolio (portfolio_wallets).
@@ -33,11 +34,18 @@ export async function GET(request: NextRequest) {
     .select("id, chain_kind, address, label, is_active")
     .eq("portfolio_id", portfolioId)
     .order("chain_kind");
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // Detalle de Postgres al log del servidor; al navegador, mensaje genérico.
+    console.error("wallet/manage GET:", error.message);
+    return NextResponse.json({ error: "No se pudieron leer las wallets." }, { status: 500 });
+  }
   return NextResponse.json({ wallets: data ?? [] });
 }
 
 export async function POST(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   let body: { portfolioId?: string; chainKind?: string; address?: string; label?: string };
   try {
     body = await request.json();
@@ -65,13 +73,21 @@ export async function POST(request: NextRequest) {
     .select("id, chain_kind, address, label, is_active")
     .single();
   if (error) {
-    const msg = error.message.includes("duplicate") ? "Esa dirección ya está añadida a este portfolio." : error.message;
+    console.error("wallet/manage POST:", error.message);
+    // El caso de duplicado sí se nombra: es información que el usuario necesita
+    // y no revela nada del esquema. El resto sale genérico.
+    const msg = error.message.includes("duplicate")
+      ? "Esa dirección ya está añadida a este portfolio."
+      : "No se pudo añadir la wallet.";
     return NextResponse.json({ error: msg }, { status: 400 });
   }
   return NextResponse.json({ wallet: data });
 }
 
 export async function PATCH(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   let body: { portfolioId?: string; walletId?: string; isActive?: boolean; label?: string };
   try {
     body = await request.json();
@@ -100,6 +116,9 @@ export async function PATCH(request: NextRequest) {
     .eq("portfolio_id", portfolioId) // evita tocar wallets de otro portfolio
     .select("id, chain_kind, address, label, is_active")
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error("wallet/manage PATCH:", error.message);
+    return NextResponse.json({ error: "No se pudo actualizar la wallet." }, { status: 400 });
+  }
   return NextResponse.json({ wallet: data });
 }

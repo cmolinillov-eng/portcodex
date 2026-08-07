@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { checkServiceAuth } from "@/lib/auth/service-auth";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 import { syncPortfolioLive } from "@/lib/onchain/sync";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       // El cron comparte cubo propio por portfolio: refrescar N clientes
       // seguidos no debe agotar el límite de nadie.

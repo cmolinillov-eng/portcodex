@@ -33,9 +33,21 @@ function sanitizeText(value: string | null | undefined): string {
   return (value ?? "").trim();
 }
 
+/**
+ * Un rol que no se reconoce (nulo, vacío, corrupto, o de una migración futura
+ * que aún no se ha desplegado aquí) cae al rol de MENOS privilegio.
+ *
+ * Antes caía en `autonomo`, que tiene `canOperate = true`: un perfil con el rol
+ * a nulo podía operar sobre su cartera. Un valor por defecto tiene que fallar
+ * cerrado; si algún perfil legítimo pierde permisos por esto, se arregla
+ * poniéndole su rol de verdad, que es exactamente lo que debe pasar.
+ *
+ * Comprobado antes de cambiarlo: en la tabla `profiles` de producción solo hay
+ * `cliente` y `admin`, ninguno nulo ni vacío, así que no afecta a nadie hoy.
+ */
 function normalizeRole(value: string | null | undefined): ViewerRole {
   if (value === "admin" || value === "cliente" || value === "autonomo") return value;
-  return "autonomo";
+  return "cliente";
 }
 
 function getAuthClient(): SupabaseClient {

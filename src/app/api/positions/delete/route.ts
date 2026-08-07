@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type DeletePositionPayload = {
   portfolioId?: string;
@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `positions-delete:${access.userId ?? "anon"}:${portfolioId}:${clientIp}`,
       { limit: 20, windowMs: 60_000 },

@@ -8,7 +8,7 @@ import {
   isProductionEnvironment,
 } from "@/lib/auth/session";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 import { ensureOwnedPortfoliosForProfiles } from "@/lib/portfolios/ensure-owned-portfolios";
 
 type LoginBody = {
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Usuario y contraseña son obligatorios." }, { status: 400 });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const ipLimit = checkRateLimit(`auth-login:ip:${clientIp}`, { limit: 20, windowMs: 60_000 });
     if (!ipLimit.allowed) {
       return NextResponse.json(
@@ -97,6 +97,31 @@ export async function POST(request: NextRequest) {
       { limit: 6, windowMs: 5 * 60_000 },
     );
     if (!identifierLimit.allowed) {
+      return NextResponse.json(
+        { error: "Demasiados intentos de inicio de sesión. Inténtalo de nuevo en unos minutos." },
+        { status: 429 },
+      );
+    }
+
+    // Techo por CUENTA, sin la IP en la clave. Los dos cubos de arriba llevan la
+    // IP dentro, así que un atacante que rote de origen estrena cubo en cada
+    // petición y el límite deja de existir: es exactamente el ataque de fuerza
+    // bruta contra la contraseña de un cliente concreto.
+    //
+    // El límite es generoso a propósito (40 en 15 min): al no llevar IP, un
+    // atacante puede dejar una cuenta bloqueada un rato golpeándola. Se acepta
+    // ese riesgo —la espera es de minutos y la cuenta no se pierde— a cambio de
+    // que la contraseña no se pueda tantear sin techo. Un usuario legítimo no
+    // llega a 40 fallos en un cuarto de hora.
+    //
+    // OJO: este contador vive en memoria del lambda, así que el techo real se
+    // multiplica por el número de instancias. Ver la nota de `rate-limit.ts`:
+    // el arreglo de verdad pide un contador compartido.
+    const cuentaLimit = checkRateLimit(
+      `auth-login:cuenta:${identifier.toLowerCase()}`,
+      { limit: 40, windowMs: 15 * 60_000 },
+    );
+    if (!cuentaLimit.allowed) {
       return NextResponse.json(
         { error: "Demasiados intentos de inicio de sesión. Inténtalo de nuevo en unos minutos." },
         { status: 429 },

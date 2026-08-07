@@ -432,17 +432,25 @@ export function OnchainLivePanel({
     return () => { cancelled = true; };
   }, [portfolioId]);
 
-  // AUTO-INGESTA: el GET de eventos procesa los pendientes de posiciones
-  // enlazadas (harvests, depósitos, reinversiones) y escribe la contabilidad.
+  // AUTO-INGESTA: procesa los eventos pendientes de posiciones enlazadas
+  // (harvests, depósitos, reinversiones) y escribe la contabilidad.
   // Al retirarse la bandeja (HarvestInbox) nadie llamaba ya a este endpoint y
   // los eventos quedaban pendientes para siempre — el harvest no sumaba nunca.
   // Si ingiere algo, recarga para que header/lista reflejen los números nuevos.
+  //
+  // Va por POST a propósito: esto ESCRIBE. Como GET era una URL navegable y
+  // `SameSite=Lax` no frena la navegación de nivel superior, bastaba con que un
+  // gestor pulsara `…/api/onchain/events?portfolioId=…` desde un correo para
+  // disparar la ingesta sobre la cartera de un cliente. El POST lleva cabecera
+  // `Origin` y la ruta lo comprueba con `validateCsrf`.
   useEffect(() => {
     if (!portfolioId) return;
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/onchain/events?portfolioId=${encodeURIComponent(portfolioId)}`);
+        const res = await fetch(`/api/onchain/events?portfolioId=${encodeURIComponent(portfolioId)}`, {
+          method: "POST",
+        });
         const body = (await res.json()) as { autoIngested?: number };
         if (!cancelled && res.ok && (body.autoIngested ?? 0) > 0) {
           window.location.reload();

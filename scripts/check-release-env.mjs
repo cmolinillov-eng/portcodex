@@ -20,6 +20,12 @@ const recommended = [
   // Sin estas dos el bypass de servicio queda INERTE, que es el estado seguro:
   // el cron no puede leer ni escribir nada. Se declaran aquí para que se sepa
   // que existen, no porque falten para arrancar.
+  //
+  // SERVICE_PORTFOLIO_IDS es la que de verdad manda: sin ella, `checkServiceAuth`
+  // no concede NADA a ningún secreto, y el snapshot diario responde 401 sin
+  // capturar. Si el patrimonio deja de avanzar de noche, mirar aquí primero — es
+  // un fallo mudo: no hay error en ninguna pantalla, simplemente la curva se
+  // queda quieta y las carteras que nadie visita se congelan durante semanas.
   "CRON_WRITE_SECRET",
   "SERVICE_PORTFOLIO_IDS",
 ];

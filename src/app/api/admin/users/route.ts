@@ -4,7 +4,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
 import { recordAdminAudit } from "@/lib/security/admin-audit";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type AppRole = "autonomo" | "admin" | "cliente";
 
@@ -137,7 +137,9 @@ async function assertManagerCanBeAssigned(
     .maybeSingle();
 
   if (managerQuery.error) {
-    throw new Error(managerQuery.error.message);
+    // Detalle de Postgres al log; el mensaje que viaja al navegador, genérico.
+    console.error("admin/users comprobación de gestor:", managerQuery.error.message);
+    throw new Error("No se pudo comprobar el gestor indicado.");
   }
 
   const manager = (managerQuery.data ?? null) as ProfileRoleRow | null;
@@ -190,7 +192,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Solo el administrador principal puede crear usuarios." }, { status: 403 });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `admin-create-user:${access.userId}:${clientIp}`,
       { limit: 10, windowMs: 60_000 },
@@ -308,7 +310,8 @@ export async function POST(request: NextRequest) {
         .update({ manager_id: profileId })
         .in("id", assignPortfolioIds);
       if (assignQuery.error) {
-        throw new Error(`Usuario creado, pero no se pudieron asignar portfolios: ${assignQuery.error.message}`);
+        console.error("admin/users asignar portfolios:", assignQuery.error.message);
+        throw new Error("Usuario creado, pero no se pudieron asignar los portfolios.");
       }
     }
 
@@ -361,7 +364,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `admin-update-user:${access.userId ?? "anon"}:${clientIp}`,
       { limit: 20, windowMs: 60_000 },
@@ -534,7 +537,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Solo el administrador principal puede eliminar usuarios." }, { status: 403 });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `admin-delete-user:${access.userId}:${clientIp}`,
       { limit: 8, windowMs: 60_000 },

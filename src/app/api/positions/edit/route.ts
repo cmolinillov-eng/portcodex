@@ -4,9 +4,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 import { autoClosePositionIfEmpty } from "@/lib/positions/auto-close";
 import { applyTxToState, type TokenState } from "@/lib/positions/edit-state";
+
+/**
+ * Mensajes que esta ruta SÍ puede enseñar al navegador. Distinguen si la
+ * edición llegó a escribir o no, que es lo que el operador necesita saber, sin
+ * arrastrar el texto de Postgres.
+ */
+const ERROR_LECTURA = "No se pudo leer el estado actual de la posición.";
+const ERROR_ESCRITURA = "No se pudo guardar la edición.";
 
 type EditPositionPayload = {
   portfolioId?: string;
@@ -81,7 +89,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateLimit = checkRateLimit(
       `positions-edit:${access.userId ?? "anon"}:${portfolioId}:${clientIp}`,
       { limit: 30, windowMs: 60_000 },
@@ -109,7 +117,9 @@ export async function POST(request: NextRequest) {
       .is("deleted_at", null);
 
     if (existingTxs.error) {
-      throw new Error(`No se pudo leer el estado actual: ${existingTxs.error.message}`);
+      // Detalle de Postgres al log del servidor; al navegador, solo el qué.
+      console.error("positions/edit leer estado:", existingTxs.error.message);
+      throw new Error(ERROR_LECTURA);
     }
 
     const currentState = new Map<string, TokenState>();
@@ -285,7 +295,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (insertError) {
-      throw new Error(`No se pudo guardar la edición: ${insertError.message}`);
+      console.error("positions/edit insert:", insertError.message);
+      throw new Error(ERROR_ESCRITURA);
     }
 
     // Auto-cierre: si la edición dejó la posición vacía (todos los targets a 0),
@@ -317,8 +328,15 @@ export async function POST(request: NextRequest) {
       insertedRows: rows.length,
     });
   } catch (error) {
-    if (process.env.NODE_ENV !== "production") console.error("Edit position error:", error);
-    const message = error instanceof Error ? error.message : "Error inesperado al editar la posición.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    console.error("Edit position error:", error);
+    // Solo se devuelven los mensajes que esta ruta redacta a propósito. Antes
+    // salía `error.message` tal cual: un fallo de Postgres viajaba al navegador
+    // con nombres de tabla, columna y restricción.
+    const message = error instanceof Error ? error.message : "";
+    const seguro = message === ERROR_LECTURA || message === ERROR_ESCRITURA;
+    return NextResponse.json(
+      { error: seguro ? message : "Error inesperado al editar la posición." },
+      { status: 400 },
+    );
   }
 }

@@ -6,7 +6,7 @@ import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabas
 import { computeReinvestSplit, type ReinvestEventToken, type SwapLeg } from "@/lib/onchain/reinvest-split";
 import { ensurePortfolioAccess, getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type OperationType =
   | "base_deposit"
@@ -1788,7 +1788,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: accessCheck.error }, { status: accessCheck.status });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateKey = `transactions-write:${access.userId ?? "anon"}:${payload.portfolioId}:${clientIp}`;
     const rateLimit = checkRateLimit(rateKey, { limit: 60, windowMs: 60_000 });
     if (!rateLimit.allowed) {
@@ -1834,7 +1834,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (error) {
-      throw new Error(`No se pudo guardar en BD: ${error.message}`);
+      // El mensaje de Postgres (tabla, columna, restricción) se queda en el log
+      // del servidor. La lista `isSafeMessage` de más abajo deja pasar todo lo
+      // que empieza por "No se pudo", así que incrustarlo aquí lo enviaba
+      // íntegro al navegador.
+      console.error("transactions POST insert:", error.message);
+      throw new Error("No se pudo guardar la operación en la base de datos.");
     }
 
     let insertedSnapshots = 0;

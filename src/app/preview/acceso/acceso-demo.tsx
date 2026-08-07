@@ -14,6 +14,15 @@ const ESTADOS: { key: EstadoAcceso; label: string }[] = [
 ];
 
 /**
+ * Correo FICTICIO a propósito: `ejemplo.invalid` es un dominio reservado por la
+ * RFC 2606, así que nunca podrá existir. Aquí había un identificador de acceso
+ * REAL, y estas maquetas se compilan a chunks que se despliegan aunque
+ * `/preview/*` haga `notFound()` en producción: cualquier dato de verdad que se
+ * escriba en ellas acaba publicado en el navegador.
+ */
+const IDENTIFICADOR_DEMO = "usuario@ejemplo.invalid";
+
+/**
  * Los tres estados del formulario, forzados por `?estado=`. El estado «vacío»
  * es además INTERACTIVO: al enviar simula una espera de 1,8 s y termina en el
  * error genérico, que es justo el recorrido que hay que poder mirar entero.
@@ -29,7 +38,7 @@ export function AccesoDemo({ estado }: { estado: EstadoAcceso }) {
       <AccessScreen
         isSubmitting={forced ? estado === "enviando" : busy}
         errorMessage={forced ? (estado === "error" ? GENERIC_ACCESS_ERROR : null) : error}
-        initialIdentifier={forced ? "m.fita@portcodex.com" : ""}
+        initialIdentifier={forced ? IDENTIFICADOR_DEMO : ""}
         onSubmit={async () => {
           setError(null);
           setBusy(true);

@@ -47,6 +47,30 @@ function allowedPortfolios(): string[] {
     .filter(Boolean);
 }
 
+/**
+ * Las carteras que el servicio puede tocar, para los procesos que iteran (el
+ * cron de snapshots). Sin esta lista, un cron que recorriera `portfolios` a
+ * pelo trabajaría sobre TODAS las carteras de TODOS los clientes: el bypass de
+ * servicio dejaría de estar acotado, que es justo lo que este módulo evita.
+ */
+export function getServicePortfolioIds(): string[] {
+  return allowedPortfolios();
+}
+
+/**
+ * Extrae el secreto de servicio de la petición. Se admiten dos formas porque
+ * hay dos llamantes: los workers propios mandan `x-cron-secret`, y el
+ * planificador de Vercel manda `Authorization: Bearer <secreto>` sin dejar
+ * elegir la cabecera.
+ */
+export function readServiceSecret(headers: Headers): string | null {
+  const direct = (headers.get("x-cron-secret") ?? "").trim();
+  if (direct) return direct;
+  const bearer = (headers.get("authorization") ?? "").match(/^Bearer\s+(.+)$/i);
+  const token = bearer ? bearer[1].trim() : "";
+  return token || null;
+}
+
 export interface ServiceAuth {
   /** El llamante ha presentado un secreto válido para esta cartera. */
   isService: boolean;

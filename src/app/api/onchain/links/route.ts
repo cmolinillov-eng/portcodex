@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getViewerAccess, ensurePortfolioAccess } from "@/lib/auth/viewer-access";
 import { getSupabaseServiceClient, getSupabaseServerClient } from "@/lib/supabase/server";
+import { validateCsrf } from "@/lib/security/csrf";
 
 /**
  * Enlaces posición on-chain ↔ posición contable (position_links, Fase B del
@@ -55,7 +56,10 @@ export async function GET(request: NextRequest) {
     // Cualquier otro fallo (Supabase caído, timeout…) debe ser un ERROR: si
     // devolviéramos links vacíos, el cliente creería que no hay nada enlazado
     // y el auto-enlace heurístico podría pisar enlaces correctos del gestor.
-    return NextResponse.json({ error: lastError }, { status: 500 });
+    // El detalle de Postgres (tabla, columna, restricción) se queda en el log
+    // del servidor: al navegador solo va un mensaje genérico.
+    console.error("onchain/links GET:", lastError);
+    return NextResponse.json({ error: "No se pudieron leer los enlaces." }, { status: 500 });
   }
   return NextResponse.json({ links: (data ?? []) as LinkRow[] });
 }
@@ -74,6 +78,9 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Body inválido." }, { status: 400 });
   }
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   const portfolioId = (body.portfolioId ?? "").trim();
   const onchainId = (body.onchainId ?? "").trim();
   const protocol = (body.protocol ?? "").trim();
@@ -102,11 +109,17 @@ export async function POST(request: NextRequest) {
     )
     .select("id, onchain_id, protocol, position_id, position_type, auto_ingest")
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  if (error) {
+    console.error("onchain/links POST:", error.message);
+    return NextResponse.json({ error: "No se pudo guardar el enlace." }, { status: 400 });
+  }
   return NextResponse.json({ link: data });
 }
 
 export async function DELETE(request: NextRequest) {
+  const csrfCheck = validateCsrf(request);
+  if (!csrfCheck.ok) return NextResponse.json({ error: csrfCheck.error }, { status: csrfCheck.status });
+
   const portfolioId = (request.nextUrl.searchParams.get("portfolioId") ?? "").trim();
   const linkId = (request.nextUrl.searchParams.get("linkId") ?? "").trim();
 
@@ -120,6 +133,9 @@ export async function DELETE(request: NextRequest) {
     .delete()
     .eq("id", linkId)
     .eq("portfolio_id", portfolioId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error("onchain/links DELETE:", error.message);
+    return NextResponse.json({ error: "No se pudo quitar el enlace." }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

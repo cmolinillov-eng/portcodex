@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient, getSupabaseServiceClient } from "@/lib/supabase/server";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { validateCsrf } from "@/lib/security/csrf";
-import { checkRateLimit } from "@/lib/security/rate-limit";
+import { checkRateLimit, getClientIp } from "@/lib/security/rate-limit";
 
 type CoinGeckoPriceResponse = Record<string, { usd?: number }>;
 
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No tienes portfolios asignados para actualizar precios." }, { status: 403 });
     }
 
-    const clientIp = (request.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ?? "unknown";
+    const clientIp = getClientIp(request);
     const rateKey = `prices-refresh:${access.userId ?? "anon"}:${clientIp}`;
     const rateLimit = checkRateLimit(rateKey, { limit: 2, windowMs: 60_000 });
     if (!rateLimit.allowed) {
