@@ -112,6 +112,28 @@ export function tokenAmount(value: number): string {
 }
 
 /**
+ * PRECIO UNITARIO de un token. No es un importe de cartera, y por eso no vale
+ * `money()`: un bitcoin cotiza a 80.811 US$ y un token de polvo a 0,0042 US$, y
+ * las dos cifras tienen que poder leerse en la misma columna. Los decimales
+ * dependen de la MAGNITUD del precio, igual que en `tokenAmount`:
+ *
+ *   ≥ 1.000   →  sin decimales   (80.811 US$)
+ *   ≥ 1       →  2 decimales     (1,02 US$)
+ *   ≥ 0,01    →  4 decimales     (0,0421 US$)
+ *   < 0,01    →  6 decimales     (0,000042 US$)
+ *
+ * Un precio que no existe —cero, negativo o no finito— NO se imprime como
+ * «0,00 US$»: eso afirma que el token no vale nada. Se devuelve «—», que es lo
+ * que el documento debe enseñar cuando el dato no está. Pasa en cuanto una
+ * posición es agregada (un LP no tiene «precio de entrada»: tiene dos).
+ */
+export function unitPrice(value: number, currency: Currency = "USD"): string {
+  if (!Number.isFinite(value) || value <= 0) return "—";
+  const decimals = value >= 1000 ? 0 : value >= 1 ? 2 : value >= 0.01 ? 4 : 6;
+  return `${group(value, decimals, decimals)} ${CURRENCY_SUFFIX[currency]}`;
+}
+
+/**
  * Número suelto: el que no es dinero, ni porcentaje, ni cantidad de token. Hoy
  * solo el factor de salud de un lending («Factor de salud 2,14»).
  *
@@ -178,6 +200,18 @@ export function longDate(iso: string): string {
   })
     .format(new Date(t))
     .replace(".", "");
+}
+
+/**
+ * Fecha, año y hora, para la cabecera y el pie de un DOCUMENTO: «7 ago 2026,
+ * 10:08». Un informe patrimonial se guarda, se imprime y se compara con otro de
+ * otro mes: sin año no se sabe cuál es cuál, y sin hora dos informes del mismo
+ * día parecen el mismo documento.
+ */
+export function longDateTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return `${longDate(iso)}, ${hourOf(t)}`;
 }
 
 /**
