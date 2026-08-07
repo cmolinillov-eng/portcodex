@@ -194,7 +194,16 @@ export function EvolutionChart({
         })}
       />
 
-      <div className="flex items-stretch" style={{ gap: 40, marginTop: 18 }}>
+      {/* `pcx-stack-narrow`: por debajo de 900 px el gráfico y sus indicadores
+          se APILAN. Sin esto, a 390 px la columna de indicadores (262) más el
+          hueco (40) más la escala vertical (58) suman 360 sobre 350 útiles, así
+          que al lienzo no le quedaba ancho: el SVG se dibujaba sobre ~0 px con el
+          `viewBox` intacto y la curva entera se salía hasta x=856. En un móvil, la
+          sección más importante del Resumen no enseñaba nada. */}
+      <div
+        className="pcx-evolution-row flex items-stretch pcx-stack-narrow"
+        style={{ gap: 40, marginTop: 18 }}
+      >
         <div style={{ flex: 1, minWidth: 0 }}>
           {/* Renglón reservado para el valor bajo el cursor. Se reserva SIEMPRE
               aunque esté vacío: si apareciera y desapareciera, el gráfico daría
@@ -381,11 +390,13 @@ function EvolutionStats({ stats }: { stats: EvolutionStat[] }) {
 
   return (
     <div
-      className="flex flex-col"
+      className="pcx-evolution-stats flex flex-col"
       style={{
-        width: 262,
+        // Ancho por VARIABLE: un valor en línea no lo puede cambiar una media
+        // query, y en estrecho esta columna tiene que ocupar todo el ancho.
+        width: "var(--pcx-stats-w, 262px)",
         flex: "none",
-        paddingLeft: 36,
+        paddingLeft: "var(--pcx-stats-pad, 36px)",
         paddingTop: 20,
         gap: 22,
         borderLeft: "1px solid var(--line)",

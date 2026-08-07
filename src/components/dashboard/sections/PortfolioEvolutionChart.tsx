@@ -131,7 +131,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
       {/* Header: título + rango selector */}
       <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
-          <Activity className="h-5 w-5 text-[#6FAE8F] opacity-70" aria-hidden="true" />
+          <Activity className="h-5 w-5 text-[#2F6BFF] opacity-70" aria-hidden="true" />
           <h2 className="font-designer text-xl font-semibold tracking-tight text-[var(--foreground)]">
             Evolución del patrimonio
           </h2>
@@ -142,7 +142,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
       {/* Loading state */}
       {loading ? (
         <div className="flex items-center justify-center h-52">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#6FAE8F] border-t-transparent" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-[#2F6BFF] border-t-transparent" />
         </div>
       ) : error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -214,7 +214,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
                 <p className="text-[9px] uppercase font-mono tracking-[0.18em] text-[var(--muted)] font-medium">
                   Datos
                 </p>
-                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#6FAE8F]">
+                <p className="mt-0.5 text-lg font-bold tabular-nums text-[#2F6BFF]">
                   {metrics.totalDays}
                 </p>
                 <p className="text-[10px] text-[var(--muted)] opacity-60">
@@ -260,12 +260,12 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
                 {lastPoint ? (
                   <ReferenceLine
                     y={lastPoint.deposited}
-                    stroke="rgba(111,174,143,0.35)"
+                    stroke="rgba(47, 107, 255,0.35)"
                     strokeDasharray="6 4"
                     label={{
                       value: "Depositado",
                       position: "insideTopRight",
-                      fill: "rgba(111,174,143,0.5)",
+                      fill: "rgba(47, 107, 255,0.5)",
                       fontSize: 10,
                     }}
                   />
@@ -303,7 +303,7 @@ export function PortfolioEvolutionChart({ portfolioId }: Props) {
               <svg width="20" height="8" aria-hidden="true">
                 <line
                   x1="0" y1="4" x2="20" y2="4"
-                  stroke="rgba(111,174,143,0.5)"
+                  stroke="rgba(47, 107, 255,0.5)"
                   strokeWidth="1.5"
                   strokeDasharray="3 2"
                 />
@@ -354,7 +354,7 @@ function CustomTooltip({
         {p.harvest > 0 ? (
           <div className="flex justify-between gap-6">
             <span className="text-[var(--muted)]">Harvest</span>
-            <span className="tabular-nums text-[#6FAE8F]">{currency(p.harvest)}</span>
+            <span className="tabular-nums text-[#2F6BFF]">{currency(p.harvest)}</span>
           </div>
         ) : null}
       </div>

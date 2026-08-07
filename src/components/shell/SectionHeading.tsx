@@ -25,7 +25,17 @@ export function SectionHeading({
   spacing?: number;
 }) {
   return (
-    <div className="flex items-baseline gap-4" style={{ marginBottom: spacing }}>
+    /* `pcx-stack-narrow`: por debajo de 900 px el título, la nota y los
+       controles se APILAN en tres renglones.
+       Sin ello, los tres se repartían el ancho y el que perdía era el TÍTULO,
+       que es la jerarquía: medido a 390 px, «Evolución del patrimonio» quedaba
+       en una columna de 72 px y se partía en tres líneas. Y como este
+       componente lo usan las cuatro pantallas de cliente, el defecto se repetía
+       en cada sección de cada una. */
+    <div
+      className="flex items-baseline gap-4 pcx-stack-narrow pcx-heading-narrow"
+      style={{ marginBottom: spacing }}
+    >
       <h2 style={{ margin: 0, fontSize: "var(--text-lead)", fontWeight: 600 }}>{title}</h2>
       {note ? (
         <span style={{ fontSize: "var(--text-label)", color: "var(--faint)" }}>{note}</span>

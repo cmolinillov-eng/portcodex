@@ -32,11 +32,11 @@ export type OnchainLinkRow = {
 };
 
 const SECTION_META: Record<string, { label: string; color: string; glowClass: string; kinds: string[] }> = {
-  liquidity_pools: { label: "Liquidity Pools", color: "#6FAE8F", glowClass: "text-[#6FAE8F]", kinds: ["liquidity"] },
+  liquidity_pools: { label: "Liquidity Pools", color: "#2F6BFF", glowClass: "text-[#2F6BFF]", kinds: ["liquidity"] },
   lending: { label: "Lending", color: "#C9A45E", glowClass: "text-[#C9A45E]", kinds: ["lending_supply", "lending_borrow"] },
   staking: { label: "Staking", color: "#8CA0B3", glowClass: "text-[#8CA0B3]", kinds: ["staking", "reward"] },
   wallet: { label: "Hold", color: "#8CA0B3", glowClass: "text-[#8CA0B3]", kinds: ["wallet"] },
-  other: { label: "Otros", color: "#6FAE8F", glowClass: "text-[#6FAE8F]", kinds: ["perp", "other"] },
+  other: { label: "Otros", color: "#2F6BFF", glowClass: "text-[#2F6BFF]", kinds: ["perp", "other"] },
 };
 
 
@@ -97,8 +97,8 @@ function RangeBar({ range, label }: { range: NonNullable<LivePosition["range"]>;
   const lowerPercent = ((lower - visualMin) / visualSpan) * 100;
   const rangeWidth = ((upper - lower) / visualSpan) * 100;
 
-  const barColor = inRange ? "rgb(111,174,143)" : "rgb(206,139,130)";
-  const barColorMuted = inRange ? "rgba(111,174,143,0.25)" : "rgba(206,139,130,0.25)";
+  const barColor = inRange ? "rgb(47,107,255)" : "rgb(206,139,130)";
+  const barColorMuted = inRange ? "rgba(47, 107, 255,0.25)" : "rgba(206,139,130,0.25)";
 
   const formatNum = (n: number) =>
     n >= 100 ? n.toLocaleString("en-US", { maximumFractionDigits: 1 })
@@ -234,7 +234,7 @@ function MobilePositionCard({
           <span className="text-emerald-300">+{currency(p.unclaimedUsd)} s/reclamar</span>
         ) : null}
         {m.harvested > 0 ? (
-          <span title="Harvest total cosechado en esta posición">yield <span className="text-[#6FAE8F]">+{currency(m.harvested)}</span></span>
+          <span title="Harvest total cosechado en esta posición">yield <span className="text-[#2F6BFF]">+{currency(m.harvested)}</span></span>
         ) : null}
         {m.hf != null ? (
           <span>HF <span className={m.hf < 1.2 ? "text-red-400" : m.hf < 2 ? "text-amber-300" : "text-emerald-400"}>{m.hf.toFixed(2)}</span></span>
@@ -329,7 +329,7 @@ function AdoptInline({
         type="button"
         onClick={adopt}
         disabled={busy || !usd.trim()}
-        className="rounded-md border border-[var(--line)] px-1.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[rgba(111,174,143,0.45)] hover:text-[var(--accent-primary)] disabled:opacity-40"
+        className="rounded-md border border-[var(--line)] px-1.5 py-1 text-xs text-[var(--muted)] transition-colors hover:border-[rgba(47, 107, 255,0.45)] hover:text-[var(--accent-primary)] disabled:opacity-40"
         aria-label="Guardar depositado de esta posición"
       >
         {busy ? "…" : "✓"}
@@ -509,7 +509,7 @@ export function OnchainSections({
                             {p.label}
                             {linkByOnchain.get(p.id)?.auto_ingest ? (
                               <span
-                                className="inline-flex items-center rounded-full border border-[rgba(111,174,143,0.4)] bg-[rgba(111,174,143,0.08)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--accent-primary)]"
+                                className="inline-flex items-center rounded-full border border-[rgba(47, 107, 255,0.4)] bg-[rgba(47, 107, 255,0.08)] px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.08em] text-[var(--accent-primary)]"
                                 title="Ya contabilizada en el patrimonio (cabecera). No se suma dos veces."
                               >
                                 ✓ contabilizada
@@ -601,7 +601,7 @@ export function OnchainSections({
                               ) : null}
                               {harvested > 0 ? (
                                 <span
-                                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#6FAE8F]"
+                                  className="inline-flex items-center gap-1 whitespace-nowrap text-xs tabular-nums text-[#2F6BFF]"
                                   title="Harvest total cosechado en esta posición (histórico contable)"
                                 >
                                   <BadgeDollarSign className="h-3.5 w-3.5" aria-hidden="true" />

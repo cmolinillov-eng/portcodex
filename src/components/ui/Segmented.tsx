@@ -1,9 +1,18 @@
 "use client";
 
 /**
- * Control segmentado del sistema «Instrumento»: pista hairline sobre superficie
- * elevada; el segmento activo es una placa verde suave con tinta clara. Mono,
- * compacto. Usado en el selector de rango temporal y el de ejercicio fiscal.
+ * Control segmentado: pista de un píxel sobre superficie elevada, y el segmento
+ * activo con el fondo azul suave del sistema.
+ *
+ * Dos cosas cambiaron aquí y las dos venían del sistema anterior:
+ *
+ *  1. El segmento activo era una «placa verde suave» con el verde derogado,
+ *     en el selector de rango del gráfico de evolución — o sea, a la vista en
+ *     el Resumen. Pasa a `--accent-soft`, que es justo lo que el sistema
+ *     define como «fondo de navegación activa, chips».
+ *  2. Iba en MONOESPACIADA. La regla tipográfica del proyecto dice que la mono
+ *     es auxiliar y solo funcional —wallets, hashes, identificadores— y «nunca
+ *     titulares, claims, navegación, botones ni cifras». Esto es navegación.
  */
 export function Segmented<T extends string>({
   options,
@@ -31,9 +40,9 @@ export function Segmented<T extends string>({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(o.key)}
-            className={`rounded-md px-3 py-1.5 font-mono text-xs font-medium tracking-wide transition-colors ${
+            className={`rounded-md px-3 py-1.5 text-xs font-medium tabular-nums transition-colors ${
               active
-                ? "bg-[rgba(111,174,143,0.16)] text-[var(--foreground)]"
+                ? "bg-[var(--accent-soft)] text-[var(--foreground)]"
                 : "text-[var(--muted)] hover:text-[var(--foreground)]"
             }`}
           >

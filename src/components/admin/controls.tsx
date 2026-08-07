@@ -10,7 +10,7 @@ import { useState, type ReactNode } from "react";
  * formularios y acciones destructivas, así que sus piezas viven aquí y no en
  * `components/shell`: no las usa nadie más. Todo sale de los tokens de
  * `globals.css` —las clases heredadas `.btn-primary` y `.input-base` son de la
- * etapa verde y siguen cableando `#0e1512` y `rgb(111 174 143)`, que están
+ * etapa verde y siguen cableando `#0e1512` y `rgb(47 107 255)`, que están
  * derogados.
  *
  * Medidas tomadas de web/design/07-administracion.html y 08-editar-usuario.html.

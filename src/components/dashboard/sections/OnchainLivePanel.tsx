@@ -123,7 +123,7 @@ function WalletManager({ portfolioId }: { portfolioId: string }) {
             type="button"
             onClick={() => toggleActive(w)}
             className={`shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] ${w.is_active
-              ? "border-[rgba(111,174,143,0.35)] bg-[rgba(111,174,143,0.08)] text-emerald-300"
+              ? "border-[rgba(47, 107, 255,0.35)] bg-[rgba(47, 107, 255,0.08)] text-emerald-300"
               : "border-[var(--line)] text-[var(--muted)]"}`}
           >
             {w.is_active ? "Activa" : "Inactiva"}
@@ -292,7 +292,7 @@ function HarvestInbox({
   }
 
   return (
-    <div className="mb-5 rounded-xl border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.04)] p-4">
+    <div className="mb-5 rounded-xl border border-[rgba(47, 107, 255,0.25)] bg-[rgba(47, 107, 255,0.04)] p-4">
       <div className="flex items-center gap-2 mb-2">
         <Sprout className="h-4 w-4 text-emerald-400" aria-hidden="true" />
         <h3 className="text-sm font-semibold text-[var(--foreground)]">

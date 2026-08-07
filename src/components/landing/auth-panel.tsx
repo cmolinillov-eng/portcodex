@@ -54,7 +54,7 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
       >
         <div
           className="flex h-full flex-col bg-[rgba(5,8,18,0.94)] backdrop-blur-2xl border-l border-white/[0.07]"
-          style={{ boxShadow: "-20px 0 80px rgba(0,0,0,0.85), -4px 0 0 rgba(111,174,143,0.04)" }}
+          style={{ boxShadow: "-20px 0 80px rgba(0,0,0,0.85), -4px 0 0 rgba(47, 107, 255,0.04)" }}
         >
           {/* Iridescent ola top border */}
           <div className="ola-border flex-shrink-0" />
@@ -100,7 +100,7 @@ export function AuthPanel({ view, onClose }: AuthPanelProps) {
           {/* Form — scrollable */}
           <div className="flex-1 overflow-y-auto px-7 py-6 min-h-0">
             <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-6"
-                 style={{ boxShadow: "inset 0 1px 0 rgba(111,174,143,0.06)" }}>
+                 style={{ boxShadow: "inset 0 1px 0 rgba(47, 107, 255,0.06)" }}>
               {isOpen && (
                 <LoginForm
                   initialView={view === "recover" ? "recover" : view === "register" ? "register" : "login"}

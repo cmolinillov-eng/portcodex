@@ -680,7 +680,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
   const compositionStyles = useMemo(() => {
     // Paleta Obsidian Ledger: wallet=champán, staking=iris, lp=esmeralda, lending=ámbar
-    const palette = ["#6FAE8F", "#8CA0B3", "#6FAE8F", "#C9A45E", "#8CA0B3"];
+    const palette = ["#2F6BFF", "#8CA0B3", "#2F6BFF", "#C9A45E", "#8CA0B3"];
     const total = sectionTotals.reduce((sum, item) => sum + item.value, 0);
     if (total <= 0) {
       return {
@@ -1779,7 +1779,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
         role={viewer.role}
       />
       <main className="page-shell min-w-0 flex-1">
-      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(111,174,143,0.06)]" aria-hidden="true" />
+      <div className="bg-orb -top-20 -left-20 h-72 w-72 bg-[rgba(47, 107, 255,0.06)]" aria-hidden="true" />
       <div className="bg-orb top-28 right-0 h-80 w-80 bg-[rgba(140,160,179,0.05)]" aria-hidden="true" />
 
       <section className="page-content" id="dashboard-top">
@@ -1872,10 +1872,10 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
         <Link
           href={`/fiscal${portfolioContext?.portfolioId ? `?portfolio=${portfolioContext.portfolioId}` : ""}`}
-          className="group flex items-center justify-between gap-4 rounded-2xl border border-[rgba(111,174,143,0.28)] bg-[rgba(111,174,143,0.06)] px-5 py-4 transition-colors hover:border-[rgba(111,174,143,0.5)] hover:bg-[rgba(111,174,143,0.1)]"
+          className="group flex items-center justify-between gap-4 rounded-2xl border border-[rgba(47, 107, 255,0.28)] bg-[rgba(47, 107, 255,0.06)] px-5 py-4 transition-colors hover:border-[rgba(47, 107, 255,0.5)] hover:bg-[rgba(47, 107, 255,0.1)]"
         >
           <div className="flex items-center gap-3.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(111,174,143,0.3)] bg-[rgba(111,174,143,0.1)] text-[#6FAE8F]">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(47, 107, 255,0.3)] bg-[rgba(47, 107, 255,0.1)] text-[#2F6BFF]">
               <Scale className="h-5 w-5" />
             </span>
             <div>
@@ -1885,7 +1885,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
               </p>
             </div>
           </div>
-          <span className="flex items-center gap-1 text-xs font-medium text-[#6FAE8F]">
+          <span className="flex items-center gap-1 text-xs font-medium text-[#2F6BFF]">
             Abrir
             <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
           </span>
@@ -2323,7 +2323,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "harvest" ? (
-                <div className="space-y-3 rounded-xl border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.06)] p-3">
+                <div className="space-y-3 rounded-xl border border-[rgba(47, 107, 255,0.25)] bg-[rgba(47, 107, 255,0.06)] p-3">
                   <p className="text-xs text-[var(--muted)]">
                     Registra el yield ganado (USD). La app reinvierte automáticamente el 100% de ese valor en la posición destino.
                   </p>
@@ -2655,7 +2655,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                       }));
                     };
                     return (
-                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.06)] px-3 py-2 text-sm">
+                      <div className="col-span-full flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgba(47, 107, 255,0.25)] bg-[rgba(47, 107, 255,0.06)] px-3 py-2 text-sm">
                         <div>
                           <span className="text-[var(--muted)]">Capital disponible: </span>
                           <span className="font-semibold text-[var(--brand)]">{currency(availableUsd)}</span>
@@ -2668,7 +2668,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                         <button
                           type="button"
                           onClick={fillFullBalance}
-                          className="rounded-md border border-[rgba(111,174,143,0.45)] bg-[rgba(111,174,143,0.10)] px-2.5 py-1 text-xs text-[#6FAE8F] transition-colors hover:bg-[rgba(111,174,143,0.18)]"
+                          className="rounded-md border border-[rgba(47, 107, 255,0.45)] bg-[rgba(47, 107, 255,0.10)] px-2.5 py-1 text-xs text-[#2F6BFF] transition-colors hover:bg-[rgba(47, 107, 255,0.18)]"
                         >
                           Usar saldo completo
                         </button>
@@ -2879,7 +2879,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                               placeholder="USDC"
                             />
                           </label>
-                          <div className="sm:col-span-2 rounded-lg border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.06)] p-3">
+                          <div className="sm:col-span-2 rounded-lg border border-[rgba(47, 107, 255,0.25)] bg-[rgba(47, 107, 255,0.06)] p-3">
                             <div className="flex items-center justify-between text-xs text-[var(--muted)] mb-2">
                               <span>Split entre tokens (% en {form.rebalanceTargetTokenSymbol || "Token A"})</span>
                               <span className="font-semibold text-[var(--brand)]">
@@ -3187,7 +3187,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
               ) : null}
 
               {form.operationType === "liquidity_pool" ? (
-                <div className="grid gap-3 rounded-xl border border-[rgba(111,174,143,0.25)] bg-[rgba(111,174,143,0.06)] p-3 sm:grid-cols-2">
+                <div className="grid gap-3 rounded-xl border border-[rgba(47, 107, 255,0.25)] bg-[rgba(47, 107, 255,0.06)] p-3 sm:grid-cols-2">
                   <p className="col-span-full text-xs text-[var(--muted)]">
                     Liquidity Pool V3: dos tokens + rango. Con esto se habilita el cálculo de IL automáticamente.
                   </p>
@@ -3299,7 +3299,7 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
                 type="button"
                 onClick={submitOperation}
                 disabled={isSaving}
-                className="rounded-lg border border-[rgba(111,174,143,0.5)] bg-[rgba(111,174,143,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(111,174,143,0.3)] disabled:opacity-60"
+                className="rounded-lg border border-[rgba(47, 107, 255,0.5)] bg-[rgba(47, 107, 255,0.2)] px-4 py-2 text-sm font-medium hover:bg-[rgba(47, 107, 255,0.3)] disabled:opacity-60"
               >
                 {isSaving ? "Guardando..." : "Guardar operación"}
               </button>
