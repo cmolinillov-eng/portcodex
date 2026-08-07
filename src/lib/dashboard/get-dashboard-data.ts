@@ -838,6 +838,80 @@ type DepositOverrideRow = {
  * reales). Si la columna no existe aún (migración phase27 pendiente),
  * devuelve [] silenciosamente.
  */
+/**
+ * Valor de cada posición SEGÚN LA CADENA, cruzando `position_links` con el
+ * último snapshot on-chain.
+ *
+ * La clave del mapa es la de la posición CONTABLE, para que quien la consulte no
+ * tenga que saber nada de identificadores on-chain. El valor incluye lo «sin
+ * reclamar»: está en la posición, generado y sin recoger, y la cabecera del
+ * producto ya lo cuenta — dejarlo fuera aquí volvería a descuadrar las dos
+ * cifras, que es justo lo que esto evita.
+ *
+ * Devuelve un mapa VACÍO ante cualquier fallo: sin lectura de cadena, cada
+ * posición se queda con su valor de libro y marcada como tal. Es preferible una
+ * cifra contable declarada a una mezcla silenciosa.
+ */
+async function fetchOnchainValueByPosition(
+  allowedPortfolioIds: string[],
+): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  if (allowedPortfolioIds.length === 0) return mapa;
+
+  try {
+    const client = getSupabaseServiceClient() ?? getSupabaseServerClient();
+
+    const [enlaces, snapshots] = await Promise.all([
+      client
+        .from("position_links")
+        .select("portfolio_id, protocol, position_id, onchain_id")
+        .in("portfolio_id", allowedPortfolioIds),
+      client
+        .from("onchain_cache")
+        .select("portfolio_id, positions")
+        .in("portfolio_id", allowedPortfolioIds)
+        .eq("source", "snapshot"),
+    ]);
+
+    if (enlaces.error || snapshots.error) return mapa;
+
+    // Valor por identificador on-chain, acotado a su cartera: dos carteras
+    // podrían tener leído el mismo pool y no deben mezclarse.
+    const valorPorOnchainId = new Map<string, number>();
+    for (const fila of snapshots.data ?? []) {
+      const carteraId = String((fila as { portfolio_id: string }).portfolio_id);
+      const leidas =
+        ((fila as { positions?: { positions?: Array<{ id?: string; valueUsd?: number | null; unclaimedUsd?: number | null }> } })
+          .positions?.positions) ?? [];
+      for (const p of leidas) {
+        if (!p?.id) continue;
+        const valor = Number(p.valueUsd ?? 0) + Number(p.unclaimedUsd ?? 0);
+        if (!Number.isFinite(valor)) continue;
+        valorPorOnchainId.set(`${carteraId}::${p.id}`, valor);
+      }
+    }
+
+    for (const enlace of (enlaces.data ?? []) as Array<{
+      portfolio_id: string;
+      protocol: string | null;
+      position_id: string | null;
+      onchain_id: string | null;
+    }>) {
+      if (!enlace.onchain_id || !enlace.position_id || !enlace.protocol) continue;
+      const valor = valorPorOnchainId.get(`${enlace.portfolio_id}::${enlace.onchain_id}`);
+      if (valor === undefined) continue;
+      mapa.set(
+        positionCompositeKey(enlace.portfolio_id, enlace.protocol, enlace.position_id),
+        valor,
+      );
+    }
+  } catch {
+    /* sin cadena: cada posición se queda con su valor de libro, y marcada */
+  }
+
+  return mapa;
+}
+
 async function fetchDepositOverrides(allowedPortfolioIds: string[]): Promise<DepositOverrideRow[]> {
   if (allowedPortfolioIds.length === 0) return [];
   const serviceClient = getSupabaseServiceClient();
@@ -920,7 +994,7 @@ export async function getDashboardData(options?: {
       ? await fetchPortfolioIdsForTargetUser(targetUserId)
       : access.allowedPortfolioIds.slice(0, 1);
 
-  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, usdToEurRate, depositOverrideRows] = await Promise.all([
+  const [rows, cachedPrices, lendingTransactions, lpMetadataRows, recentActivityRows, portfolioContexts, positionTagRows, onchainValueByPosition, usdToEurRate, depositOverrideRows] = await Promise.all([
     fetchLivePositions(allowedPortfolioIds),
     fetchCachedPrices(),
     fetchLendingTransactions(allowedPortfolioIds),
@@ -928,6 +1002,7 @@ export async function getDashboardData(options?: {
     fetchRecentActivityRows(allowedPortfolioIds),
     fetchPortfolioContexts(allowedPortfolioIds),
     fetchPositionTags(allowedPortfolioIds),
+    fetchOnchainValueByPosition(allowedPortfolioIds),
     getUsdToEurRate(),
     fetchDepositOverrides(allowedPortfolioIds),
   ]);
@@ -2092,7 +2167,7 @@ export async function getDashboardData(options?: {
   // El harvest pendiente SÍ debe incrementar el total del portfolio (es rendimiento ganado).
   // No lo restamos del currentValue: se suma aparte en el total global para mantener
   // coherencia entre la posición (capital invertido) y el rendimiento pendiente.
-  const adjustedPositions = positions.map((position) => {
+  const harvestAjustado = positions.map((position) => {
     const key = positionCompositeKey(position.portfolioId, position.protocol, position.positionId);
     const harvest = harvestSummaryByPosition.get(key);
     if (!harvest) return position;
@@ -2101,6 +2176,38 @@ export async function getDashboardData(options?: {
       ...position,
       totalHarvested: harvest.harvestedUsd,
     };
+  });
+
+  /*
+   * MANDA LA BILLETERA.
+   *
+   * Hasta aquí el valor de cada posición viene del libro: saldo contable por
+   * precio. La cabecera, en cambio, sale del snapshot on-chain. Eran dos cifras
+   * distintas para la misma pregunta —«cuánto tengo»— y las dos a la vista: el
+   * Resumen decía una, la suma de las secciones otra, y la curva de evolución
+   * una tercera.
+   *
+   * Decisión del dueño, y es la correcta: manda SIEMPRE lo que hay en la
+   * billetera. El libro sirve para saber qué pagaste y qué debes declarar; para
+   * saber cuánto tienes ahora mismo, la cadena es la autoridad.
+   *
+   * Cada posición contable enlazada a una lectura on-chain (`position_links`)
+   * toma el valor de esa lectura. El depositado y el coste NO se tocan: son
+   * historia contable y la cadena no los conoce.
+   *
+   * Lo que NO se hace es mezclar en silencio. Una posición sin enlace o sin
+   * lectura conserva su valor de libro y queda MARCADA, para que la pantalla
+   * pueda decir que esa cifra no viene de la cadena. Mezclar dos fuentes sin
+   * distinguirlas es exactamente el problema que esto viene a resolver.
+   */
+  const adjustedPositions = harvestAjustado.map((position) => {
+    const valorEnCadena = onchainValueByPosition.get(
+      positionCompositeKey(position.portfolioId, position.protocol, position.positionId),
+    );
+    if (valorEnCadena === undefined) {
+      return { ...position, valueSource: "libro" as const };
+    }
+    return { ...position, currentValue: valorEnCadena, valueSource: "cadena" as const };
   });
 
   const byCategory = adjustedPositions.reduce(

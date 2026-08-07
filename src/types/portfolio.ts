@@ -35,6 +35,16 @@ export type DefiPosition = {
   lpRangeLabel: string | null;
   currentPriceLabel: string | null;
   dataQualityIssue: string | null;
+  /**
+   * De dónde sale `currentValue`: de la CADENA o del LIBRO.
+   *
+   * Manda siempre la cadena, que es lo que de verdad hay en la billetera. Una
+   * posición sin enlace on-chain o sin lectura reciente conserva su valor
+   * contable, y lo declara aquí en vez de pasar por leída: mezclar dos fuentes
+   * sin distinguirlas es lo que hacía que el mismo patrimonio saliera con tres
+   * cifras distintas según la pantalla.
+   */
+  valueSource?: "cadena" | "libro";
   isAggregatePosition: boolean;
   balanceLabel: string | null;
   costBasisUsd: number | null;

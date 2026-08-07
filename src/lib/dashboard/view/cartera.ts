@@ -170,7 +170,16 @@ function toPosition(
     pnlTone: Math.abs(pnlUsd) < 0.005 ? "flat" : pnlUsd > 0 ? "profit" : "loss",
     yields: yieldsOf(p, category, harvest),
     // Solo se señala LA EXCEPCIÓN. Una insignia en todas las filas no informa.
-    exception: p.dataQualityIssue ?? undefined,
+    // Manda la billetera: el valor de cada posición sale de la lectura on-chain.
+    // Una posición SIN esa lectura conserva su valor de libro, y aquí lo dice.
+    // No es un fallo —una posición recién creada aún no está enlazada— pero el
+    // cliente tiene derecho a saber que esa cifra no viene de la cadena, que es
+    // lo que dice el resto de la pantalla.
+    exception:
+      p.dataQualityIssue ??
+      (p.valueSource === "libro"
+        ? "Valorada con la contabilidad: esta posición todavía no está enlazada con su lectura en cadena."
+        : undefined),
   };
 }
 
