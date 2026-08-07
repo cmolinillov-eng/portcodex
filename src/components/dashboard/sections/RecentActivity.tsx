@@ -3,6 +3,7 @@
 import { memo } from "react";
 import { FileSpreadsheet } from "lucide-react";
 import { currency } from "../utils/formatters";
+import { undoModeFor } from "./undo-mode";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 
 type RecentActivityEntry = DashboardData["recentActivity"][number];
@@ -20,22 +21,10 @@ interface RecentActivityProps {
   onUndo?: (item: RecentActivityEntry, mode: "operation" | "restore") => void;
 }
 
-/**
- * Decide si una fila de actividad se puede deshacer y con qué modo:
- *  - "restore": un borrado de posición (snapshot position_closed con reason "deleted").
- *  - "operation": cualquier operación de usuario con grupo (añadir, rebalanceo,
- *    harvest, edición). Se excluyen los cierres automáticos (no son acciones del gestor).
- */
-export function undoModeFor(item: RecentActivityEntry): "operation" | "restore" | null {
-  if (item.type === "position_closed") {
-    return item.reason === "deleted" ? "restore" : null;
-  }
-  if (item.reason === "auto_closed") return null;
-  if (item.operationGroupId) return "operation";
-  // Caso legacy sin grupo: permitir deshacer una alta simple por posición… no es
-  // seguro sin grupo, así que solo ofrecemos undo cuando hay operationGroupId.
-  return null;
-}
+// La decisión de qué se puede deshacer vive en ./undo-mode (módulo sin JSX) para
+// poder probarla sin renderizar la tabla. Se reexporta para no romper a quien la
+// importe desde aquí.
+export { undoModeFor } from "./undo-mode";
 
 export function undoKeyFor(item: RecentActivityEntry, mode: "operation" | "restore"): string {
   return mode === "restore"

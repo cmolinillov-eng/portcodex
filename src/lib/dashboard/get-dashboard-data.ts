@@ -1087,6 +1087,13 @@ export async function getDashboardData(options?: {
   const tokenAmountPlano = (n: number): string =>
     n.toLocaleString("es-ES", { maximumFractionDigits: 6 });
 
+  // Posiciones con al menos una transacción de capital (in/out). Se anota AQUÍ,
+  // con la clave canónica de posición, no recortando después la clave del
+  // acumulador: esa clave lleva el símbolo al final
+  // (`cartera::protocolo::posición::SÍMBOLO`), así que partirla por el primer
+  // "::" devolvía solo el UUID de la cartera y el conjunto no casaba NUNCA con
+  // lo que se le preguntaba más abajo. La guarda existía y no guardaba nada.
+  const positionsWithTxCoverage = new Set<string>();
   const capitalInSet = new Set(["deposit", "staking_deposit", "lp_deposit", "lending_supply"]);
   const capitalOutSet = new Set(["withdrawal", "staking_withdrawal", "lp_withdraw", "lending_withdraw"]);
   for (const tx of portfolioTransactions) {
@@ -1118,7 +1125,9 @@ export async function getDashboardData(options?: {
     const symbol = isIn ? inSymbol : outSymbol;
     if (!symbol) continue;
 
-    const tpKey = `${positionCompositeKey(portfolioId, protocol, positionId)}::${symbol}`;
+    const posKey = positionCompositeKey(portfolioId, protocol, positionId);
+    positionsWithTxCoverage.add(posKey);
+    const tpKey = `${posKey}::${symbol}`;
     if (!txBalanceByTokenPosition.has(tpKey)) {
       txBalanceByTokenPosition.set(tpKey, { balance: 0, costUsd: 0, depositedAmount: 0 });
     }
@@ -1158,16 +1167,12 @@ export async function getDashboardData(options?: {
     }
   }
 
-  // Posiciones que tienen al menos una transacción de capital (in/out): para
-  // ellas el balance es 100% transaccional. Si una posición está aquí pero un
-  // token concreto NO tiene txData, ese token no es principal (típicamente un
-  // residual de harvest que la vista defi_positions_analytics suma como
-  // token_in). En ese caso su balance debe ser 0, no caer al viewBalance
-  // contaminado — eso es lo que hacía aparecer LPs con un tercer token (USDC).
-  const positionsWithTxCoverage = new Set<string>();
-  for (const key of txBalanceByTokenPosition.keys()) {
-    positionsWithTxCoverage.add(key.split("::")[0]!);
-  }
+  // (`positionsWithTxCoverage` se llena en el bucle de arriba.) Para una
+  // posición con transacciones de capital el balance es 100% transaccional: si
+  // un token concreto NO tiene txData, ese token no es principal —típicamente
+  // un residual de harvest que la vista defi_positions_analytics suma como
+  // token_in—, así que su balance es 0 y no cae al viewBalance contaminado. Eso
+  // es lo que hacía aparecer LPs con un tercer token.
 
   let positions: DefiPosition[] = filteredRows
     .filter((row) => row.is_active === true)

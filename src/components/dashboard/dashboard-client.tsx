@@ -22,6 +22,7 @@ import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 // (src/lib/format/figures.ts) para que decimales y separadores no dependan de
 // la pantalla que las pinte.
 import { money, tokenAmount } from "@/lib/format/figures";
+import { rebalanceLpSplitAmounts, rebalanceTargetAmountFromUsd } from "@/lib/portfolio/rebalance-split";
 import type { DefiPosition, PositionSection } from "@/types/portfolio";
 import { HistoryModal } from "./modals/history-modal";
 import { QuickHarvestModal } from "./modals/quick-harvest-modal";
@@ -628,15 +629,19 @@ function DashboardClientInner({ data }: { data: DashboardData }) {
 
     if (isTargetLp) {
       // Para LP: sugerencias basadas en split %. Si el usuario ya editó, respetar.
-      const rawSplit = Number(form.rebalanceTargetLpSplitPercentA);
-      const splitA = Number.isFinite(rawSplit) ? Math.max(0, Math.min(100, rawSplit)) : 50;
-      const usdForA = (usd * splitA) / 100;
-      const usdForB = usd - usdForA;
-      suggestedAmountA = targetPriceA > 0 ? usdForA / targetPriceA : 0;
-      suggestedAmountB = targetPriceB > 0 ? usdForB / targetPriceB : 0;
+      // El reparto vive en @/lib/portfolio/rebalance-split para poder probarlo
+      // sin montar el panel (tests/math/financial-core.test.mjs).
+      const split = rebalanceLpSplitAmounts(
+        usd,
+        Number(form.rebalanceTargetLpSplitPercentA),
+        targetPriceA,
+        targetPriceB,
+      );
+      suggestedAmountA = split.amountA;
+      suggestedAmountB = split.amountB;
       targetAmount = Number.isFinite(targetAmountManual) && targetAmountManual > 0 ? targetAmountManual : suggestedAmountA;
     } else {
-      const targetAmountAuto = targetPriceA > 0 ? usd / targetPriceA : 0;
+      const targetAmountAuto = rebalanceTargetAmountFromUsd(usd, targetPriceA);
       targetAmount = Number.isFinite(targetAmountManual) && targetAmountManual > 0 ? targetAmountManual : targetAmountAuto;
       suggestedAmountA = targetAmountAuto;
     }
