@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { timeAgo, shortDateTime } from "@/lib/format/figures";
 
 /**
  * Contenedor de página. Fija la rejilla —1240 px de ancho útil y 64 de aire
@@ -44,5 +45,42 @@ export function DataProvenance({ children }: { children: ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+/**
+ * Aviso de lectura vieja.
+ *
+ * `getSyncInfo` calculaba `isStale` desde el principio —«una lectura vieja deja
+ * de ser una lectura»— y NINGUNA pantalla lo enseñaba. Es decir: el producto
+ * sabía que el patrimonio que estaba pintando era de hace horas y no se lo
+ * decía a nadie. Quien mira la cifra la lee como el saldo de ahora mismo,
+ * porque no hay nada que sugiera lo contrario.
+ *
+ * Va en el PIE y con la misma voz que los avisos de Fiscalidad, no en rojo
+ * arriba: que la lectura sea de esta mañana no es una avería, es un dato de
+ * procedencia más —igual que cuántas wallets se han leído—. Una alarma cada vez
+ * que alguien abre el Resumen antes de la primera sincronización del día se
+ * aprende a ignorar en dos días, y entonces ya no avisa de nada.
+ *
+ * Dice DESDE CUÁNDO, con antigüedad y fecha: «hace 14 horas» sitúa, «6 ago,
+ * 21:12» es lo que se compara con la última operación.
+ */
+export function StaleReadNotice({ lastSyncIso }: { lastSyncIso: string | null }) {
+  return (
+    <DataProvenance>
+      {lastSyncIso ? (
+        <>
+          <strong>Estas cifras son de la última lectura, {timeAgo(lastSyncIso)}</strong> (
+          {shortDateTime(lastSyncIso)}). Los precios y los saldos han podido moverse desde
+          entonces: vuelve a sincronizar antes de darlos por buenos.
+        </>
+      ) : (
+        <>
+          <strong>No hay ninguna lectura registrada de esta cartera.</strong> Lo que se enseña
+          sale solo de lo que hay guardado, sin comprobar nada contra las redes.
+        </>
+      )}
+    </DataProvenance>
   );
 }

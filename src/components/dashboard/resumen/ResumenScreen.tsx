@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { DashboardData } from "@/lib/dashboard/get-dashboard-data";
 import { buildResumenView } from "@/lib/dashboard/view/resumen";
 import { getSyncInfo, getEvolution, provenanceLine } from "@/lib/dashboard/view/shell";
-import { PageShell, DataProvenance } from "@/components/shell/PageShell";
+import { PageShell, DataProvenance, StaleReadNotice } from "@/components/shell/PageShell";
 import { WealthHeader, SyncStatus } from "./WealthHeader";
 import { PortfolioComposition } from "./PortfolioComposition";
 import { EvolutionChart } from "./EvolutionChart";
@@ -106,6 +106,10 @@ export async function ResumenScreen({
         ) : null}
 
         <NetworkDistribution note={view.networksNote} networks={view.networks} />
+
+        {/* Antes del pie, porque lo MATIZA: el pie dice cuándo se leyó y este
+            dice que ese «cuándo» ya es viejo para la cifra de arriba. */}
+        {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
 
         <DataProvenance>
           {provenanceLine(sync, view.provenance)}

@@ -150,6 +150,49 @@ export function plainNumber(value: number, decimals = 2): string {
   return withMinus(group(value, decimals, decimals));
 }
 
+/**
+ * Número PLANO en español para FICHEROS, no para pantalla: coma decimal y sin
+ * separador de millar.
+ *
+ * Es distinto de todo lo de arriba y por eso vive aparte:
+ *
+ *  · No lleva menos tipográfico. El «−» (U+2212) es correcto en pantalla y es
+ *    basura para una hoja de cálculo: Excel no lo reconoce como signo y la
+ *    celda entra como texto. Aquí manda el guion normal que escribe `Intl`.
+ *  · No agrupa millares. «1.198,13» lo lee bien un Excel en español y lo lee
+ *    MAL uno en inglés; sin agrupar, el único carácter que hay que acertar es
+ *    la coma decimal. Un separador menos es un modo menos de romperse.
+ *  · No cae nunca en notación científica —cosa que `String(0.0000001)` sí hace,
+ *    y «1e-7» en una casilla de cantidad no es un número para nadie—, porque
+ *    `toLocaleString` siempre escribe los decimales en posicional.
+ *
+ * Los ficheros se separan por `;` justamente porque van a un Excel español, que
+ * espera coma decimal. Con punto, el asesor abre la trazabilidad y las cifras
+ * le entran como texto: no suman, no ordenan, no filtran.
+ */
+export function csvNumber(value: number, min: number, max: number): string {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("es-ES", {
+    minimumFractionDigits: min,
+    maximumFractionDigits: max,
+    useGrouping: false,
+  });
+}
+
+/** Importe en euros de un fichero: siempre dos decimales, como el dinero. */
+export function csvMoney(value: number): string {
+  return csvNumber(value, 2, 2);
+}
+
+/**
+ * Cantidad de token de un fichero: todos los decimales que traiga y ningún cero
+ * de relleno. El tope de 18 es el máximo de decimales que declara un token ERC-20
+ * y sobra para un `double`, que no distingue más de 17 cifras significativas.
+ */
+export function csvAmount(value: number): string {
+  return csvNumber(value, 0, 18);
+}
+
 /** Fecha corta de fila: «27 jul». Sin año, que lo da el contexto de la pantalla. */
 export function shortDate(iso: string): string {
   const t = Date.parse(iso);

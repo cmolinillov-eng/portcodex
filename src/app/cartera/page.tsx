@@ -5,7 +5,7 @@ import { getFiscalContext } from "@/lib/fiscal/get-fiscal-context";
 import { buildCarteraView } from "@/lib/dashboard/view/cartera";
 import { getSyncInfo, provenanceLine } from "@/lib/dashboard/view/shell";
 import { TopNav } from "@/components/shell/TopNav";
-import { PageShell, DataProvenance } from "@/components/shell/PageShell";
+import { PageShell, DataProvenance, StaleReadNotice } from "@/components/shell/PageShell";
 import { SyncStatus } from "@/components/dashboard/resumen/WealthHeader";
 import { CarteraHeader } from "@/components/dashboard/cartera/CarteraHeader";
 import { PositionsTable } from "@/components/dashboard/cartera/PositionsTable";
@@ -72,6 +72,11 @@ export default async function CarteraPage({
             Todavía no hay posiciones abiertas en esta cartera.
           </p>
         )}
+
+        {/* Aquí pesa más que en el Resumen: esta pantalla enseña el valor de
+            CADA posición, y con una lectura vieja todas las cifras de la
+            columna son de hace horas, no solo el total. */}
+        {sync.isStale ? <StaleReadNotice lastSyncIso={sync.lastSyncIso} /> : null}
 
         <DataProvenance>{provenanceLine(sync, view.provenance)}</DataProvenance>
       </PageShell>

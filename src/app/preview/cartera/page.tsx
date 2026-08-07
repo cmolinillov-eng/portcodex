@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { TopNav } from "@/components/shell/TopNav";
-import { PageShell, DataProvenance } from "@/components/shell/PageShell";
+import { PageShell, DataProvenance, StaleReadNotice } from "@/components/shell/PageShell";
 import { SyncStatus } from "@/components/dashboard/resumen/WealthHeader";
 import { CarteraHeader } from "@/components/dashboard/cartera/CarteraHeader";
 import { PositionsTable } from "@/components/dashboard/cartera/PositionsTable";
@@ -39,6 +39,10 @@ export default function PreviewCartera() {
         {MOCK_CARTERA.map((section) => (
           <PositionsTable key={section.key} section={section} />
         ))}
+
+        {/* Igual que en el Resumen: en la pantalla real depende de `isStale`,
+            aquí se pinta siempre para poder revisarlo. */}
+        <StaleReadNotice lastSyncIso={new Date(Date.now() - 14 * 3600_000).toISOString()} />
 
         <DataProvenance>
           4 wallets conectadas · 17 posiciones leídas · última lectura 28 jul, 13:43

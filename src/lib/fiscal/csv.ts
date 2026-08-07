@@ -2,7 +2,16 @@ import type { TraceabilityEntry } from "@/lib/tax/compute-traceability";
 import { getAeatClassification, getCustodyClass } from "@/lib/tax/aeat-mapping";
 import { getTaxYear } from "@/lib/tax/eur-conversion";
 import { formatDate } from "./format";
+import { csvAmount, csvMoney } from "@/lib/format/figures";
 
+/**
+ * Toda celda va ENTRECOMILLADA, sin excepción.
+ *
+ * Es lo que permite escribir los números con coma decimal —«1198,13»— sin que
+ * la coma pueda confundirse nunca con un separador de columnas: dentro de las
+ * comillas no separa nada. El separador de columnas real es `;`, y de ese ya se
+ * encargan las comillas igual.
+ */
 function csvCell(v: unknown): string {
   return `"${String(v ?? "").replace(/"/g, '""')}"`;
 }
@@ -16,6 +25,11 @@ function toCsv(header: string[], rows: string[][]): string {
 
 /**
  * CSV de trazabilidad fiscal completa (todas las columnas internas + AEAT).
+ *
+ * Este fichero lo abre una PERSONA en un Excel español —por eso se separa por
+ * `;` y no por `,`—, así que sus números van en español: coma decimal. Con
+ * punto, Excel no los reconoce como números y el asesor recibe cifras que no
+ * suman ni se ordenan. Ver `csvMoney`/`csvAmount` en `lib/format/figures`.
  */
 export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
   const header = [
@@ -46,12 +60,12 @@ export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
       getCustodyClass(e.walletKind),
       e.protocol,
       e.tokenInSymbol ?? "",
-      e.tokenInAmount != null ? String(e.tokenInAmount) : "",
+      e.tokenInAmount != null ? csvAmount(e.tokenInAmount) : "",
       e.tokenOutSymbol ?? "",
-      e.tokenOutAmount != null ? String(e.tokenOutAmount) : "",
-      e.fiscal.valueEur.toFixed(2),
-      e.fiscal.costBasisEur.toFixed(2),
-      e.fiscal.realizedGainEur.toFixed(2),
+      e.tokenOutAmount != null ? csvAmount(e.tokenOutAmount) : "",
+      csvMoney(e.fiscal.valueEur),
+      csvMoney(e.fiscal.costBasisEur),
+      csvMoney(e.fiscal.realizedGainEur),
       cls.badge,
       cls.casilla,
       cls.base ?? "—",
@@ -78,7 +92,49 @@ export function buildTraceabilityCsv(entries: TraceabilityEntry[]): string {
 /**
  * CSV en formato estilo CoinTracking (el que esperan la mayoría de gestores
  * fiscales en España). Mapea cada movimiento a Type/Buy/Sell.
+ *
+ * AQUÍ LOS NÚMEROS VAN CON PUNTO, a diferencia del CSV de trazabilidad.
+ *
+ * No es un descuido ni una incoherencia: son dos ficheros con dos lectores
+ * distintos. La trazabilidad la abre una persona en Excel; ESTE lo INGIERE una
+ * herramienta, y sus columnas no son nuestras —«Type», «Buy Amount», «Sell
+ * Currency», «Trade-Group»— sino las del importador de CoinTracking, escritas
+ * en inglés y en su orden.
+ *
+ * Comprobado antes de tocarlo (agosto 2026): la plantilla oficial y los
+ * ejemplos del importador escriben los importes en formato inglés («1.05»), y
+ * la documentación del importador personalizado solo declara ajustable el
+ * SEPARADOR DE COLUMNAS —«Column Separator: usually auto-detected»—, no el
+ * decimal. Es decir: el punto está documentado y la coma no. Con coma, el
+ * importador se come «1198,13» como 1198 o rechaza la fila, y ese error es
+ * silencioso y fiscal.
+ *
+ * Vale más un fichero que la herramienta acepta que uno bonito que rechaza. Si
+ * algún día CoinTracking documenta el decimal como configurable, esto se puede
+ * revisar; mientras tanto, no se toca.
  */
+
+/**
+ * Número en el formato que ingiere CoinTracking: punto decimal, sin separador
+ * de millar y SIN notación científica.
+ *
+ * Lo tercero es lo que arregla algo: los importes salían de `String(numero)`, y
+ * `String(0.0000001)` devuelve «1e-7». Una cantidad de token pequeña —polvo de
+ * un LP, una comisión— entraba en el fichero como «1e-7», que ningún importador
+ * lee como un número. Con `toLocaleString` los decimales se escriben siempre en
+ * posicional.
+ *
+ * No usa los ayudantes de `lib/format/figures` a propósito: aquellos son es-ES
+ * —coma decimal— y este fichero tiene que salir en inglés.
+ */
+function ctNumber(value: number, min: number, max: number): string {
+  if (!Number.isFinite(value)) return "";
+  return value.toLocaleString("en-US", {
+    minimumFractionDigits: min,
+    maximumFractionDigits: max,
+    useGrouping: false,
+  });
+}
 export function buildCointrackingCsv(entries: TraceabilityEntry[]): string {
   const header = [
     "Type",
@@ -114,9 +170,9 @@ export function buildCointrackingCsv(entries: TraceabilityEntry[]): string {
     const ctType = TYPE_MAP[e.fiscal.category] ?? "Trade";
     return [
       ctType,
-      e.tokenInAmount != null ? String(e.tokenInAmount) : "",
+      e.tokenInAmount != null ? ctNumber(e.tokenInAmount, 0, 18) : "",
       e.tokenInSymbol ?? "",
-      e.tokenOutAmount != null ? String(e.tokenOutAmount) : "",
+      e.tokenOutAmount != null ? ctNumber(e.tokenOutAmount, 0, 18) : "",
       e.tokenOutSymbol ?? "",
       "",
       "",
@@ -137,8 +193,8 @@ export function buildCointrackingCsv(entries: TraceabilityEntry[]): string {
        */
       [e.fiscal.notes, e.notes].filter(Boolean).join(" · ").replace(/[\r\n;]+/g, " "),
       formatDate(e.transactionDate),
-      e.tokenInSymbol ? e.fiscal.valueEur.toFixed(2) : "",
-      e.tokenOutSymbol ? e.fiscal.valueEur.toFixed(2) : "",
+      e.tokenInSymbol ? ctNumber(e.fiscal.valueEur, 2, 2) : "",
+      e.tokenOutSymbol ? ctNumber(e.fiscal.valueEur, 2, 2) : "",
     ];
   });
 

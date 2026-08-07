@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { TopNav } from "@/components/shell/TopNav";
-import { PageShell, DataProvenance } from "@/components/shell/PageShell";
+import { PageShell, DataProvenance, StaleReadNotice } from "@/components/shell/PageShell";
 import { WealthHeader, SyncStatus } from "@/components/dashboard/resumen/WealthHeader";
 import { PortfolioComposition } from "@/components/dashboard/resumen/PortfolioComposition";
 import { EvolutionChart } from "@/components/dashboard/resumen/EvolutionChart";
@@ -116,6 +116,12 @@ export default function PreviewResumen() {
             { name: "Base", value: "397,67 US$", percent: "3,6 %", share: 3.6 },
           ]}
         />
+
+        {/* El aviso de lectura vieja, en su sitio del pie. En la pantalla real
+            solo aparece si `getSyncInfo` marca `isStale`; aquí se pinta siempre
+            —con una lectura simulada de hace 14 horas— porque este banco existe
+            justo para poder mirar el caso sin esperar a que ocurra. */}
+        <StaleReadNotice lastSyncIso={new Date(Date.now() - 14 * 3600_000).toISOString()} />
 
         <DataProvenance>
           4 wallets conectadas · 14 posiciones leídas · última lectura 28 jul, 13:38
