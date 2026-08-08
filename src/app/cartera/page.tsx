@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getViewerAccess } from "@/lib/auth/viewer-access";
 import { getDashboardData } from "@/lib/dashboard/get-dashboard-data";
@@ -60,6 +61,20 @@ export default async function CarteraPage({
           total={view.total}
           positionsLabel={view.positionsLabel}
           readLabel={`· leído ${timeAgo(sync.lastSyncIso)}`}
+          // El enlace «Wallets» de la maqueta, que hasta ahora no llevaba a
+          // ningún sitio: la única forma de dar de alta una clave pública estaba
+          // enterrada en el panel de operación. La cartera activa viaja en la URL
+          // para que un gestor entre a las wallets de SU cliente, no a las suyas.
+          action={
+            activa ? (
+              <Link
+                href={`/cartera/wallets?portfolio=${activa}`}
+                style={{ fontSize: "var(--text-body)", color: "var(--muted)" }}
+              >
+                Wallets
+              </Link>
+            ) : null
+          }
           syncStatus={
             <SyncStatus walletsLabel={sync.walletsLabel} syncedLabel={sync.syncedLabel} />
           }

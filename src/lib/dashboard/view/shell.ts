@@ -31,7 +31,15 @@ export async function getSyncInfo(portfolioId: string): Promise<SyncInfo> {
   const db = getSupabaseServiceClient() ?? getSupabaseServerClient();
 
   const [{ data: wallets }, { data: cache }] = await Promise.all([
-    db.from("portfolio_wallets").select("chain_kind").eq("portfolio_id", portfolioId),
+    // Solo las ACTIVAS. Una wallet desactivada no está conectada, y contarla
+    // hacía que una cartera sin ninguna wallet activa dijera «3 wallets
+    // conectadas · 0 posiciones» —tres conectadas que no leen nada—, que es
+    // justo la contradicción que delata que el número está mal.
+    db
+      .from("portfolio_wallets")
+      .select("chain_kind")
+      .eq("portfolio_id", portfolioId)
+      .eq("is_active", true),
     db.from("onchain_cache").select("updated_at").eq("portfolio_id", portfolioId),
   ]);
 
@@ -53,7 +61,11 @@ export async function getSyncInfo(portfolioId: string): Promise<SyncInfo> {
     walletCount,
     networkCount,
     lastSyncIso: lastSync,
-    isStale: ageHours > STALE_HOURS,
+    // Sin ninguna wallet activa NO hay nada que pueda estar viejo: quedaría una
+    // caché de hace días de wallets que ya no se leen. Avisar de que «hay que
+    // volver a sincronizar» una cartera vacía es pedirle al gestor que refresque
+    // la nada. Lo que falta es AÑADIR una wallet, y de eso avisa el vacío.
+    isStale: walletCount > 0 && ageHours > STALE_HOURS,
   };
 }
 
@@ -63,6 +75,12 @@ export function provenanceLine(sync: SyncInfo, positionsLabel: string): string {
   // cuándo leyó, y «28 jul» a las nueve de la noche no distingue una lectura de
   // hace diez minutos de una de esta mañana. Es lo que piden las dos maquetas
   // que llevan pie: «última lectura 28 jul, 13:43».
+  // Sin ninguna wallet conectada, la fecha de la última lectura habla de unas
+  // wallets que ya no están: mejor invitar a añadir una que exhibir una fecha
+  // vieja que no corresponde a lo que hay ahora.
+  if (sync.walletCount === 0) {
+    return "Sin wallets conectadas · añade una para empezar a leer saldos y posiciones";
+  }
   const read = sync.lastSyncIso
     ? `última lectura ${shortDateTime(sync.lastSyncIso)}`
     : "sin lecturas registradas";
