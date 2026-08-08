@@ -64,6 +64,56 @@ export function WalletsManager({
   const [error, setError] = useState("");
   const [guardando, setGuardando] = useState(false);
   const [form, setForm] = useState({ chainKind: "evm", address: "", label: "" });
+  const [sincronizando, setSincronizando] = useState(false);
+  const [avisoSync, setAvisoSync] = useState("");
+
+  /*
+   * Leer la cadena AHORA.
+   *
+   * Registrar una wallet solo la guarda: el dinero no aparece hasta que algo
+   * lee blockchain y escribe el snapshot. Antes eso solo pasaba de noche (el
+   * cron) o al abrir el panel de operación viejo, así que un gestor añadía la
+   * clave de un cliente nuevo y la Cartera seguía vacía sin explicación.
+   *
+   * `refresh=1` fuerza la lectura completa —Zerion, RPCs, los adaptadores DeFi—
+   * y guarda el snapshot del que bebe la Cartera. La respuesta puede NO ser
+   * JSON si Vercel corta la función por tiempo (la lectura pasa de 60 s en
+   * carteras grandes); se trata como éxito parcial y se refresca igual, porque
+   * la escritura del snapshot va por su cuenta y suele haberse completado.
+   */
+  async function sincronizar() {
+    if (sincronizando) return;
+    setSincronizando(true);
+    setError("");
+    setAvisoSync("");
+    try {
+      const res = await fetch(
+        `/api/wallet/live?portfolioId=${encodeURIComponent(portfolioId)}&refresh=1`,
+      );
+      const texto = await res.text();
+      let ok = res.ok;
+      try {
+        const body = JSON.parse(texto) as { positions?: unknown[]; error?: string };
+        if (body.error) throw new Error(body.error);
+        ok = ok && Array.isArray(body.positions);
+      } catch {
+        // Respuesta no-JSON: casi siempre un corte por tiempo con el snapshot ya
+        // escrito. No es un fallo del que haya que alarmar; se refresca y el
+        // dato aparece si llegó a guardarse.
+        setAvisoSync(
+          "La lectura está tardando más de lo normal. Recarga en unos segundos si aún no aparece.",
+        );
+      }
+      if (ok) {
+        // La Cartera lee del snapshot que esta llamada acaba de escribir.
+        router.refresh();
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "No se pudo sincronizar.");
+    } finally {
+      setSincronizando(false);
+    }
+  }
 
   useEffect(() => {
     let cancelado = false;
@@ -113,8 +163,10 @@ export function WalletsManager({
 
       setWallets((prev) => [...(prev ?? []), body.wallet!].filter(Boolean));
       setForm({ chainKind: form.chainKind, address: "", label: "" });
-      // La Cartera lee de estas wallets: al añadir una, lo que hay detrás cambia.
-      router.refresh();
+      // Añadir la wallet solo la registra. Se lanza la lectura a continuación
+      // para que el dinero aparezca sin obligar a pulsar «Sincronizar»: dar de
+      // alta una wallet y no ver nada es justo la confusión que hay que evitar.
+      void sincronizar();
     } catch (e) {
       setError(e instanceof Error ? e.message : "No se pudo añadir la wallet.");
     } finally {
@@ -220,9 +272,34 @@ export function WalletsManager({
       </section>
 
       <section style={{ paddingTop: 48 }}>
-        <h2 style={{ margin: 0, fontSize: "var(--text-lead)", fontWeight: 600 }}>
-          Wallets de esta cartera
-        </h2>
+        <div className="flex items-baseline" style={{ gap: 16 }}>
+          <h2 style={{ margin: 0, fontSize: "var(--text-lead)", fontWeight: 600 }}>
+            Wallets de esta cartera
+          </h2>
+          {/* Sin wallets todavía no hay nada que leer; el botón aparece cuando
+              ya hay al menos una. */}
+          {wallets && wallets.length > 0 ? (
+            <button
+              type="button"
+              onClick={sincronizar}
+              disabled={sincronizando}
+              style={{
+                marginLeft: "auto",
+                fontSize: "var(--text-body)",
+                color: sincronizando ? "var(--faint)" : "var(--brand-soft)",
+                cursor: sincronizando ? "default" : "pointer",
+              }}
+            >
+              {sincronizando ? "Leyendo la cadena…" : "Sincronizar ahora"}
+            </button>
+          ) : null}
+        </div>
+
+        {avisoSync ? (
+          <p style={{ fontSize: "var(--text-label)", color: "var(--warn)", marginTop: 8 }}>
+            {avisoSync}
+          </p>
+        ) : null}
 
         {wallets === null ? (
           <p style={{ fontSize: "var(--text-body)", color: "var(--faint)", marginTop: 16 }}>
