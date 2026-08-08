@@ -9,6 +9,7 @@ import { TopNav } from "@/components/shell/TopNav";
 import { PageShell, DataProvenance, StaleReadNotice } from "@/components/shell/PageShell";
 import { SyncStatus } from "@/components/dashboard/resumen/WealthHeader";
 import { CarteraHeader } from "@/components/dashboard/cartera/CarteraHeader";
+import { SyncNowButton } from "@/components/dashboard/cartera/SyncNowButton";
 import { PositionsTable } from "@/components/dashboard/cartera/PositionsTable";
 import { timeAgo } from "@/lib/format/figures";
 
@@ -76,7 +77,13 @@ export default async function CarteraPage({
             ) : null
           }
           syncStatus={
-            <SyncStatus walletsLabel={sync.walletsLabel} syncedLabel={sync.syncedLabel} />
+            <div style={{ textAlign: "right" }}>
+              <SyncStatus walletsLabel={sync.walletsLabel} syncedLabel={sync.syncedLabel} />
+              {/* Releer la cadena SIN salir de la Cartera. Solo con wallets
+                  conectadas: sin ninguna no hay nada que leer, y de eso ya avisa
+                  el pie. */}
+              {sync.walletCount > 0 && activa ? <SyncNowButton portfolioId={activa} /> : null}
+            </div>
           }
         />
 
